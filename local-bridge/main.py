@@ -125,7 +125,6 @@ def on_startup() -> None:
     try:
         load_dictionary()
         load_freq()
-        load_tokenizer()
     except Exception:
         logger.exception("Warm load partial failure")
 
@@ -139,8 +138,6 @@ def on_shutdown() -> None:
 def health() -> HealthResponse:
     snap = governor.snapshot()
     progress = get_progress()
-    if not dict_loaded():
-        load_dictionary()
     return HealthResponse(
         ready=True,
         ocr_engine="",

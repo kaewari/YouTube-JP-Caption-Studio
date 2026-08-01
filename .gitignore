@@ -11,6 +11,7 @@ local-bridge/data/dict/jmdict_vi.meta.json
 local-bridge/data/dict/jmdict_vietnamese.zip
 local-bridge/data/suspects/suspects.jsonl
 local-bridge/data/dict/gloss_en_vi_cache.json
+local-bridge/data/dict/*.sqlite*
 *.egg-info/
 .nodegraph/
 Không có tiêu đề/

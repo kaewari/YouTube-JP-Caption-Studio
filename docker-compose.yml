@@ -1,0 +1,39 @@
+services:
+  bridge:
+    build:
+      context: ./local-bridge
+      dockerfile: Dockerfile
+    image: yt-caption-bridge:local
+    container_name: yt-caption-bridge
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./local-bridge/data:/app/local-bridge/data
+      - ./scripts:/app/scripts
+    environment:
+      - PYTHONUNBUFFERED=1
+    mem_limit: 1536m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  web:
+    build:
+      context: ./web/saved-items
+      dockerfile: Dockerfile.dev
+    image: yt-caption-web:dev
+    container_name: yt-caption-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+    volumes:
+      - ./web/saved-items:/app
+      - /app/node_modules
+      - /app/.next
+    restart: unless-stopped

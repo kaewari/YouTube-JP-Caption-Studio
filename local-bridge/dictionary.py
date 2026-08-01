@@ -1,10 +1,11 @@
-"""Local dictionary: JMdict (EN) + JA→VI (seed + Yomitan) + EN→VI bridge (VNEDICT) + longest-match lookup."""
+"""Local dictionary: SQLite backend (dict.sqlite) for JMdict (EN) + JA→VI + EN→VI bridge (VNEDICT)."""
 
 from __future__ import annotations
 
 import json
 import logging
 import re
+import sqlite3
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -20,6 +21,7 @@ JMDICT_JSON = DATA_DIR / "jmdict_mini.json"
 JAVI_JSON = DATA_DIR / "ja_vi.json"
 JMDICT_VI_JSON = DATA_DIR / "jmdict_vi.json"
 EN_VI_JSON = DATA_DIR / "en_vi.json"
+SQLITE_DB = DATA_DIR / "dict.sqlite"
 
 RE_KANJI_KANA = re.compile(r"^([\u3400-\u9fff]+)([\u3040-\u309f]+)$")
 
@@ -170,7 +172,6 @@ _SEED_JA_VI: dict[str, list[str]] = {
     "いいえ": ["không"],
     "どうぞ": ["xin mời"],
     "お願いします": ["xin nhờ"],
-    # Body / family / places often missing VI in Yomitan (Sino-Viet only).
     "口": ["miệng"],
     "顔": ["mặt"],
     "名前": ["tên"],
@@ -270,110 +271,125 @@ _SEED_JA_VI: dict[str, list[str]] = {
 
 _PUNCT_STRIP = "。、.!?,！？「」『』（）()[]【】…・〜～『』「」〈〉《》""''\""
 _PARTICLE_SUFFIXES = ("は", "が", "を", "に", "で", "と", "も", "へ", "や", "の", "か", "ね", "よ", "な", "さ")
-# Strip common spoken / conjugated tails to reach a dict stem (best-effort).
 _TAIL_PATTERNS = [
     re.compile(r"(てしまっ[たて]|てしま[うい]|ちゃっ[たて]|ちゃう|じゃっ[たて]|じゃう)$"),
-    re.compile(r"(てる|でる|てた|でた|てます|でます|ています|でいます)$"),
+    re.compile(r"(てる|でる|てた|でた|てます|でます|えています|でいます)$"),
     re.compile(r"(してる|してた|してます|しています|して|した|しない|しなかった)$"),
     re.compile(r"(られ[るた]|れ[るた]|させ[るた]|せ[るた])$"),
-    re.compile(r"(なっ[たて]|なる|ない|なかった|なくて|なきゃ)$"),
+    re.compile(r"(なっ[たて]|なる|ない|<ctrl42>かった|なくて|なきゃ)$"),
     re.compile(r"(まし[たて]|ます|ません|ました|ましょう)$"),
     re.compile(r"(っ[たて]|[いう]$)"),
 ]
 
-_jmdict: dict[str, list[dict]] = {}
-_javi: dict[str, list[str]] = dict(_SEED_JA_VI)
-# expression → { reading → [gloss_vi, ...] }; reading "" = fallback aggregate
-_jmdict_vi: dict[str, dict[str, list[str]]] = {}
-# EN lemma → [vi, ...] from inverted VNEDICT (gloss bridge; not MT)
-_en_vi: dict[str, list[str]] = {}
+_db_conn: sqlite3.Connection | None = None
 _loaded = False
-
 _RE_EN_WORD = re.compile(r"[a-zA-Z']+")
 
 
+def _get_db() -> sqlite3.Connection | None:
+    global _db_conn, _loaded
+    if _db_conn is not None:
+        return _db_conn
+    if SQLITE_DB.is_file():
+        try:
+            conn = sqlite3.connect(f"file:{SQLITE_DB}?mode=ro", uri=True, check_same_thread=False)
+            _db_conn = conn
+            _loaded = True
+            return _db_conn
+        except Exception as exc:
+            logger.warning("Failed opening dict.sqlite: %s", exc)
+    return None
+
+
 def is_loaded() -> bool:
-    return _loaded
+    return _loaded or SQLITE_DB.is_file()
 
 
 def load_dictionary() -> bool:
-    global _jmdict, _javi, _jmdict_vi, _en_vi, _loaded
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if JMDICT_JSON.exists():
-        try:
-            _jmdict = json.loads(JMDICT_JSON.read_text(encoding="utf-8"))
-        except Exception as exc:
-            logger.warning("Failed reading JMdict json: %s", exc)
-    if JAVI_JSON.exists():
-        try:
-            loaded = json.loads(JAVI_JSON.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                _javi.update({k: v if isinstance(v, list) else [str(v)] for k, v in loaded.items()})
-        except Exception as exc:
-            logger.warning("Failed reading JA-VI json: %s", exc)
-    # Curated seed always wins over stale ja_vi.json / noisy Yomitan fragments.
-    _javi.update(_SEED_JA_VI)
+    """Ensure SQLite DB is ready."""
+    conn = _get_db()
+    if conn is not None:
+        dict_cache.clear()
+        logger.info("Dictionary DB ready at %s", SQLITE_DB)
+        return True
+    return False
 
-    _jmdict_vi = {}
-    if JMDICT_VI_JSON.exists():
-        try:
-            loaded_vi = json.loads(JMDICT_VI_JSON.read_text(encoding="utf-8"))
-            if isinstance(loaded_vi, dict):
-                # Normalize: allow legacy flat {expr: [gloss]} or nested {expr: {reading: [...]}}
-                for expr, val in loaded_vi.items():
-                    if not expr:
-                        continue
-                    if isinstance(val, list):
-                        _jmdict_vi[str(expr)] = {"": [str(x) for x in val if str(x).strip()]}
-                    elif isinstance(val, dict):
-                        by_r: dict[str, list[str]] = {}
-                        for reading, glosses in val.items():
-                            if not isinstance(glosses, list):
-                                continue
-                            cleaned = [str(x).strip() for x in glosses if str(x).strip()]
-                            if cleaned:
-                                by_r[str(reading or "")] = cleaned
-                        if by_r:
-                            _jmdict_vi[str(expr)] = by_r
-        except Exception as exc:
-            logger.warning("Failed reading JMdict VI json: %s", exc)
 
-    _en_vi = {}
-    if EN_VI_JSON.exists():
-        try:
-            loaded_en = json.loads(EN_VI_JSON.read_text(encoding="utf-8"))
-            if isinstance(loaded_en, dict):
-                _en_vi = {
-                    str(k).lower(): [str(x) for x in (v if isinstance(v, list) else [v]) if str(x).strip()]
-                    for k, v in loaded_en.items()
-                    if k
-                }
-        except Exception as exc:
-            logger.warning("Failed reading EN→VI json: %s", exc)
+def _query_jmdict(key: str) -> list[dict]:
+    conn = _get_db()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT payload FROM jmdict WHERE expression = ?", (key,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception as exc:
+        logger.warning("SQLite jmdict query error for %s: %s", key, exc)
+    return []
 
-    # New VI index invalidates EN-only cache entries from earlier sessions.
-    dict_cache.clear()
-    _loaded = True
-    logger.info(
-        "Dictionary loaded: jmdict=%d javi=%d jmdict_vi=%d en_vi=%d",
-        len(_jmdict),
-        len(_javi),
-        len(_jmdict_vi),
-        len(_en_vi),
-    )
-    return True
+
+def _query_javi(key: str) -> list[str]:
+    curated = list(_SEED_JA_VI.get(key) or [])
+    if curated:
+        return curated
+    conn = _get_db()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT glosses FROM javi WHERE expression = ?", (key,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception as exc:
+        logger.warning("SQLite javi query error for %s: %s", key, exc)
+    return []
+
+
+def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
+    conn = _get_db()
+    if not conn:
+        return {}
+    out: dict[str, list[str]] = {}
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT reading, glosses FROM jmdict_vi WHERE expression = ?", (key,))
+        rows = cur.fetchall()
+        for r_reading, r_glosses in rows:
+            if r_glosses:
+                out[str(r_reading or "")] = json.loads(r_glosses)
+    except Exception as exc:
+        logger.warning("SQLite jmdict_vi query error for %s: %s", key, exc)
+    return out
+
+
+def _query_en_vi(lemma: str) -> list[str]:
+    conn = _get_db()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT glosses FROM en_vi WHERE lemma = ?", (lemma.lower(),))
+        row = cur.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception as exc:
+        logger.warning("SQLite en_vi query error for %s: %s", lemma, exc)
+    return []
 
 
 def _vi_glosses_for(key: str, reading: str = "") -> list[str]:
     """Curated seed/ja_vi first, then Yomitan VI JMDict (reading-aware)."""
     for cand in _script_variants(key):
-        curated = list(_javi.get(cand) or [])
+        curated = _query_javi(cand)
         if curated:
             return curated[:8]
 
     by_reading: dict[str, list[str]] = {}
     for cand in _script_variants(key):
-        by_reading = _jmdict_vi.get(cand) or {}
+        by_reading = _query_jmdict_vi(cand)
         if by_reading:
             break
     if not by_reading:
@@ -381,14 +397,12 @@ def _vi_glosses_for(key: str, reading: str = "") -> list[str]:
     reading = (reading or "").strip()
     if reading and reading in by_reading:
         return list(by_reading[reading])[:8]
-    # Hiragana/katakana variant of reading
     if reading:
         hira = _kata_to_hira(reading)
         if hira in by_reading:
             return list(by_reading[hira])[:8]
     if "" in by_reading:
         return list(by_reading[""])[:8]
-    # Any reading's glosses
     for glosses in by_reading.values():
         if glosses:
             return list(glosses)[:8]
@@ -414,18 +428,16 @@ def _en_lemmas_from_gloss(gloss: str) -> list[str]:
 
 def _vi_from_en_glosses(gloss_en: list[str]) -> list[str]:
     """Bridge EN JMdict glosses → VI via inverted VNEDICT (no MT)."""
-    if not _en_vi or not gloss_en:
+    if not gloss_en:
         return []
     out: list[str] = []
     seen: set[str] = set()
-    # Prefer the first (primary) JMdict gloss; avoid later sense noise.
     for gloss in gloss_en[:2]:
         lemmas = _en_lemmas_from_gloss(gloss)
         if not lemmas:
             continue
-        # First lemma is the headword of this gloss ("to eat" → eat).
         for lemma in lemmas[:1]:
-            for vi in (_en_vi.get(lemma) or [])[:5]:
+            for vi in _query_en_vi(lemma)[:5]:
                 key = vi.casefold()
                 if key in seen:
                     continue
@@ -456,39 +468,6 @@ def _enrich_senses_vi(senses: list[DictSense], key: str) -> list[DictSense]:
             )
         )
     return out
-
-
-def import_jmdict_xml(xml_path: Path, max_entries: int = 0) -> int:
-    """Index JMdict XML → jmdict_mini.json. max_entries=0 means no limit."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    index: dict[str, list[dict]] = {}
-    count = 0
-    for _event, elem in ET.iterparse(str(xml_path), events=("end",)):
-        if elem.tag != "entry":
-            continue
-        kebs = [k.text for k in elem.findall("k_ele/keb") if k.text]
-        rebs = [r.text for r in elem.findall("r_ele/reb") if r.text]
-        senses = []
-        for sense in elem.findall("sense"):
-            glosses = [
-                g.text
-                for g in sense.findall("gloss")
-                if g.text
-                and g.get("{http://www.w3.org/XML/1998/namespace}lang", "eng") in (None, "eng")
-            ]
-            pos = [p.text for p in sense.findall("pos") if p.text]
-            if glosses:
-                senses.append({"gloss_en": glosses, "pos": pos, "reading": rebs[0] if rebs else ""})
-        if senses:
-            entry = {"senses": senses, "reading": rebs[0] if rebs else ""}
-            for key in kebs + rebs:
-                index.setdefault(key, []).append(entry)
-            count += 1
-        elem.clear()
-        if max_entries and count >= max_entries:
-            break
-    JMDICT_JSON.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-    return count
 
 
 def _nfkc(text: str) -> str:
@@ -539,11 +518,9 @@ def _stem_variants(text: str) -> list[str]:
         m = pat.search(t)
         if m and m.start() >= 1:
             variants.append(t[: m.start()])
-    # Drop trailing hiragana okurigana after a kanji head (食べた → 食べ, 投稿して → handled above)
     m = RE_KANJI_KANA.match(t)
     if m and len(m.group(1)) >= 1:
         variants.append(m.group(1))
-        # common ichidan dictionary form guess: 食べ → 食べる
         if m.group(2) and not m.group(2).endswith("る"):
             variants.append(m.group(1) + "る")
     return variants
@@ -552,7 +529,7 @@ def _stem_variants(text: str) -> list[str]:
 def _senses_for_key(key: str) -> tuple[list[DictSense], str]:
     senses: list[DictSense] = []
     reading = ""
-    for entry in _jmdict.get(key, []):
+    for entry in _query_jmdict(key):
         reading = reading or entry.get("reading", "")
         for s in entry.get("senses", []):
             sense_reading = s.get("reading") or reading
@@ -567,15 +544,32 @@ def _senses_for_key(key: str) -> tuple[list[DictSense], str]:
     if not senses:
         vi = _vi_glosses_for(key, "")
         if vi:
-            # VI-only hit (no EN JMdict row) — still show in popup.
             senses.append(DictSense(gloss_vi=vi, gloss_en=[], reading=reading))
-        elif key in _javi:
-            senses.append(DictSense(gloss_vi=list(_javi[key]), gloss_en=[], reading=reading))
+        elif key in _SEED_JA_VI:
+            senses.append(DictSense(gloss_vi=list(_SEED_JA_VI[key]), gloss_en=[], reading=reading))
     return senses, reading
 
 
 def _has_key(key: str) -> bool:
-    return key in _jmdict or key in _javi or key in _jmdict_vi
+    if key in _SEED_JA_VI:
+        return True
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1 FROM jmdict WHERE expression = ?
+            UNION ALL
+            SELECT 1 FROM javi WHERE expression = ?
+            UNION ALL
+            SELECT 1 FROM jmdict_vi WHERE expression = ?
+            LIMIT 1
+        """, (key, key, key))
+        return cur.fetchone() is not None
+    except Exception as exc:
+        logger.warning("SQLite _has_key query error for %s: %s", key, exc)
+    return False
 
 
 def has_entry(key: str) -> bool:
@@ -583,8 +577,6 @@ def has_entry(key: str) -> bool:
     k = (key or "").strip()
     if not k:
         return False
-    if not _loaded:
-        load_dictionary()
     return _has_key(k)
 
 
@@ -593,7 +585,6 @@ def _longest_prefix_match(text: str) -> str | None:
     if not t:
         return None
     max_len = min(len(t), 16)
-    # Prefer longer keys; include single-char (kanji particles etc.)
     for n in range(max_len, 0, -1):
         cand = t[:n]
         if _has_key(cand):
@@ -626,7 +617,6 @@ def _expand_candidates(surface: str, lemma: str) -> list[str]:
             for v in _script_variants(stem):
                 _add_candidate(candidates, seen, v)
 
-    # Sudachi re-split: compounds / spoken forms → try each unit's lemma
     try:
         from tokenize_ja import is_loaded, tokenize
 
@@ -655,7 +645,6 @@ def lookup(surface: str, lemma: str = "") -> DictResponse:
         return DictResponse(**cached)
 
     candidates = _expand_candidates(raw, lemma or "")
-    # Prefer longer exact keys (デート over 初 when both are candidate pieces).
     candidates.sort(key=lambda s: (-len(s), s))
 
     matched = ""
@@ -665,7 +654,6 @@ def lookup(surface: str, lemma: str = "") -> DictResponse:
     senses, reading, matched = _try_keys(candidates)
 
     if not senses:
-        # Longest prefix across candidates; prefer the longest successful prefix.
         best_pref = ""
         best_senses: list[DictSense] = []
         best_reading = ""
@@ -696,10 +684,6 @@ def lookup(surface: str, lemma: str = "") -> DictResponse:
         senses=senses,
         message="" if found else "không có trong từ điển",
     )
-    # Cache all found hits (VI may come from jmdict_vi after bootstrap).
-    # Skip caching empty not-found to allow later index growth without stale misses
-    # only when index is still tiny; otherwise cache misses too.
-    has_vi_index = bool(_jmdict_vi) or bool(_en_vi)
-    if found or has_vi_index:
+    if found or SQLITE_DB.is_file():
         dict_cache.set(cache_key, resp.model_dump())
     return resp
