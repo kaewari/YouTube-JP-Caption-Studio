@@ -28,3 +28,10 @@ local-bridge/data/extension_state.json
 local-bridge/.env
 web/saved-items/out/
 web/saved-items/.next/
+
+# Temporary scripts and agent output
+.agents/
+patch_*.py
+rewrite_parsers.py
+fix_content_js_json3.py
+tmp-ime-*

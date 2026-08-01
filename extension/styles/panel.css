@@ -5,9 +5,10 @@
 }
 
 .hardsub-bar {
-  /* --bar-scale: fonts/padding (video-base × user). --bar-user-scale: box size only. */
+  /* --bar-scale: fonts/padding (video-base × user). --bar-user-scale-*: box size only. */
   --bar-scale: 1;
-  --bar-user-scale: 1;
+  --bar-user-scale-w: 1;
+  --bar-user-scale-h: 1;
   --bar-box-w0: min(920px, 68vw);
   --bar-box-h0: 140px;
   --bar-bg-a: 0.82;
@@ -17,13 +18,13 @@
   top: 70%;
   z-index: 2147483645;
   box-sizing: border-box;
-  /* Box grows with barScale — no hard max-height/width cap fighting the slider. */
-  width: calc(var(--bar-box-w0) * var(--bar-user-scale));
-  height: calc(var(--bar-box-h0) * var(--bar-user-scale));
-  max-width: calc(var(--bar-box-w0) * var(--bar-user-scale));
-  min-width: calc(var(--bar-box-w0) * var(--bar-user-scale));
-  max-height: calc(var(--bar-box-h0) * var(--bar-user-scale));
-  min-height: calc(var(--bar-box-h0) * var(--bar-user-scale));
+  /* Box W/H grow independently — no hard max-height/width cap fighting the handles. */
+  width: calc(var(--bar-box-w0) * var(--bar-user-scale-w));
+  height: calc(var(--bar-box-h0) * var(--bar-user-scale-h));
+  max-width: calc(var(--bar-box-w0) * var(--bar-user-scale-w));
+  min-width: calc(var(--bar-box-w0) * var(--bar-user-scale-w));
+  max-height: calc(var(--bar-box-h0) * var(--bar-user-scale-h));
+  min-height: calc(var(--bar-box-h0) * var(--bar-user-scale-h));
   padding: calc(10px * var(--bar-scale)) calc(18px * var(--bar-scale));
   border-radius: calc(14px * var(--bar-scale));
   background: rgba(12, 12, 16, var(--bar-bg-a));
@@ -178,6 +179,63 @@
 
 .hardsub-bar .bar-resize {
   position: absolute;
+  pointer-events: auto;
+  z-index: 2;
+  background: transparent;
+}
+
+.hardsub-bar .bar-resize-n {
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.hardsub-bar .bar-resize-s {
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.hardsub-bar .bar-resize-e {
+  right: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.hardsub-bar .bar-resize-w {
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.hardsub-bar .bar-resize-nw,
+.hardsub-bar .bar-resize-ne,
+.hardsub-bar .bar-resize-sw,
+.hardsub-bar .bar-resize-se {
+  width: 12px;
+  height: 12px;
+  z-index: 3;
+}
+.hardsub-bar .bar-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.hardsub-bar .bar-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.hardsub-bar .bar-resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.hardsub-bar .bar-resize-se {
   right: 2px;
   bottom: 2px;
   width: 14px;
@@ -193,12 +251,9 @@
       rgba(255, 255, 255, 0.35) 70% 80%,
       transparent 80%
     );
-  pointer-events: auto;
-  z-index: 2;
 }
 
 .hardsub-bar.resizing {
-  cursor: nwse-resize;
   opacity: 0.94;
 }
 

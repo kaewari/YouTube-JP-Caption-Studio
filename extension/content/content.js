@@ -34,8 +34,11 @@
     maxSentences: 2000,
     panelWidth: 480,
     barPos: null,
-    /** User multiplier on video-height-derived overlay scale (1 = default). */
+    /** User multiplier on video-height-derived overlay fonts/padding (1 = default). */
     barScale: 1,
+    /** Independent box size multipliers (width / height). */
+    barScaleW: 1,
+    barScaleH: 1,
     /** Overlay background alpha (0–1). */
     barBgOpacity: 0.82,
     /** Overlay text alpha (0–1). */
@@ -548,6 +551,13 @@
     if (settings.barShowVi == null) settings.barShowVi = true;
     if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
       settings.barScale = DEFAULTS.barScale;
+    }
+    // Migrate legacy uniform barScale → independent W/H when missing.
+    if (settings.barScaleW == null || !Number.isFinite(Number(settings.barScaleW))) {
+      settings.barScaleW = Number(settings.barScale) || DEFAULTS.barScaleW;
+    }
+    if (settings.barScaleH == null || !Number.isFinite(Number(settings.barScaleH))) {
+      settings.barScaleH = Number(settings.barScale) || DEFAULTS.barScaleH;
     }
     userVocab = data.userVocab && typeof data.userVocab === "object" ? data.userVocab : {};
   }
@@ -1087,14 +1097,52 @@
     return Number.isFinite(n) ? Math.max(0.55, Math.min(2.4, n)) : 1;
   }
 
+  function clampBarBoxScale(n) {
+    const x = Number(n);
+    return Number.isFinite(x) ? Math.max(0.55, Math.min(2.4, x)) : 1;
+  }
+
+  function userBarScaleW() {
+    return clampBarBoxScale(settings.barScaleW);
+  }
+
+  function userBarScaleH() {
+    return clampBarBoxScale(settings.barScaleH);
+  }
+
+  /**
+   * Edge/corner resize: adjust W and/or H; keep the opposite edge fixed via left/top.
+   * dir is one of n,s,e,w,nw,ne,sw,se.
+   */
+  function computeBarEdgeResize(dir, start, dx, dy) {
+    const w0 = Math.max(1, start.w0);
+    const h0 = Math.max(1, start.h0);
+    let scaleW = start.scaleW;
+    let scaleH = start.scaleH;
+    let left = start.left;
+    let top = start.top;
+    if (dir.includes("e")) scaleW = clampBarBoxScale((start.boxW + dx) / w0);
+    if (dir.includes("w")) {
+      scaleW = clampBarBoxScale((start.boxW - dx) / w0);
+      left = start.left + (start.boxW - scaleW * w0);
+    }
+    if (dir.includes("s")) scaleH = clampBarBoxScale((start.boxH + dy) / h0);
+    if (dir.includes("n")) {
+      scaleH = clampBarBoxScale((start.boxH - dy) / h0);
+      top = start.top + (start.boxH - scaleH * h0);
+    }
+    return { scaleW, scaleH, left, top };
+  }
+
   /**
    * Caption-box reference size from video rect (at userScale=1).
-   * CSS multiplies by --bar-user-scale so font slider + resize handle grow the box.
+   * CSS multiplies by --bar-user-scale-w/h so edge handles grow each axis alone.
    * Content length must not grow the box (overflow scrolls inside).
    */
-  function applyBarBoxSize(bar, rect, userScale) {
+  function applyBarBoxSize(bar, rect, scaleW, scaleH) {
     if (!bar) return;
-    const s = Number.isFinite(userScale) ? userScale : 1;
+    const sw = clampBarBoxScale(scaleW);
+    const sh = clampBarBoxScale(scaleH);
     let w0;
     let h0;
     if (!rect) {
@@ -1102,13 +1150,14 @@
       h0 = Math.max(96, Math.min(220, window.innerHeight * 0.16));
     } else {
       w0 = Math.min(rect.width * 0.68, 920);
-      // ~3 caption lines zone at scale 1; userScale grows it via CSS.
+      // ~3 caption lines zone at scale 1; user scales grow it via CSS.
       h0 = Math.max(88, Math.min(rect.height * 0.22, 240));
     }
     bar.style.setProperty("--bar-box-w0", `${Math.round(w0)}px`);
     bar.style.setProperty("--bar-box-h0", `${Math.round(h0)}px`);
-    bar.style.setProperty("--bar-user-scale", String(s));
-    // Drop legacy inline dims so CSS calc(var(--bar-box-*) * var(--bar-user-scale)) owns size.
+    bar.style.setProperty("--bar-user-scale-w", String(sw));
+    bar.style.setProperty("--bar-user-scale-h", String(sh));
+    // Drop legacy inline dims so CSS calc owns size.
     bar.style.width = "";
     bar.style.height = "";
     bar.style.maxWidth = "";
@@ -1123,6 +1172,8 @@
     const rect = getVideoRect();
     const pos = settings.barPos;
     const userScale = userBarScale();
+    const scaleW = userBarScaleW();
+    const scaleH = userBarScaleH();
 
     if (!rect) {
       // Fallback before player mounts — viewport lower-third.
@@ -1131,7 +1182,7 @@
       bar.style.bottom = "14vh";
       bar.style.transform = "translateX(-50%)";
       bar.style.setProperty("--bar-scale", String(userScale));
-      applyBarBoxSize(bar, null, userScale);
+      applyBarBoxSize(bar, null, scaleW, scaleH);
       applyBarStyle(bar);
       return;
     }
@@ -1139,7 +1190,7 @@
     const base = Math.max(0.55, Math.min(1.45, rect.height / 720));
     const scale = base * userScale;
     bar.style.setProperty("--bar-scale", String(scale));
-    applyBarBoxSize(bar, rect, userScale);
+    applyBarBoxSize(bar, rect, scaleW, scaleH);
     applyBarStyle(bar);
     bar.style.bottom = "auto";
 
@@ -1177,12 +1228,23 @@
     }
   }
 
+  const BAR_RESIZE_DIRS = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
+
   function ensureBarResizeHandle(bar) {
-    if (!bar || bar.querySelector(".bar-resize")) return;
-    const handle = document.createElement("div");
-    handle.className = "bar-resize";
-    handle.title = "Kéo để đổi kích thước";
-    bar.appendChild(handle);
+    if (!bar) return;
+    // Upgrade legacy single corner handle → 8 edge/corner handles.
+    if (!bar.querySelector(".bar-resize-se") || bar.querySelectorAll(".bar-resize").length < 8) {
+      bar.querySelectorAll(".bar-resize").forEach((el) => el.remove());
+    } else {
+      return;
+    }
+    for (const dir of BAR_RESIZE_DIRS) {
+      const handle = document.createElement("div");
+      handle.className = `bar-resize bar-resize-${dir}`;
+      handle.dataset.dir = dir;
+      handle.title = "Kéo cạnh để đổi kích thước";
+      bar.appendChild(handle);
+    }
   }
 
   function setupBarDrag() {
@@ -1192,17 +1254,33 @@
     ensureBarResizeHandle(bar);
     let dragging = false;
     let resizing = false;
+    let resizeDir = "";
     let ox = 0;
     let oy = 0;
-    let startScale = 1;
     let startX = 0;
     let startY = 0;
+    /** @type {{ scaleW: number, scaleH: number, left: number, top: number, boxW: number, boxH: number, w0: number, h0: number } | null} */
+    let resizeStart = null;
     bar.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       if (e.target.closest(".hardsub-dict")) return;
-      if (e.target.closest(".bar-resize")) {
+      const resizeEl = e.target.closest(".bar-resize");
+      if (resizeEl) {
         resizing = true;
-        startScale = userBarScale();
+        resizeDir = resizeEl.dataset.dir || "se";
+        const br = bar.getBoundingClientRect();
+        const w0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-w0")) || br.width;
+        const h0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-h0")) || br.height;
+        resizeStart = {
+          scaleW: userBarScaleW(),
+          scaleH: userBarScaleH(),
+          left: br.left,
+          top: br.top,
+          boxW: br.width,
+          boxH: br.height,
+          w0,
+          h0,
+        };
         startX = e.clientX;
         startY = e.clientY;
         bar.classList.add("resizing");
@@ -1222,10 +1300,37 @@
       e.preventDefault();
     });
     bar.addEventListener("pointermove", (e) => {
-      if (resizing) {
-        const delta = ((e.clientX - startX) + (e.clientY - startY)) / 180;
-        settings.barScale = Math.max(0.55, Math.min(2.4, startScale + delta));
-        applyBarPosition();
+      if (resizing && resizeStart) {
+        const next = computeBarEdgeResize(
+          resizeDir,
+          resizeStart,
+          e.clientX - startX,
+          e.clientY - startY
+        );
+        settings.barScaleW = next.scaleW;
+        settings.barScaleH = next.scaleH;
+        const vrect = getVideoRect();
+        let left = next.left;
+        let top = next.top;
+        const w = next.scaleW * resizeStart.w0;
+        const h = next.scaleH * resizeStart.h0;
+        if (vrect) {
+          left = Math.max(vrect.left + 4, Math.min(vrect.right - w - 4, left));
+          top = Math.max(vrect.top + 4, Math.min(vrect.bottom - h - 4, top));
+          settings.barPos = {
+            nx: (left - vrect.left) / Math.max(1, vrect.width),
+            ny: (top - vrect.top) / Math.max(1, vrect.height),
+          };
+        } else {
+          left = Math.max(8, Math.min(window.innerWidth - w - 8, left));
+          top = Math.max(8, Math.min(window.innerHeight - h - 8, top));
+          settings.barPos = { left, top };
+        }
+        bar.style.transform = "none";
+        bar.style.bottom = "auto";
+        bar.style.left = `${left}px`;
+        bar.style.top = `${top}px`;
+        applyBarBoxSize(bar, vrect, next.scaleW, next.scaleH);
         return;
       }
       if (!dragging) return;
@@ -1254,6 +1359,7 @@
     bar.addEventListener("pointerup", async () => {
       if (resizing) {
         resizing = false;
+        resizeStart = null;
         bar.classList.remove("resizing");
         await saveSettings();
         return;
@@ -1267,6 +1373,8 @@
       if (e.target.closest("ruby, .tok, .bar-resize")) return;
       settings.barPos = null;
       settings.barScale = 1;
+      settings.barScaleW = 1;
+      settings.barScaleH = 1;
       await saveSettings();
       applyBarPosition();
       toast("Overlay về kích thước & vị trí mặc định");
@@ -3169,6 +3277,12 @@
       if (settings.barShowVi == null) settings.barShowVi = true;
       if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
         settings.barScale = DEFAULTS.barScale;
+      }
+      if (settings.barScaleW == null || !Number.isFinite(Number(settings.barScaleW))) {
+        settings.barScaleW = Number(settings.barScale) || DEFAULTS.barScaleW;
+      }
+      if (settings.barScaleH == null || !Number.isFinite(Number(settings.barScaleH))) {
+        settings.barScaleH = Number(settings.barScale) || DEFAULTS.barScaleH;
       }
       applyDim();
       applyBarVisibility();
