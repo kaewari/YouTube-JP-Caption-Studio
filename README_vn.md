@@ -73,6 +73,15 @@ Dự án Next.js dùng để thiết kế giao diện Popup và mục Cài đặ
 
 ## Quickstart
 
+### 0. Clone (máy mới)
+
+```bash
+git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
+cd Translate-realtime-OCR-youtube-video
+```
+
+Từ điển lớn (`data/dict/dict.sqlite`, `jmdict_mini.json`, `JMdict_e.*`…) **không** nằm trong git — bootstrap tải/build local. Seed nhỏ (`en_vi.json`, `ja_vi.json`, `freq_ja.json`, `vnedict.txt`) đã có sẵn.
+
 ### 1. Bridge
 
 ```bash
@@ -87,14 +96,17 @@ cd local-bridge
 
 Skip UI: `SKIP_SAVED_ITEMS=1 ./start.sh`.
 
-Lần đầu: tạo venv + Sudachi; `POST /bootstrap` index JMdict EN (+ tải/index JMdict VI nếu thiếu).
+Lần đầu / máy mới — bootstrap từ điển (cần mạng, vài phút):
 
 ```bash
+curl -X POST http://127.0.0.1:8765/bootstrap
 curl -s http://127.0.0.1:8765/health
-# models_loaded.sudachi / dict / freq
+# models_loaded.sudachi / dict / freq → true khi xong
 ```
 
-Dict popup: EN từ JMdict, VI từ `jmdict_vi.json` (Yomitan dreamofi) + seed `ja_vi.json` — hiện song song, không MT.
+Tuỳ chọn: copy `data/dict/` từ máy cũ thay vì tải lại.
+
+Dict popup: EN từ JMdict, VI từ `jmdict_vi` (Yomitan dreamofi) + seed `ja_vi.json` — hiện song song, không MT.
 ### 2. Extension
 
 1. `chrome://extensions` → Developer mode
@@ -114,7 +126,7 @@ cd web/saved-items && npm run build:extension
 
 ```bash
 cd local-bridge && source .venv/bin/activate
-python test_tokenize_import_enrich.py   # bridge phải đang chạy
+python -m tests.test_tokenize_import_enrich   # bridge phải đang chạy
 ```
 
 ## Luồng caption
@@ -124,7 +136,7 @@ python test_tokenize_import_enrich.py   # bridge phải đang chạy
    - Service worker: `baseUrl` → scrape `ytInitialPlayerResponse` → ANDROID Innertube
    - Fetch URL **raw trước**, parse XML `<text>`/`<p>` hoặc json3
 2. **Normalize** (`normalize_cues.js`): strip SFX; **giữ** start/end YouTube
-3. **Merge** `chrome.storage.local` (`transcript:${videoId}`) + disk `scripts/{videoId}/`
+3. **Merge** `chrome.storage.local` (`transcript:${videoId}`) + disk `data/subtitles/{videoId}/`
 4. **Overlay** active cue theo `media_time` từ page script
 5. EN/VI chỉ từ **Import** hoặc **sửa tay** — không auto-MT
 
@@ -167,7 +179,7 @@ Chi tiết UI: [`web/saved-items/README.md`](web/saved-items/README.md).
 | `POST /tokenize` | `{ text }` → tokens (reading, freq_rank, pos, jlpt) |
 | `POST /tokenize_batch` | `{ cues: [{id, text}] }` |
 | `POST /dict` | `{ surface, lemma? }` — EN từ JMdict; VI từ `jmdict_vi.json` (+ seed `ja_vi.json`) |
-| `POST /scripts/save` | persist → `scripts/{videoId}/` |
+| `POST /scripts/save` | persist → `data/subtitles/{videoId}/` |
 | `GET/DELETE /scripts/{video_id}` | load / wipe |
 | `POST /ime/switch` | `{ to: "ja"\|"abc"\|"restore" }` (+ `/ime/ja`, `/ime/abc`, `/ime/status`) |
 | `GET/POST /extension_state` | mirror `userVocab` + `hardsubSettings` |
@@ -178,11 +190,12 @@ Chi tiết UI: [`web/saved-items/README.md`](web/saved-items/README.md).
 | Nơi | Nội dung |
 | --- | --- |
 | `chrome.storage.local` | `transcript:${id}`, `transcriptMeta:${id}`, settings, vocab |
-| `scripts/{videoId}/cues.json` | cue đầy đủ (JA/EN/VI/tokens/locks) |
-| `scripts/{videoId}/script.txt` | export đọc được |
-| `scripts/{videoId}/meta.json` | counts + title/url |
-| `local-bridge/data/extension_state.json` | mirror settings cho localhost |
-| `local-bridge/data/dict/jmdict_vi.json` | index JA→VI (Yomitan dreamofi; bootstrap tải zip) |
+| `data/subtitles/{videoId}/cues.json` | cue đầy đủ (JA/EN/VI/tokens/locks) |
+| `data/subtitles/{videoId}/script.txt` | export đọc được |
+| `data/subtitles/{videoId}/meta.json` | counts + title/url |
+| `data/config/extension_state.json` | mirror settings cho localhost |
+| `data/dict/dict.sqlite` | từ điển runtime (bootstrap build; không commit) |
+| `data/dict/jmdict_vi.json` | index JA→VI (bootstrap tải zip; không commit) |
 
 Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 
@@ -194,10 +207,12 @@ Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 | `extension/sidepanel/` | UI cue list |
 | `extension/background/service_worker.js` | Captions fetch, bridge proxy, IME |
 | `extension/shared/vocab_style.js` | JLPT / vocab CSS classes |
-| `local-bridge/main.py` | FastAPI routes |
-| `local-bridge/tokenize_ja.py` | Sudachi |
-| `local-bridge/dictionary.py` | JMdict |
-| `local-bridge/script_store.py` | Disk scripts |
+| `local-bridge/app/main.py` | FastAPI routes |
+| `local-bridge/app/services/tokenize_ja.py` | Sudachi |
+| `local-bridge/app/services/dictionary.py` | JMdict (SQLite) |
+| `local-bridge/app/services/script_store.py` | Disk scripts → `data/subtitles/` |
+| `local-bridge/app/scripts/bootstrap.py` | Tải/index dict + build sqlite |
+| `tools/ime-switch/` | Swift IME helper (macOS) |
 | `.cursor/skills/youtube-hardsub-ocr` | Architecture skill |
 | `.cursor/skills/local-bridge-dev` | Bridge start/debug |
 | `.cursor/skills/hardsub-ocr-regression` | Tokenize/import regression |
@@ -213,4 +228,4 @@ Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 ## macOS IME
 
 Bridge chạy → side panel đổi Input Source qua `POST /ime/switch`.
-`start.sh` build `scripts/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select`.
+`start.sh` build `tools/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select`.

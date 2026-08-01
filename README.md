@@ -28,28 +28,45 @@
 
 ## 🚀 Hướng dẫn cài đặt & Sử dụng
 
-### Bước 1: Khởi động máy chủ cục bộ (Local Bridge)
-*(Yêu cầu máy tính đã cài đặt Python)*
+### Bước 0: Clone repo (máy mới)
 
-Mở Terminal (hoặc Command Prompt) và chạy lệnh sau:
+```bash
+git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
+cd Translate-realtime-OCR-youtube-video
+```
+
+Repo **không** chứa từ điển lớn (`dict.sqlite`, `jmdict_mini.json`, JMdict XML…). Chúng được tải/build local qua bootstrap (GitHub giới hạn file >100MB). Seed nhỏ (`en_vi.json`, `ja_vi.json`, `freq_ja.json`, `vnedict.txt`) đã có trong git dưới `data/dict/`.
+
+### Bước 1: Khởi động Local Bridge
+*(Cần Python 3.10+)*
+
 ```bash
 cd local-bridge
 ./start.sh
 ```
-- Máy chủ sẽ khởi chạy tại địa chỉ `http://127.0.0.1:8765`.
-- **Lưu ý:** Lần đầu tiên chạy, hệ thống sẽ mất một chút thời gian để tự động tải về bộ từ điển và các công cụ phân tích ngôn ngữ.
 
-### Bước 2: Cài đặt Chrome Extension
-1. Mở trình duyệt Chrome, truy cập vào trang quản lý tiện ích: `chrome://extensions/`
-2. Bật **Chế độ dành cho nhà phát triển** (Developer mode) ở góc phải màn hình.
-3. Bấm vào nút **Tải tiện ích đã giải nén** (Load unpacked).
-4. Chọn thư mục `extension/` nằm bên trong dự án này.
+Bridge: `http://127.0.0.1:8765`. Lần đầu tạo venv + Sudachi.
 
-### Bước 3: Trải nghiệm trên YouTube
-1. Mở một video YouTube bất kỳ có phụ đề tiếng Nhật.
-2. Extension sẽ tự động bắt phụ đề và hiển thị.
-3. Bạn có thể mở thanh Side Panel của Chrome (bảng điều khiển bên phải trình duyệt) để xem danh sách toàn bộ các câu thoại.
-4. Bấm vào biểu tượng của Extension trên thanh công cụ của trình duyệt để mở cửa sổ "Saved Items" (quản lý từ vựng đã lưu và các thiết lập hiển thị).
+### Bước 2: Bootstrap từ điển (lần đầu / máy mới)
+
+```bash
+curl -X POST http://127.0.0.1:8765/bootstrap
+curl -s http://127.0.0.1:8765/health   # theo dõi models_loaded.dict / sudachi / freq
+```
+
+Bootstrap tải JMdict (+ VI nếu thiếu), index, rồi build `data/dict/dict.sqlite`. Cần mạng; mất vài phút.
+
+Tuỳ chọn: copy cả thư mục `data/dict/` từ máy cũ sang để khỏi tải lại.
+
+### Bước 3: Cài đặt Chrome Extension
+1. Chrome → `chrome://extensions/`
+2. Bật **Developer mode**
+3. **Load unpacked** → chọn thư mục `extension/`
+
+### Bước 4: Dùng trên YouTube
+1. Mở video YouTube có phụ đề tiếng Nhật.
+2. Extension bắt phụ đề và hiển thị overlay / side panel.
+3. Icon toolbar → Saved Items (từ vựng + cài đặt).
 
 ---
 

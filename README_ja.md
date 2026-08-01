@@ -71,6 +71,15 @@ web/saved-items/                (ポップアップ UI: vocab + settings)
 
 ## クイックスタート
 
+### 0. クローン (新しいマシン)
+
+```bash
+git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
+cd Translate-realtime-OCR-youtube-video
+```
+
+大きな辞書 (`data/dict/dict.sqlite`、`jmdict_mini.json`、`JMdict_e.*` など) は git に**含まれません**。bootstrap がローカルでダウンロード/ビルドします。小さなシード (`en_vi.json`、`ja_vi.json`、`freq_ja.json`、`vnedict.txt`) はコミット済みです。
+
 ### 1. Bridge
 
 ```bash
@@ -85,14 +94,17 @@ cd local-bridge
 
 UIをスキップ: `SKIP_SAVED_ITEMS=1 ./start.sh`.
 
-初回時: venv + Sudachiを作成します。`POST /bootstrap` が JMdict EN をインデックス化します (不足している場合はJMdict VIもダウンロード/インデックス化します)。
+初回 / 新しいマシン — 辞書の bootstrap（ネットワーク必須、数分）:
 
 ```bash
+curl -X POST http://127.0.0.1:8765/bootstrap
 curl -s http://127.0.0.1:8765/health
-# models_loaded.sudachi / dict / freq
+# models_loaded.sudachi / dict / freq → 完了時 true
 ```
 
-辞書ポップアップ: JMdictからEN、`jmdict_vi.json` (Yomitan dreamofi) + シード `ja_vi.json` からVIを取得し、機械翻訳なしで並べて表示します。
+任意: 再ダウンロードの代わりに別マシンから `data/dict/` をコピー。
+
+辞書ポップアップ: JMdictからEN、`jmdict_vi` (Yomitan dreamofi) + シード `ja_vi.json` からVI — 機械翻訳なしで並べて表示。
 
 ### 2. 拡張機能
 
@@ -113,7 +125,7 @@ cd web/saved-items && npm run build:extension
 
 ```bash
 cd local-bridge && source .venv/bin/activate
-python test_tokenize_import_enrich.py   # Bridgeが実行中である必要があります
+python -m tests.test_tokenize_import_enrich   # Bridgeが実行中である必要があります
 ```
 
 ## 字幕フロー
@@ -123,7 +135,7 @@ python test_tokenize_import_enrich.py   # Bridgeが実行中である必要が�
    - Service worker: `baseUrl` → `ytInitialPlayerResponse`をスクレイピング → ANDROID Innertube
    - **まず生**のURLをフェッチし、XML `<text>`/`<p>` または json3 をパース
 2. **正規化** (`normalize_cues.js`): SFXを除去。YouTubeの開始/終了時間は**保持**
-3. **マージ** `chrome.storage.local` (`transcript:${videoId}`) + ディスク `scripts/{videoId}/`
+3. **マージ** `chrome.storage.local` (`transcript:${videoId}`) + ディスク `data/subtitles/{videoId}/`
 4. **オーバーレイ** ページスクリプトからの `media_time` に基づいてアクティブな字幕をオーバーレイ
 5. 英語/ベトナム語は**インポート**または**手動編集**のみ — 自動機械翻訳は行いません
 
@@ -164,7 +176,7 @@ UIの詳細: [`web/saved-items/README.md`](web/saved-items/README.md).
 | `POST /tokenize` | `{ text }` → トークン (reading, freq_rank, pos, jlpt) |
 | `POST /tokenize_batch` | `{ cues: [{id, text}] }` |
 | `POST /dict` | `{ surface, lemma? }` — JMdictからのEN; `jmdict_vi.json` (+ シード `ja_vi.json`) からのVI |
-| `POST /scripts/save` | 永続化 → `scripts/{videoId}/` |
+| `POST /scripts/save` | 永続化 → `data/subtitles/{videoId}/` |
 | `GET/DELETE /scripts/{video_id}` | 読み込み / 消去 |
 | `POST /ime/switch` | `{ to: "ja"\|"abc"\|"restore" }` (+ `/ime/ja`, `/ime/abc`, `/ime/status`) |
 | `GET/POST /extension_state` | `userVocab` + `hardsubSettings` をミラーリング |
@@ -175,11 +187,12 @@ UIの詳細: [`web/saved-items/README.md`](web/saved-items/README.md).
 | 場所 | コンテンツ |
 | --- | --- |
 | `chrome.storage.local` | `transcript:${id}`, `transcriptMeta:${id}`, settings, vocab |
-| `scripts/{videoId}/cues.json` | 全ての字幕 (JA/EN/VI/tokens/locks) |
-| `scripts/{videoId}/script.txt` | 読みやすい形式のエクスポート |
-| `scripts/{videoId}/meta.json` | カウント + タイトル/URL |
-| `local-bridge/data/extension_state.json` | localhost用の設定ミラー |
-| `local-bridge/data/dict/jmdict_vi.json` | JA→VIインデックス (Yomitan dreamofi; bootstrapでzipをダウンロード) |
+| `data/subtitles/{videoId}/cues.json` | 全ての字幕 (JA/EN/VI/tokens/locks) |
+| `data/subtitles/{videoId}/script.txt` | 読みやすい形式のエクスポート |
+| `data/subtitles/{videoId}/meta.json` | カウント + タイトル/URL |
+| `data/config/extension_state.json` | localhost用の設定ミラー |
+| `data/dict/dict.sqlite` | ランタイム辞書 (bootstrap がビルド; コミットしない) |
+| `data/dict/jmdict_vi.json` | JA→VIインデックス (bootstrap が zip をダウンロード; コミットしない) |
 
 キャッシュマッチ: `start_media_time` ±0.35秒 + source。保存のデバウンスは約400ミリ秒。
 
@@ -191,10 +204,12 @@ UIの詳細: [`web/saved-items/README.md`](web/saved-items/README.md).
 | `extension/sidepanel/` | UI字幕リスト |
 | `extension/background/service_worker.js` | 字幕フェッチ、ブリッジプロキシ、IME |
 | `extension/shared/vocab_style.js` | JLPT / 語彙CSSクラス |
-| `local-bridge/main.py` | FastAPIルート |
-| `local-bridge/tokenize_ja.py` | Sudachi |
-| `local-bridge/dictionary.py` | JMdict |
-| `local-bridge/script_store.py` | ディスク上のスクリプト |
+| `local-bridge/app/main.py` | FastAPIルート |
+| `local-bridge/app/services/tokenize_ja.py` | Sudachi |
+| `local-bridge/app/services/dictionary.py` | JMdict (SQLite) |
+| `local-bridge/app/services/script_store.py` | ディスク上のスクリプト → `data/subtitles/` |
+| `local-bridge/app/scripts/bootstrap.py` | 辞書のダウンロード/インデックス + sqlite ビルド |
+| `tools/ime-switch/` | Swift IME ヘルパー (macOS) |
 | `.cursor/skills/youtube-hardsub-ocr` | アーキテクチャスキル |
 | `.cursor/skills/local-bridge-dev` | Bridgeの開始/デバッグ |
 | `.cursor/skills/hardsub-ocr-regression` | トークン化/インポートのリグレッション |
@@ -209,4 +224,4 @@ UIの詳細: [`web/saved-items/README.md`](web/saved-items/README.md).
 ## macOS IME
 
 Bridge実行中 → サイドパネルは `POST /ime/switch` を介して入力ソースを切り替えます。
-`start.sh` は `scripts/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select` をビルドします。
+`start.sh` は `tools/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select` をビルドします。

@@ -71,6 +71,15 @@ Next.js project used to design the Popup UI and Settings for the Extension.
 
 ## Quickstart
 
+### 0. Clone (new machine)
+
+```bash
+git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
+cd Translate-realtime-OCR-youtube-video
+```
+
+Large dictionaries (`data/dict/dict.sqlite`, `jmdict_mini.json`, `JMdict_e.*`, …) are **not** in git — bootstrap downloads/builds them locally. Small seeds (`en_vi.json`, `ja_vi.json`, `freq_ja.json`, `vnedict.txt`) are committed.
+
 ### 1. Bridge
 
 ```bash
@@ -85,14 +94,17 @@ cd local-bridge
 
 Skip UI: `SKIP_SAVED_ITEMS=1 ./start.sh`.
 
-First time: creates venv + Sudachi; `POST /bootstrap` indexes JMdict EN (+ downloads/indexes JMdict VI if missing).
+First run / new machine — bootstrap dictionaries (needs network, a few minutes):
 
 ```bash
+curl -X POST http://127.0.0.1:8765/bootstrap
 curl -s http://127.0.0.1:8765/health
-# models_loaded.sudachi / dict / freq
+# models_loaded.sudachi / dict / freq → true when ready
 ```
 
-Dict popup: EN from JMdict, VI from `jmdict_vi.json` (Yomitan dreamofi) + seed `ja_vi.json` — displayed side-by-side, no MT.
+Optional: copy `data/dict/` from another machine instead of re-downloading.
+
+Dict popup: EN from JMdict, VI from `jmdict_vi` (Yomitan dreamofi) + seed `ja_vi.json` — side-by-side, no MT.
 
 ### 2. Extension
 
@@ -113,7 +125,7 @@ cd web/saved-items && npm run build:extension
 
 ```bash
 cd local-bridge && source .venv/bin/activate
-python test_tokenize_import_enrich.py   # bridge must be running
+python -m tests.test_tokenize_import_enrich   # bridge must be running
 ```
 
 ## Caption Flow
@@ -123,7 +135,7 @@ python test_tokenize_import_enrich.py   # bridge must be running
    - Service worker: `baseUrl` → scrape `ytInitialPlayerResponse` → ANDROID Innertube
    - Fetch URL **raw first**, parse XML `<text>`/`<p>` or json3
 2. **Normalize** (`normalize_cues.js`): strip SFX; **keep** YouTube start/end
-3. **Merge** `chrome.storage.local` (`transcript:${videoId}`) + disk `scripts/{videoId}/`
+3. **Merge** `chrome.storage.local` (`transcript:${videoId}`) + disk `data/subtitles/{videoId}/`
 4. **Overlay** active cue based on `media_time` from page script
 5. EN/VI strictly from **Import** or **manual edit** — no auto-MT
 
@@ -164,7 +176,7 @@ UI details: [`web/saved-items/README.md`](web/saved-items/README.md).
 | `POST /tokenize` | `{ text }` → tokens (reading, freq_rank, pos, jlpt) |
 | `POST /tokenize_batch` | `{ cues: [{id, text}] }` |
 | `POST /dict` | `{ surface, lemma? }` — EN from JMdict; VI from `jmdict_vi.json` (+ seed `ja_vi.json`) |
-| `POST /scripts/save` | persist → `scripts/{videoId}/` |
+| `POST /scripts/save` | persist → `data/subtitles/{videoId}/` |
 | `GET/DELETE /scripts/{video_id}` | load / wipe |
 | `POST /ime/switch` | `{ to: "ja"\|"abc"\|"restore" }` (+ `/ime/ja`, `/ime/abc`, `/ime/status`) |
 | `GET/POST /extension_state` | mirrors `userVocab` + `hardsubSettings` |
@@ -175,11 +187,12 @@ UI details: [`web/saved-items/README.md`](web/saved-items/README.md).
 | Location | Content |
 | --- | --- |
 | `chrome.storage.local` | `transcript:${id}`, `transcriptMeta:${id}`, settings, vocab |
-| `scripts/{videoId}/cues.json` | full cues (JA/EN/VI/tokens/locks) |
-| `scripts/{videoId}/script.txt` | readable export |
-| `scripts/{videoId}/meta.json` | counts + title/url |
-| `local-bridge/data/extension_state.json` | mirror settings for localhost |
-| `local-bridge/data/dict/jmdict_vi.json` | JA→VI index (Yomitan dreamofi; bootstrap downloads zip) |
+| `data/subtitles/{videoId}/cues.json` | full cues (JA/EN/VI/tokens/locks) |
+| `data/subtitles/{videoId}/script.txt` | readable export |
+| `data/subtitles/{videoId}/meta.json` | counts + title/url |
+| `data/config/extension_state.json` | mirror settings for localhost |
+| `data/dict/dict.sqlite` | runtime dictionary (bootstrap build; not committed) |
+| `data/dict/jmdict_vi.json` | JA→VI index (bootstrap downloads zip; not committed) |
 
 Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 
@@ -191,10 +204,12 @@ Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 | `extension/sidepanel/` | UI cue list |
 | `extension/background/service_worker.js` | Captions fetch, bridge proxy, IME |
 | `extension/shared/vocab_style.js` | JLPT / vocab CSS classes |
-| `local-bridge/main.py` | FastAPI routes |
-| `local-bridge/tokenize_ja.py` | Sudachi |
-| `local-bridge/dictionary.py` | JMdict |
-| `local-bridge/script_store.py` | Disk scripts |
+| `local-bridge/app/main.py` | FastAPI routes |
+| `local-bridge/app/services/tokenize_ja.py` | Sudachi |
+| `local-bridge/app/services/dictionary.py` | JMdict (SQLite) |
+| `local-bridge/app/services/script_store.py` | Disk scripts → `data/subtitles/` |
+| `local-bridge/app/scripts/bootstrap.py` | Download/index dict + build sqlite |
+| `tools/ime-switch/` | Swift IME helper (macOS) |
 | `.cursor/skills/youtube-hardsub-ocr` | Architecture skill |
 | `.cursor/skills/local-bridge-dev` | Bridge start/debug |
 | `.cursor/skills/hardsub-ocr-regression` | Tokenize/import regression |
@@ -209,4 +224,4 @@ Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
 ## macOS IME
 
 Bridge running → side panel switches Input Source via `POST /ime/switch`.
-`start.sh` builds `scripts/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select`.
+`start.sh` builds `tools/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select`.
