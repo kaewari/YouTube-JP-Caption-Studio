@@ -1,0 +1,83 @@
+{
+  "userVocab": {},
+  "hardsubSettings": {
+    "autoOpen": true,
+    "autoTranslate": false,
+    "barBgOpacity": 0.86,
+    "barPos": {
+      "nx": 0.2065419493736952,
+      "ny": 0.7616317833951762
+    },
+    "barScale": 1.145486111111111,
+    "barScaleH": 1.042312237394958,
+    "barScaleW": 0.8319652457757296,
+    "barShowEn": true,
+    "barShowJa": true,
+    "barShowVi": true,
+    "barTextOpacity": 1,
+    "copyFormat": "full",
+    "dictShowSentence": true,
+    "dimHardsub": false,
+    "enabled": true,
+    "exportFormat": "ja_en_vi",
+    "hideRareWords": false,
+    "levelColors": {
+      "n1": {
+        "color": "#e74c5c",
+        "on": true
+      },
+      "n2": {
+        "color": "#e08a4a",
+        "on": true
+      },
+      "n3": {
+        "color": "#f5d76e",
+        "on": true
+      },
+      "n4": {
+        "color": "#8fd3ff",
+        "on": true
+      },
+      "n5": {
+        "color": "#7fd6a8",
+        "on": true
+      },
+      "unknown": {
+        "color": "#a664e8",
+        "on": true
+      }
+    },
+    "levelHighlightEnabled": true,
+    "maxSentences": 2000,
+    "panelWidth": 480,
+    "roi": {
+      "height": 0.2,
+      "left": 0.05,
+      "top": 0.75,
+      "width": 0.9
+    },
+    "showFurigana": true,
+    "showKnownGreen": true,
+    "showOnVideo": true,
+    "sourceLang": "ja",
+    "vocabCats": {
+      "ignored": true,
+      "known": true,
+      "learning": true,
+      "learningBorder": true,
+      "special": true,
+      "suggested": true
+    },
+    "vocabColors": {
+      "ignored": "#b8a0d8",
+      "known": "#7fd6a8",
+      "learning": "#e08a4a",
+      "special": "#e74c5c",
+      "suggested": "#d4a574"
+    },
+    "vocabHighlight": true,
+    "vocabLevel": 5000
+  },
+  "updatedAt": 1785599576.061557,
+  "source": "extension"
+}

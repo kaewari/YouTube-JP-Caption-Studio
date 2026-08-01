@@ -1,0 +1,37 @@
+name: YouTubeJPCaptionStudio
+options:
+  bundleIdPrefix: com.example
+  developmentLanguage: en
+targets:
+  YouTubeJPCaptionStudio:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App.swift
+      - path: Views
+      - path: Models
+      - path: Services
+      - path: Scripts
+        buildPhase: resources
+      - path: Resources/dict.sqlite
+        type: file
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true

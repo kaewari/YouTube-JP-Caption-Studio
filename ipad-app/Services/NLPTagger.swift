@@ -42,7 +42,7 @@ class NLPTagger {
     
     /// Hàm hỗ trợ lấy cách đọc (Katakana/Hiragana) của một từ Hán Tự bằng CFStringTokenizer
     private static func getReading(for text: String) -> String {
-        let locale = CFLocaleCreate(kCFAllocatorDefault, "ja_JP" as CFString)
+        let locale = Locale(identifier: "ja_JP") as CFLocale
         let tokenizer = CFStringTokenizerCreate(kCFAllocatorDefault, text as CFString, CFRangeMake(0, text.utf16.count), kCFStringTokenizerUnitWord, locale)
         
         CFStringTokenizerAdvanceToNextToken(tokenizer)

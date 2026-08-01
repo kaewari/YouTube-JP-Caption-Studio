@@ -1,0 +1,216 @@
+import SwiftUI
+
+/// Hardsub caption bar: tracks YouTube video rect, drag + corner resize (desktop parity).
+struct HardsubOverlayView: View {
+    let cues: [ScriptCue]
+    let currentTimeMs: Double
+    /// Video bounds in the player pane (points), from WKWebView VIDEO_RECT.
+    var videoFrame: CGRect?
+    var showJA: Bool = true
+    var showEN: Bool = false
+    var showVI: Bool = false
+
+    /// Normalized top-left inside video; -1 = default (center × 70%).
+    @AppStorage("hardsubBarNx") private var barNx = -1.0
+    @AppStorage("hardsubBarNy") private var barNy = -1.0
+    @AppStorage("hardsubBarScaleW") private var scaleW = 1.0
+    @AppStorage("hardsubBarScaleH") private var scaleH = 1.0
+    /// User multiplier on overlay caption font (desktop `barScale`).
+    @AppStorage("hardsubBarScale") private var barScale = 1.0
+
+    @State private var dragOrigin: CGPoint?
+    @State private var resizeStart: (scaleW: Double, scaleH: Double, origin: CGPoint, box: CGSize)?
+
+    private var activeCues: [ScriptCue] {
+        if let c = ScriptCue.active(in: cues, atMs: currentTimeMs) { return [c] }
+        return []
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let vr = resolvedVideo(in: geo.size)
+            let box = boxSize(for: vr)
+            let origin = barOrigin(video: vr, box: box)
+            let fontScale = max(0.55, min(1.45, vr.height / 720)) * max(0.55, min(2.4, barScale))
+
+            ZStack(alignment: .topLeading) {
+                Color.clear.allowsHitTesting(false)
+
+                if !activeCues.isEmpty {
+                    captionBar(fontScale: fontScale)
+                        .frame(width: box.width, height: box.height)
+                        .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 14 * fontScale, style: .continuous))
+                        .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
+                        .overlay { cornerHandles(video: vr, box: box, origin: origin) }
+                        .contentShape(Rectangle())
+                        .position(x: origin.x + box.width / 2, y: origin.y + box.height / 2)
+                        .gesture(moveGesture(video: vr, box: box))
+                        .onTapGesture(count: 2) { resetBar() }
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    private func resolvedVideo(in size: CGSize) -> CGRect {
+        guard let f = videoFrame, f.width >= 80, f.height >= 60 else {
+            return CGRect(origin: .zero, size: size)
+        }
+        return CGRect(
+            x: max(0, min(f.minX, size.width - 40)),
+            y: max(0, min(f.minY, size.height - 40)),
+            width: min(f.width, size.width),
+            height: min(f.height, size.height)
+        )
+    }
+
+    private func boxSize(for vr: CGRect) -> CGSize {
+        let w0 = min(vr.width * 0.68, 920)
+        let h0 = max(88, min(vr.height * 0.22, 240))
+        return CGSize(
+            width: w0 * min(2.5, max(0.45, scaleW)),
+            height: h0 * min(2.5, max(0.45, scaleH))
+        )
+    }
+
+    private func barOrigin(video vr: CGRect, box: CGSize) -> CGPoint {
+        let left: CGFloat
+        let top: CGFloat
+        if barNx < 0 || barNy < 0 {
+            left = vr.minX + (vr.width - box.width) / 2
+            top = vr.minY + vr.height * 0.70 - box.height / 2
+        } else {
+            left = vr.minX + CGFloat(barNx) * vr.width
+            top = vr.minY + CGFloat(barNy) * vr.height
+        }
+        return clampOrigin(CGPoint(x: left, y: top), video: vr, box: box)
+    }
+
+    private func clampOrigin(_ p: CGPoint, video vr: CGRect, box: CGSize) -> CGPoint {
+        CGPoint(
+            x: min(max(p.x, vr.minX + 4), max(vr.minX + 4, vr.maxX - box.width - 4)),
+            y: min(max(p.y, vr.minY + 4), max(vr.minY + 4, vr.maxY - box.height - 4))
+        )
+    }
+
+    private func storePos(_ origin: CGPoint, video vr: CGRect) {
+        barNx = Double((origin.x - vr.minX) / max(1, vr.width))
+        barNy = Double((origin.y - vr.minY) / max(1, vr.height))
+    }
+
+    private func resetBar() {
+        barNx = -1
+        barNy = -1
+        scaleW = 1
+        scaleH = 1
+    }
+
+    private func clampScale(_ v: Double) -> Double { min(2.5, max(0.45, v)) }
+
+    private func moveGesture(video vr: CGRect, box: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if dragOrigin == nil { dragOrigin = barOrigin(video: vr, box: box) }
+                guard let start = dragOrigin else { return }
+                storePos(
+                    clampOrigin(
+                        CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height),
+                        video: vr,
+                        box: box
+                    ),
+                    video: vr
+                )
+            }
+            .onEnded { _ in dragOrigin = nil }
+    }
+
+    private enum Corner { case topLeading, topTrailing, bottomLeading, bottomTrailing }
+
+    private func cornerHandles(video vr: CGRect, box: CGSize, origin: CGPoint) -> some View {
+        let g: CGFloat = 20
+        return ZStack {
+            handle(.topLeading, video: vr, box: box, origin: origin).position(x: 6, y: 6)
+            handle(.topTrailing, video: vr, box: box, origin: origin).position(x: box.width - 6, y: 6)
+            handle(.bottomLeading, video: vr, box: box, origin: origin).position(x: 6, y: box.height - 6)
+            handle(.bottomTrailing, video: vr, box: box, origin: origin).position(x: box.width - 6, y: box.height - 6)
+        }
+        .frame(width: box.width, height: box.height)
+    }
+
+    private func handle(_ corner: Corner, video vr: CGRect, box: CGSize, origin: CGPoint) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.9))
+            .frame(width: 14, height: 14)
+            .shadow(radius: 1)
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if resizeStart == nil {
+                            resizeStart = (scaleW, scaleH, origin, box)
+                        }
+                        guard let start = resizeStart else { return }
+                        let w0 = start.box.width / max(0.45, start.scaleW)
+                        let h0 = start.box.height / max(0.45, start.scaleH)
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        var nextW = start.scaleW
+                        var nextH = start.scaleH
+                        var left = start.origin.x
+                        var top = start.origin.y
+
+                        switch corner {
+                        case .bottomTrailing:
+                            nextW = clampScale((start.box.width + dx) / w0)
+                            nextH = clampScale((start.box.height + dy) / h0)
+                        case .bottomLeading:
+                            nextW = clampScale((start.box.width - dx) / w0)
+                            nextH = clampScale((start.box.height + dy) / h0)
+                            left = start.origin.x + (start.box.width - nextW * w0)
+                        case .topTrailing:
+                            nextW = clampScale((start.box.width + dx) / w0)
+                            nextH = clampScale((start.box.height - dy) / h0)
+                            top = start.origin.y + (start.box.height - nextH * h0)
+                        case .topLeading:
+                            nextW = clampScale((start.box.width - dx) / w0)
+                            nextH = clampScale((start.box.height - dy) / h0)
+                            left = start.origin.x + (start.box.width - nextW * w0)
+                            top = start.origin.y + (start.box.height - nextH * h0)
+                        }
+                        scaleW = nextW
+                        scaleH = nextH
+                        let newBox = CGSize(width: w0 * nextW, height: h0 * nextH)
+                        storePos(clampOrigin(CGPoint(x: left, y: top), video: vr, box: newBox), video: vr)
+                    }
+                    .onEnded { _ in resizeStart = nil }
+            )
+    }
+
+    @ViewBuilder
+    private func captionBar(fontScale: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: 4 * fontScale) {
+                ForEach(activeCues, id: \.id) { cue in
+                    VStack(spacing: 2 * fontScale) {
+                        if showJA, !cue.textJA.isEmpty {
+                            Text(cue.textJA)
+                                .font(.system(size: 22 * fontScale, weight: .bold))
+                        }
+                        if showEN, let en = cue.textEN, !en.isEmpty {
+                            Text(en)
+                                .font(.system(size: 17 * fontScale, weight: .medium))
+                        }
+                        if showVI, let vi = cue.textVI, !vi.isEmpty {
+                            Text(vi)
+                                .font(.system(size: 17 * fontScale, weight: .medium))
+                        }
+                    }
+                }
+            }
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14 * fontScale)
+            .padding(.vertical, 10 * fontScale)
+        }
+    }
+}
