@@ -1,0 +1,527 @@
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+import {
+  fetchBridgeHealth,
+  loadSettingsAsync,
+  persistSettingsAsync,
+  postBootstrap,
+  resetOverlaySettings,
+  subscribeSettings,
+} from "@/lib/settings-store";
+import {
+  DEFAULT_HARDSUB_SETTINGS,
+  type HardsubSettings,
+  type SettingsPersistSource,
+} from "@/types/settings";
+
+function ToggleRow({
+  checked,
+  onChange,
+  label,
+  id,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex cursor-pointer items-center gap-3 rounded-md px-1 py-1.5 text-[14px] text-white/90 hover:bg-white/[0.04]"
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-4 accent-[#9c40bf]"
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function Fieldset({
+  legend,
+  children,
+}: {
+  legend: string;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset className="rounded-lg border border-white/12 bg-white/[0.03] px-4 pt-2 pb-4">
+      <legend className="px-1.5 text-[13px] font-medium text-white/70">
+        {legend}
+      </legend>
+      <div className="mt-1 flex flex-col gap-3">{children}</div>
+    </fieldset>
+  );
+}
+
+function RangeField({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label htmlFor={id} className="block text-[13px] text-white/75">
+      {label}
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-2 h-7 w-full accent-[#9c40bf]"
+      />
+      <span className="mt-0.5 block text-[12px] text-white/40 tabular-nums">
+        {value}
+      </span>
+    </label>
+  );
+}
+
+function SelectField({
+  id,
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label htmlFor={id} className="block text-[13px] text-white/75">
+      {label}
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1.5 h-9 w-full rounded-md border border-white/15 bg-[#1c1e22] px-2.5 text-[14px] text-white outline-none focus:border-[#9c40bf]/70"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function NumberField({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label htmlFor={id} className="block text-[13px] text-white/75">
+      {label}
+      <input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1.5 h-9 w-full rounded-md border border-white/15 bg-[#1c1e22] px-2.5 text-[14px] text-white outline-none focus:border-[#9c40bf]/70"
+      />
+    </label>
+  );
+}
+
+export function SettingsPanel() {
+  const [settings, setSettings] = useState<HardsubSettings>(() =>
+    normalizeClientDefaults(),
+  );
+  const [source, setSource] = useState<SettingsPersistSource>("defaults");
+  const [note, setNote] = useState("");
+  const [healthLine, setHealthLine] = useState("Checking bridge…");
+  const [healthOk, setHealthOk] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await loadSettingsAsync();
+      if (cancelled) return;
+      setSettings(result.settings);
+      setSource(result.source);
+      setNote(result.note);
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return subscribeSettings((next, src) => {
+      setSettings(next);
+      setSource(src);
+      setNote(
+        src === "chrome.storage"
+          ? "Live · chrome.storage hardsubSettings"
+          : src === "bridge"
+            ? "Live · bridge /extension_state"
+            : "Đã cập nhật",
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function tick() {
+      const h = await fetchBridgeHealth();
+      if (cancelled) return;
+      setHealthOk(h.ok);
+      setHealthLine(h.line);
+    }
+    void tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  function patch(partial: Partial<HardsubSettings>) {
+    setSettings((prev) => ({ ...prev, ...partial }));
+  }
+
+  function patchOverlay(partial: Partial<HardsubSettings>) {
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      void persistSettingsAsync(next).then((src) => {
+        setSource(src);
+        setNote(
+          src === "chrome.storage"
+            ? "Overlay live → chrome.storage"
+            : "Overlay live → localStorage + bridge",
+        );
+      });
+      return next;
+    });
+  }
+
+  function handleSave() {
+    const next = { ...settings, enabled: true };
+    setSettings(next);
+    void persistSettingsAsync(next).then((src) => {
+      setSource(src);
+      setNote(
+        src === "chrome.storage"
+          ? "Đã lưu chrome.storage · hardsubSettings"
+          : "Đã lưu localStorage + bridge",
+      );
+    });
+    setMsg("Đã lưu");
+    window.setTimeout(() => setMsg(""), 2000);
+  }
+
+  function handleResetOverlay() {
+    setSettings((prev) => {
+      const next = resetOverlaySettings(prev);
+      void persistSettingsAsync(next).then((src) => {
+        setSource(src);
+        setNote(
+          src === "chrome.storage"
+            ? "Đã đặt lại overlay · chrome.storage"
+            : "Đã đặt lại overlay · localStorage",
+        );
+      });
+      return next;
+    });
+    setMsg("Đã đặt lại overlay");
+    window.setTimeout(() => setMsg(""), 2000);
+  }
+
+  async function handleBootstrap() {
+    const ok = await postBootstrap();
+    setMsg(ok ? "Bootstrap started" : "Bootstrap thất bại — bridge offline?");
+    window.setTimeout(() => void fetchBridgeHealth().then((h) => {
+      setHealthOk(h.ok);
+      setHealthLine(h.line);
+    }), 1500);
+  }
+
+  return (
+    <div className="w-full px-1 pb-24">
+      <header className="mb-5">
+        <h1 className="font-[family-name:var(--font-brand)] text-[22px] font-normal tracking-wide text-white">
+          YT Caption
+        </h1>
+        <p
+          className={cn(
+            "mt-1.5 text-[12px] leading-relaxed",
+            healthOk ? "text-white/45" : "text-[#e08a4a]/90",
+          )}
+        >
+          {healthLine}
+        </p>
+        <p className="mt-2 text-[12px] text-white/35">
+          Nguồn: <code className="text-white/50">{source}</code>
+          {ready ? ` · ${note}` : " · Đang tải…"}
+        </p>
+      </header>
+
+      <div className="flex flex-col gap-1">
+        <ToggleRow
+          id="showOnVideo"
+          checked={settings.showOnVideo}
+          onChange={(v) => patch({ showOnVideo: v })}
+          label="Dịch trên video (overlay)"
+        />
+        <ToggleRow
+          id="autoOpen"
+          checked={settings.autoOpen}
+          onChange={(v) => patch({ autoOpen: v })}
+          label="Tự mở side panel khi mở video (tùy chọn)"
+        />
+        <ToggleRow
+          id="showFurigana"
+          checked={settings.showFurigana}
+          onChange={(v) => patch({ showFurigana: v })}
+          label="Furigana"
+        />
+        <ToggleRow
+          id="dimHardsub"
+          checked={settings.dimHardsub}
+          onChange={(v) => patch({ dimHardsub: v })}
+          label="Làm mờ hardsub gốc"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-4">
+        <Fieldset legend="Overlay trên video">
+          <RangeField
+            id="barScale"
+            label="Cỡ chữ / khung (barScale)"
+            value={settings.barScale}
+            min={0.55}
+            max={2.4}
+            step={0.05}
+            onChange={(v) => patchOverlay({ barScale: v })}
+          />
+          <RangeField
+            id="barBgOpacity"
+            label="Độ mờ nền"
+            value={settings.barBgOpacity}
+            min={0}
+            max={1}
+            step={0.02}
+            onChange={(v) => patchOverlay({ barBgOpacity: v })}
+          />
+          <RangeField
+            id="barTextOpacity"
+            label="Độ mờ chữ"
+            value={settings.barTextOpacity}
+            min={0.2}
+            max={1}
+            step={0.02}
+            onChange={(v) => patchOverlay({ barTextOpacity: v })}
+          />
+          <ToggleRow
+            id="barShowJa"
+            checked={settings.barShowJa}
+            onChange={(v) => patchOverlay({ barShowJa: v })}
+            label="Hiện JA"
+          />
+          <ToggleRow
+            id="barShowEn"
+            checked={settings.barShowEn}
+            onChange={(v) => patchOverlay({ barShowEn: v })}
+            label="Hiện EN"
+          />
+          <ToggleRow
+            id="barShowVi"
+            checked={settings.barShowVi}
+            onChange={(v) => patchOverlay({ barShowVi: v })}
+            label="Hiện VI"
+          />
+          <button
+            type="button"
+            onClick={handleResetOverlay}
+            className="mt-1 w-fit rounded-md border border-white/15 bg-[#2a2a3a] px-3 py-1.5 text-[13px] text-white/85 hover:bg-[#3a3a50]"
+          >
+            Đặt lại overlay
+          </button>
+        </Fieldset>
+
+        <Fieldset legend="Từ vựng">
+          <ToggleRow
+            id="vocabHighlight"
+            checked={settings.vocabHighlight}
+            onChange={(v) => patch({ vocabHighlight: v })}
+            label="Làm nổi bật theo cấp độ"
+          />
+          <ToggleRow
+            id="showKnownGreen"
+            checked={settings.showKnownGreen}
+            onChange={(v) => patch({ showKnownGreen: v })}
+            label="Hiện từ đã biết (xanh)"
+          />
+          <ToggleRow
+            id="hideRareWords"
+            checked={settings.hideRareWords}
+            onChange={(v) => patch({ hideRareWords: v })}
+            label="Ẩn từ hiếm"
+          />
+          <NumberField
+            id="vocabLevel"
+            label="Mức từ vựng (rank)"
+            value={settings.vocabLevel}
+            min={500}
+            max={15000}
+            step={500}
+            onChange={(v) => patch({ vocabLevel: v || 5000 })}
+          />
+          <p className="text-[12px] text-white/40">
+            Hoặc mở Side Panel → Từ vựng / Màu để đánh giá và chỉnh màu.
+          </p>
+        </Fieldset>
+
+        <SelectField
+          id="sourceLang"
+          label="Ngôn ngữ nguồn"
+          value={settings.sourceLang}
+          onChange={(v) =>
+            patch({ sourceLang: v as HardsubSettings["sourceLang"] })
+          }
+          options={[
+            { value: "ja", label: "Japanese" },
+            { value: "en", label: "English" },
+            { value: "auto", label: "Auto (khóa 30s)" },
+          ]}
+        />
+
+        <SelectField
+          id="copyFormat"
+          label="Copy mặc định"
+          value={settings.copyFormat}
+          onChange={(v) =>
+            patch({ copyFormat: v as HardsubSettings["copyFormat"] })
+          }
+          options={[
+            { value: "full", label: "JA+furi+EN+VI" },
+            { value: "ja_vi", label: "JA+VI" },
+            { value: "ja", label: "Chỉ JA" },
+            { value: "vi", label: "Chỉ VI" },
+          ]}
+        />
+
+        <Fieldset legend="ROI (% video intrinsic)">
+          <div className="grid grid-cols-2 gap-3">
+            <NumberField
+              id="roiTop"
+              label="Top"
+              value={settings.roi.top}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(v) =>
+                patch({ roi: { ...settings.roi, top: v } })
+              }
+            />
+            <NumberField
+              id="roiHeight"
+              label="Height"
+              value={settings.roi.height}
+              min={0.05}
+              max={0.5}
+              step={0.01}
+              onChange={(v) =>
+                patch({ roi: { ...settings.roi, height: v } })
+              }
+            />
+            <NumberField
+              id="roiLeft"
+              label="Left"
+              value={settings.roi.left}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(v) =>
+                patch({ roi: { ...settings.roi, left: v } })
+              }
+            />
+            <NumberField
+              id="roiWidth"
+              label="Width"
+              value={settings.roi.width}
+              min={0.2}
+              max={1}
+              step={0.01}
+              onChange={(v) =>
+                patch({ roi: { ...settings.roi, width: v } })
+              }
+            />
+          </div>
+        </Fieldset>
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSave}
+          className="rounded-lg bg-[#9c40bf] px-4 py-2 text-[14px] font-medium text-white hover:bg-[#b04dd4]"
+        >
+          Lưu
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleBootstrap()}
+          className="rounded-lg border border-white/15 bg-[#2a2a3a] px-4 py-2 text-[14px] text-white/85 hover:bg-[#3a3a50]"
+        >
+          Bootstrap models
+        </button>
+        {msg && (
+          <span className="text-[13px] text-[#7fd6a8]">{msg}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function normalizeClientDefaults(): HardsubSettings {
+  return {
+    ...DEFAULT_HARDSUB_SETTINGS,
+    roi: { ...DEFAULT_HARDSUB_SETTINGS.roi },
+  };
+}

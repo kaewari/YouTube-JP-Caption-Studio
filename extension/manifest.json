@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Caption Translate",
+  "version": "0.9.9",
+  "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
+  "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "http://127.0.0.1:3000/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "action": {
+    "default_title": "YT Caption — Saved Items / Cài đặt",
+    "default_popup": "popup/popup.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": ["injected/page_capture.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": [
+        "shared/vocab_style.js",
+        "content/normalize_cues.js",
+        "content/cue_timing.js",
+        "content/content.js"
+      ],
+      "css": ["styles/panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected/page_capture.js"],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"]
+    }
+  ]
+}

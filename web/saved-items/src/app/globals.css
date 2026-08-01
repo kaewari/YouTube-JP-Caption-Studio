@@ -1,0 +1,188 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-noto), "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-heading: var(--font-brand), "Varela Round", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Language Reactor shell → YT Caption */
+  --background: #1a1c1f;
+  --foreground: #ffffff;
+  --card: #23252a;
+  --card-foreground: #ffffff;
+  --popover: #23252a;
+  --popover-foreground: #ffffff;
+  --primary: #9c40bf;
+  --primary-foreground: #ffffff;
+  --secondary: #2a2a3a;
+  --secondary-foreground: #dddddd;
+  --muted: #23252a;
+  --muted-foreground: #ffffff8c;
+  --accent: #2a2a3a;
+  --accent-foreground: #ffffff;
+  --destructive: #e74c5c;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #9c40bf;
+  --chart-1: #9cffcd;
+  --chart-2: #ffbd80;
+  --chart-3: #b894c5;
+  --chart-4: #e74c5c;
+  --chart-5: #9c40bf;
+  --radius: 0.5rem;
+  --sidebar: #141618;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #9c40bf;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #23252a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #9c40bf;
+
+  --status-known: #9cffcd;
+  --status-learning: #ffbd80;
+  --status-ignored: #b894c5;
+  --status-special: #e74c5c;
+  --link: #f3acff;
+}
+
+.dark {
+  --background: #1a1c1f;
+  --foreground: #ffffff;
+  --card: #23252a;
+  --card-foreground: #ffffff;
+  --popover: #23252a;
+  --popover-foreground: #ffffff;
+  --primary: #9c40bf;
+  --primary-foreground: #ffffff;
+  --secondary: #2a2a3a;
+  --secondary-foreground: #dddddd;
+  --muted: #23252a;
+  --muted-foreground: #ffffff8c;
+  --accent: #2a2a3a;
+  --accent-foreground: #ffffff;
+  --destructive: #e74c5c;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #9c40bf;
+  --sidebar: #141618;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #9c40bf;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #23252a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #9c40bf;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
+    @apply font-sans;
+    background-color: #1a1c1f;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: var(--link);
+  }
+
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 7px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.13);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.27);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+  }
+}
+
+/* Chrome extension popup — fill available width.
+   Chromium may still clamp browser_action popups near 800×600. */
+html.hs-ext-popup,
+html.hs-ext-popup body {
+  width: 100%;
+  min-width: 100%;
+  height: min(720px, 90vh);
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+
+html.hs-ext-popup body {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+html.hs-ext-popup .hs-popup-root {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+  height: min(720px, 90vh);
+  overflow: auto;
+}
+
+/* Main column always stretches — no centered/narrow content column */
+.lri-SavedItems-wrap {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}

@@ -1,0 +1,18 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.saved-items.log
+.saved-items.pid
+.env
+*.log
+bin/
+.git
+# Mounted at runtime — keep build context small
+data/
+test_*.py
+docker-compose.yml
+Dockerfile
+.dockerignore
