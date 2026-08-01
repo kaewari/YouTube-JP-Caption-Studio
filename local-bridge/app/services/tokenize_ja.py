@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import re
 
-from models import Token
-from text_utils import _kata_to_hira
-from vocab_freq import is_loaded as freq_loaded
-from vocab_freq import jlpt_of, load_freq, rank_of
+from app.schemas.models import Token
+from app.utils.text_utils import _kata_to_hira
+from app.services.vocab_freq import is_loaded as freq_loaded
+from app.services.vocab_freq import jlpt_of, load_freq, rank_of
 
 logger = logging.getLogger(__name__)
 

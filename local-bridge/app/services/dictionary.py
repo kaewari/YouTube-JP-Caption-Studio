@@ -10,13 +10,13 @@ import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from cache import dict_cache
-from models import DictResponse, DictSense
-from text_utils import _kata_to_hira
+from app.core.cache import dict_cache
+from app.schemas.models import DictResponse, DictSense
+from app.utils.text_utils import _kata_to_hira
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent / "data" / "dict"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict"
 JMDICT_JSON = DATA_DIR / "jmdict_mini.json"
 JAVI_JSON = DATA_DIR / "ja_vi.json"
 JMDICT_VI_JSON = DATA_DIR / "jmdict_vi.json"
@@ -276,7 +276,7 @@ _TAIL_PATTERNS = [
     re.compile(r"(てる|でる|てた|でた|てます|でます|えています|でいます)$"),
     re.compile(r"(してる|してた|してます|しています|して|した|しない|しなかった)$"),
     re.compile(r"(られ[るた]|れ[るた]|させ[るた]|せ[るた])$"),
-    re.compile(r"(なっ[たて]|なる|ない|<ctrl42>かった|なくて|なきゃ)$"),
+    re.compile(r"(なっ[たて]|なる|ない|なかった|なくて|なきゃ)$"),
     re.compile(r"(まし[たて]|ます|ません|ました|ましょう)$"),
     re.compile(r"(っ[たて]|[いう]$)"),
 ]
@@ -671,7 +671,7 @@ def _expand_candidates(surface: str, lemma: str) -> list[str]:
                 _add_candidate(candidates, seen, v)
 
     try:
-        from tokenize_ja import is_loaded, tokenize
+        from app.services.tokenize_ja import is_loaded, tokenize
 
         if is_loaded() and surface:
             for tok in tokenize(_nfkc(surface)):

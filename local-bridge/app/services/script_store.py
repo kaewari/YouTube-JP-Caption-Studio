@@ -14,8 +14,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Project root: …/Translate realtime OCR youtube video/
-ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = ROOT / "scripts"
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SCRIPTS_DIR = ROOT / "data" / "subtitles"
 
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
 

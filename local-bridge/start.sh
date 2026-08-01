@@ -52,7 +52,7 @@ PY
 
 # macOS IME helper for side-panel JA focus (POST /ime/switch) — no Native Messaging install
 IME_BIN="$ROOT/bin/ime-select"
-IME_SRC="$ROOT/../scripts/ime-switch/ime_select.swift"
+IME_SRC="$ROOT/../tools/ime-switch/ime_select.swift"
 if [[ "$(uname -s)" == "Darwin" ]] && [[ -f "$IME_SRC" ]]; then
   if [[ ! -x "$IME_BIN" ]] || [[ "$IME_SRC" -nt "$IME_BIN" ]]; then
     mkdir -p "$ROOT/bin"
@@ -106,4 +106,4 @@ start_saved_items
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 echo "Starting bridge on http://127.0.0.1:8765"
-exec python -m uvicorn main:app --host 127.0.0.1 --port 8765 --workers 1
+exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1

@@ -15,7 +15,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("build_dict_sqlite")
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "dict"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict"
 JMDICT_JSON = DATA_DIR / "jmdict_mini.json"
 JAVI_JSON = DATA_DIR / "ja_vi.json"
 JMDICT_VI_JSON = DATA_DIR / "jmdict_vi.json"

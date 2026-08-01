@@ -23,7 +23,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent / "data" / "dict"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict"
 JMDICT_VI_JSON = DATA_DIR / "jmdict_vi.json"
 JMDICT_VI_ZIP = DATA_DIR / "jmdict_vietnamese.zip"
 JMDICT_VI_META = DATA_DIR / "jmdict_vi.meta.json"

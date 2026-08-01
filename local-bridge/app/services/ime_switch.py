@@ -15,11 +15,11 @@ from pathlib import Path
 
 logger = logging.getLogger("bridge.ime")
 
-BRIDGE_ROOT = Path(__file__).resolve().parent
+BRIDGE_ROOT = Path(__file__).resolve().parent.parent.parent
 REPO_ROOT = BRIDGE_ROOT.parent
 BIN_DIR = BRIDGE_ROOT / "bin"
 BIN_HELPER = BIN_DIR / "ime-select"
-SCRIPT_DIR = REPO_ROOT / "scripts" / "ime-switch"
+SCRIPT_DIR = REPO_ROOT / "tools" / "ime-switch"
 SCRIPT_HELPER = SCRIPT_DIR / "ime-select"
 SWIFT_SRC = SCRIPT_DIR / "ime_select.swift"
 

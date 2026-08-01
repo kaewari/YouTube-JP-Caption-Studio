@@ -7,11 +7,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from text_utils import _kata_to_hira
+from app.utils.text_utils import _kata_to_hira
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent / "data" / "dict"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict"
 FREQ_JSON = DATA_DIR / "freq_ja.json"
 
 # Language Reactor-style frequency checkpoints (rank ceilings).

@@ -9,7 +9,7 @@ from pathlib import Path
 # Add local-bridge to path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dictionary import lookup
+from app.services.dictionary import lookup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("test_parity")

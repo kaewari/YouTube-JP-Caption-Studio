@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from import_en_vi import EN_VI_JSON, ensure_en_vi, parse_vnedict_text
-import dictionary as d
+from app.services import dictionary as d
 
 
 def test_parse_vnedict_primary_senses():

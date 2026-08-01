@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from models import Caps
+from app.schemas.models import Caps
 
 
 @dataclass

@@ -9,11 +9,11 @@ import threading
 import urllib.request
 from pathlib import Path
 
-from models import BootstrapProgress
+from app.schemas.models import BootstrapProgress
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATA = ROOT / "data"
 DICT = DATA / "dict"
 
@@ -77,10 +77,7 @@ def _jmdict_key_count(jmdict_json: Path) -> int:
 
 
 def _rebuild_sqlite() -> None:
-    scripts = ROOT / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    from build_dict_sqlite import build_sqlite
+    from app.scripts.build_dict_sqlite import build_sqlite
 
     build_sqlite()
 
@@ -94,7 +91,7 @@ def _bootstrap_worker() -> None:
         javi = DICT / "ja_vi.json"
         if not javi.exists():
             import json
-            from dictionary import _SEED_JA_VI
+            from app.services.dictionary import _SEED_JA_VI
 
             javi.write_text(json.dumps(_SEED_JA_VI, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -117,7 +114,7 @@ def _bootstrap_worker() -> None:
                     with gzip.open(gz, "rb") as f_in, open(xml_path, "wb") as f_out:
                         sh.copyfileobj(f_in, f_out)
                 _set("dict", 40, "Indexing full JMdict")
-                from dictionary import import_jmdict_xml
+                from app.services.dictionary import import_jmdict_xml
 
                 n = import_jmdict_xml(xml_path, max_entries=0)
                 _set("dict", 55, f"Indexed {n} JMdict entries")
@@ -128,7 +125,7 @@ def _bootstrap_worker() -> None:
         # Yomitan JMdict Vietnamese (JA→VI) — parallel glosses with EN JMdict.
         _set("dict", 58, "Downloading / indexing JMdict Vietnamese")
         try:
-            from import_jmdict_vi import ensure_jmdict_vi
+            from app.scripts.import_jmdict_vi import ensure_jmdict_vi
 
             n_vi = ensure_jmdict_vi(download_fn=_download)
             _set("dict", 65, f"Indexed {n_vi} JMdict VI keys")
@@ -138,7 +135,7 @@ def _bootstrap_worker() -> None:
         # VNEDICT (VI→EN inverted) — fill gloss_vi from gloss_en when JA→VI misses.
         _set("dict", 66, "Indexing EN→VI (VNEDICT)")
         try:
-            from import_en_vi import ensure_en_vi
+            from app.scripts.import_en_vi import ensure_en_vi
 
             n_en = ensure_en_vi(download_fn=_download)
             _set("dict", 68, f"Indexed {n_en} EN→VI keys")
@@ -164,9 +161,9 @@ def _bootstrap_worker() -> None:
             return
 
         _set("sudachi", 85, "Loading Sudachi + dictionary")
-        from dictionary import load_dictionary
-        from tokenize_ja import load_tokenizer
-        from vocab_freq import load_freq
+        from app.services.dictionary import load_dictionary
+        from app.services.tokenize_ja import load_tokenizer
+        from app.services.vocab_freq import load_freq
 
         load_dictionary()
         load_freq()

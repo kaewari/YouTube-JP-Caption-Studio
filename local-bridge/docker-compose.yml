@@ -14,8 +14,8 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ./data:/app/local-bridge/data
-      - ../scripts:/app/scripts
+      - ../data:/app/data
+      - ../tools:/app/tools
     environment:
       - PYTHONUNBUFFERED=1
     env_file:

@@ -13,13 +13,13 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from bootstrap import bootstrap_async, get_progress
-from dictionary import is_loaded as dict_loaded
-from dictionary import load_dictionary, lookup
-from governor import governor
-from ime_switch import status as ime_status
-from ime_switch import switch_to as ime_switch_to
-from models import (
+from app.scripts.bootstrap import bootstrap_async, get_progress
+from app.services.dictionary import is_loaded as dict_loaded
+from app.services.dictionary import load_dictionary, lookup
+from app.core.governor import governor
+from app.services.ime_switch import status as ime_status
+from app.services.ime_switch import switch_to as ime_switch_to
+from app.schemas.models import (
     DictRequest,
     DictResponse,
     ExtensionStateRequest,
@@ -39,12 +39,12 @@ from models import (
     VocabBandsResponse,
     VocabWord,
 )
-from script_store import delete_script, load_script, save_script, scripts_root
-from tokenize_ja import is_loaded as sudachi_loaded
-from tokenize_ja import load_tokenizer, tokenize
-from vocab_freq import assessment_bands, load_freq
-from vocab_freq import is_loaded as freq_loaded
-from vocab_freq import sample_preview_text
+from app.services.script_store import delete_script, load_script, save_script, scripts_root
+from app.services.tokenize_ja import is_loaded as sudachi_loaded
+from app.services.tokenize_ja import load_tokenizer, tokenize
+from app.services.vocab_freq import assessment_bands, load_freq
+from app.services.vocab_freq import is_loaded as freq_loaded
+from app.services.vocab_freq import sample_preview_text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bridge")
@@ -60,7 +60,7 @@ app.add_middleware(
 
 _latencies: deque[float] = deque(maxlen=50)
 
-_EXT_STATE_PATH = Path(__file__).resolve().parent / "data" / "extension_state.json"
+_EXT_STATE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "config" / "extension_state.json"
 _ext_state_lock = threading.Lock()
 _ext_state: dict[str, Any] = {
     "userVocab": {},

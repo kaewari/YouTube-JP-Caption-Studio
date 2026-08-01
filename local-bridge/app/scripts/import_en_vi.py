@@ -18,7 +18,7 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent / "data" / "dict"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict"
 EN_VI_JSON = DATA_DIR / "en_vi.json"
 EN_VI_META = DATA_DIR / "en_vi.meta.json"
 VNEDICT_TXT = DATA_DIR / "vnedict.txt"
