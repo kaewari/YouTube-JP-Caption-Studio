@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Caption Translate",
+  "name": "YouTube JP Caption Studio",
   "version": "0.9.9",
   "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
   "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms"],

@@ -1,180 +1,66 @@
-# YouTube Caption (furigana + import EN/VI)
+# YouTube JP Caption Studio
 
-Chrome extension kiểu Language Reactor cho phụ đề YouTube: load timedtext JA,
-overlay + side panel, furigana (Sudachi), từ điển JMdict, import/sửa EN–VI tay.
+Đây là một tiện ích mở rộng (Chrome Extension) tương tự như Language Reactor, được thiết kế chuyên biệt để giúp bạn xem video, học từ vựng và tự làm phụ đề tiếng Nhật trên YouTube.
 
-**Không** OCR. **Không** dịch máy (NLLB / Opus / Gemini).
+> **Lưu ý quan trọng:**
+> Tiện ích này **KHÔNG** sử dụng dịch máy tự động (như Google Translate) và **KHÔNG** dùng công nghệ nhận diện chữ trên video (OCR). Tất cả các bản dịch tiếng Anh và tiếng Việt đều do bạn tự import (nhập) hoặc tự dịch tay để đảm bảo độ chính xác cao nhất theo ý bạn.
 
-Extension MV3 `0.9.7` · Bridge FastAPI tại `127.0.0.1:8765` · Saved Items Next.js
-(dev `:3000` hoặc static popup).
+---
 
-## Kiến trúc
+## 🌟 Các tính năng chính
 
-```
-YouTube watch page
-  ├─ injected/page_capture.js   (MAIN world: media_time, timedtext intercept)
-  ├─ content/content.js         (overlay, cache merge, SP_CMD)
-  └─ sidepanel/                 (cue list, JA/EN/VI edit, import/export)
-        │
-        ▼
-background/service_worker.js    (YT_LOAD_CAPTIONS, BRIDGE_FETCH, IME, storage→bridge)
-        │
-        ▼
-local-bridge :8765              (tokenize, dict, scripts/, ime, extension_state)
-        │
-        ▼
-scripts/{videoId}/              (cues.json + script.txt + meta.json)
-web/saved-items/                (popup UI: vocab + settings)
-```
+1. **Hiển thị phụ đề thông minh**: Phụ đề gốc tiếng Nhật được lấy trực tiếp từ YouTube, sau đó hiển thị đẹp mắt lên video (overlay) và hiển thị danh sách câu thoại ở thanh bên (Side Panel) để bạn dễ dàng theo dõi.
+2. **Phiên âm (Furigana) & Tra từ điển**: Tự động phân tách câu tiếng Nhật, hiển thị cách đọc Kana (Furigana) và hỗ trợ tra từ điển Anh-Việt (JMdict) ngay khi bạn bấm vào một từ.
+3. **Quản lý từ vựng cá nhân**: Đánh dấu trạng thái từ vựng (Đã biết, Đang học, Bỏ qua...). Các từ này sẽ được tô màu tương ứng trên video để bạn dễ nhận biết.
+4. **Chỉnh sửa phụ đề mạnh mẽ**: Cho phép bạn bấm trực tiếp vào từng câu ở thanh Side Panel để sửa lại tiếng Nhật, thêm bản dịch tiếng Anh/Việt, hoặc tinh chỉnh thời gian hiển thị (timeline).
+5. **Dữ liệu an toàn**: Mọi chỉnh sửa của bạn được tự động lưu lại cục bộ trên máy tính. Bản dịch của bạn luôn được ưu tiên và không bao giờ bị phụ đề gốc của YouTube ghi đè.
 
-| Thành phần | Vai trò |
-| --- | --- |
-| `extension/` | Chrome MV3 — Load unpacked |
-| `local-bridge/` | FastAPI: Sudachi, JMdict, persist script, IME |
-| `web/saved-items/` | Saved Items + Settings (dev + `build:extension`) |
-| `scripts/` | Script đã lưu theo `video_id` |
-| `.cursor/skills/` | Agent skills cho project |
+---
 
-## Quickstart
+## ⚙️ Cấu trúc hệ thống
 
-### 1. Bridge
+Để extension hoạt động mượt mà và xử lý ngôn ngữ mạnh mẽ (như phân tách từ tiếng Nhật) mà không làm đơ trình duyệt, dự án được chia làm 2 phần chạy song song:
 
+1. **Local Bridge (Máy chủ nội bộ cục bộ)**: Viết bằng Python/FastAPI. Chạy ngầm trên máy tính của bạn để xử lý việc tra từ điển, cắt từ (Sudachi) và lưu file phụ đề.
+2. **Chrome Extension**: Giao diện chính mà bạn cài vào trình duyệt để tương tác với YouTube.
+
+---
+
+## 🚀 Hướng dẫn cài đặt & Sử dụng
+
+### Bước 1: Khởi động máy chủ cục bộ (Local Bridge)
+*(Yêu cầu máy tính đã cài đặt Python)*
+
+Mở Terminal (hoặc Command Prompt) và chạy lệnh sau:
 ```bash
 cd local-bridge
 ./start.sh
 ```
+- Máy chủ sẽ khởi chạy tại địa chỉ `http://127.0.0.1:8765`.
+- **Lưu ý:** Lần đầu tiên chạy, hệ thống sẽ mất một chút thời gian để tự động tải về bộ từ điển và các công cụ phân tích ngôn ngữ.
 
-| Service | URL |
-| --- | --- |
-| Bridge | `http://127.0.0.1:8765` |
-| Saved Items (Next) | `http://127.0.0.1:3000` |
+### Bước 2: Cài đặt Chrome Extension
+1. Mở trình duyệt Chrome, truy cập vào trang quản lý tiện ích: `chrome://extensions/`
+2. Bật **Chế độ dành cho nhà phát triển** (Developer mode) ở góc phải màn hình.
+3. Bấm vào nút **Tải tiện ích đã giải nén** (Load unpacked).
+4. Chọn thư mục `extension/` nằm bên trong dự án này.
 
-Skip UI: `SKIP_SAVED_ITEMS=1 ./start.sh`.
+### Bước 3: Trải nghiệm trên YouTube
+1. Mở một video YouTube bất kỳ có phụ đề tiếng Nhật.
+2. Extension sẽ tự động bắt phụ đề và hiển thị.
+3. Bạn có thể mở thanh Side Panel của Chrome (bảng điều khiển bên phải trình duyệt) để xem danh sách toàn bộ các câu thoại.
+4. Bấm vào biểu tượng của Extension trên thanh công cụ của trình duyệt để mở cửa sổ "Saved Items" (quản lý từ vựng đã lưu và các thiết lập hiển thị).
 
-Lần đầu: tạo venv + Sudachi; `POST /bootstrap` index JMdict EN (+ tải/index JMdict VI nếu thiếu).
+---
 
-```bash
-curl -s http://127.0.0.1:8765/health
-# models_loaded.sudachi / dict / freq
-```
+## ⌨️ Thao tác chỉnh sửa phụ đề (Trong Side Panel)
 
-Dict popup: EN từ JMdict, VI từ `jmdict_vi.json` (Yomitan dreamofi) + seed `ja_vi.json` — hiện song song, không MT.
-### 2. Extension
+Khi mở Side Panel, bạn có thể dễ dàng can thiệp vào kịch bản (script) của video:
 
-1. `chrome://extensions` → Developer mode
-2. **Load unpacked** → thư mục `extension/`
-3. Mở YouTube video có caption Nhật
-4. Icon toolbar → popup Saved Items / Cài đặt
-5. Side panel: pill trên player, `autoOpen`, hoặc mở panel từ extension
+- **Sửa chữ:** Bấm vào ô Tiếng Nhật (JA), Tiếng Anh (EN) hoặc Tiếng Việt (VI) để sửa đổi nội dung.
+- **Lưu lại:** Sau khi sửa xong, bấm phím `Enter` để hệ thống lưu lại (hoặc bấm `Esc` để hủy bỏ). 
+- **Sửa thời gian (Timeline):** Bấm vào mốc thời gian để đổi lúc bắt đầu / kết thúc của câu thoại.
+- **Tự động chuyển bộ gõ (macOS):** Khi bạn bấm chuột vào ô sửa tiếng Nhật, hệ thống sẽ tự động bật bộ gõ tiếng Nhật cho bạn (nếu có hỗ trợ).
+- **Trạng thái khóa (Lock):** Khi bạn tự tay dịch EN/VI, câu đó sẽ được đánh dấu là "đã được user dịch", YouTube sẽ không tự động làm mất bản dịch này khi bạn tải lại trang.
 
-Sau khi sửa Saved Items UI:
-
-```bash
-cd web/saved-items && npm run build:extension
-# → extension/popup/  rồi Reload extension
-```
-
-### 3. Regression
-
-```bash
-cd local-bridge && source .venv/bin/activate
-python test_tokenize_import_enrich.py   # bridge phải đang chạy
-```
-
-## Luồng caption
-
-1. **Load** (YSD-style cascade):
-   - Page intercept `/api/timedtext` (bật CC trên player)
-   - Service worker: `baseUrl` → scrape `ytInitialPlayerResponse` → ANDROID Innertube
-   - Fetch URL **raw trước**, parse XML `<text>`/`<p>` hoặc json3
-2. **Normalize** (`normalize_cues.js`): strip SFX; **giữ** start/end YouTube
-3. **Merge** `chrome.storage.local` (`transcript:${videoId}`) + disk `scripts/{videoId}/`
-4. **Overlay** active cue theo `media_time` từ page script
-5. EN/VI chỉ từ **Import** hoặc **sửa tay** — không auto-MT
-
-**Ownership:** JA/timeline đã edit thắng YouTube re-merge. Cue đã xóa bị
-**tombstone** theo `video_id` (Reload không hồi sinh). Không ghi đè script đã
-edit bằng merge YT nghèo hơn.
-
-## Side panel — chỉnh script
-
-Commit **chỉ khi Enter** (Blur / Escape hủy draft):
-
-| Trường | Enter | Blur / Escape |
-| --- | --- | --- |
-| **JA** | commit + re-tokenize (`/tokenize_batch`); **giữ EN/VI** | discard |
-| **EN** | commit + lock `user` | discard |
-| **VI** | commit + lock `user` | discard |
-| **Timeline** | commit times | blur cũng commit |
-
-- Focus JA → `<textarea lang="ja-JP">` + IME (`POST /ime/switch`) / romaji→kana fallback
-- Import merge/replace → EN/VI lock `import` → enrich tokens
-- **Xóa dịch**: xóa EN/VI/tokens (JA giữ)
-- **Xóa sub đã lưu**: wipe cache + disk rồi tải lại từ YouTube
-
-## Saved Items (popup)
-
-- Source: `web/saved-items/` → static `extension/popup/popup.html`
-- Source of truth: `chrome.storage.local` (`userVocab`, `hardsubSettings`)
-- localhost:3000 poll `GET /extension_state` (~1.5s); SW push storage → bridge
-- Tabs: **Từ đã lưu** (active); Từ vựng / Câu đã lưu = placeholder
-- **Cài đặt** ghi cùng `hardsubSettings` như content/side panel
-
-Chi tiết UI: [`web/saved-items/README.md`](web/saved-items/README.md).
-
-## API bridge (`127.0.0.1:8765`)
-
-| Endpoint | Mô tả |
-| --- | --- |
-| `GET /health` | ready, `models_loaded` (sudachi/dict/freq; mt/ocr luôn false), caps |
-| `POST /bootstrap` | JMdict + Sudachi + freq |
-| `POST /tokenize` | `{ text }` → tokens (reading, freq_rank, pos, jlpt) |
-| `POST /tokenize_batch` | `{ cues: [{id, text}] }` |
-| `POST /dict` | `{ surface, lemma? }` — EN từ JMdict; VI từ `jmdict_vi.json` (+ seed `ja_vi.json`) |
-| `POST /scripts/save` | persist → `scripts/{videoId}/` |
-| `GET/DELETE /scripts/{video_id}` | load / wipe |
-| `POST /ime/switch` | `{ to: "ja"\|"abc"\|"restore" }` (+ `/ime/ja`, `/ime/abc`, `/ime/status`) |
-| `GET/POST /extension_state` | mirror `userVocab` + `hardsubSettings` |
-| `GET /vocab/bands` | band từ vựng + preview tokens |
-
-## Persistence
-
-| Nơi | Nội dung |
-| --- | --- |
-| `chrome.storage.local` | `transcript:${id}`, `transcriptMeta:${id}`, settings, vocab |
-| `scripts/{videoId}/cues.json` | cue đầy đủ (JA/EN/VI/tokens/locks) |
-| `scripts/{videoId}/script.txt` | export đọc được |
-| `scripts/{videoId}/meta.json` | counts + title/url |
-| `local-bridge/data/extension_state.json` | mirror settings cho localhost |
-| `local-bridge/data/dict/jmdict_vi.json` | index JA→VI (Yomitan dreamofi; bootstrap tải zip) |
-
-Cache match: `start_media_time` ±0.35s + source. Debounce save ~400ms.
-
-## Path chính
-
-| Path | Vai trò |
-| --- | --- |
-| `extension/content/content.js` | Engine overlay + SP_CMD + merge |
-| `extension/sidepanel/` | UI cue list |
-| `extension/background/service_worker.js` | Captions fetch, bridge proxy, IME |
-| `extension/shared/vocab_style.js` | JLPT / vocab CSS classes |
-| `local-bridge/main.py` | FastAPI routes |
-| `local-bridge/tokenize_ja.py` | Sudachi |
-| `local-bridge/dictionary.py` | JMdict |
-| `local-bridge/script_store.py` | Disk scripts |
-| `.cursor/skills/youtube-hardsub-ocr` | Architecture skill |
-| `.cursor/skills/local-bridge-dev` | Bridge start/debug |
-| `.cursor/skills/hardsub-ocr-regression` | Tokenize/import regression |
-
-## Giới hạn
-
-- Chrome **browser_action popup** có thể clamp ~800×600 dù CSS `width: 100%`
-- IME macOS cần bridge + `bin/ime-select`; offline → chỉ `lang=ja-JP` + romaji fallback
-- Repo workspace thường **không** có `.git` ở root; `script.txt` dùng `# ---…`
-  (không còn dòng chỉ toàn `=`) để IDE không báo conflict giả
-- Không còn queue “Dịch lại” / auto-MT
-
-## macOS IME
-
-Bridge chạy → side panel đổi Input Source qua `POST /ime/switch`.
-`start.sh` build `scripts/ime-switch/ime_select.swift` → `local-bridge/bin/ime-select`.
+*(Để xem chi tiết hơn về mặt kỹ thuật và luồng hoạt động chuyên sâu của mã nguồn, bạn có thể tham khảo file `walkthrough.md`)*

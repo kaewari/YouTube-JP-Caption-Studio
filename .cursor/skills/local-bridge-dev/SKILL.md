@@ -54,6 +54,10 @@ Watch `bootstrap.stage` / `percent` until `done`. Indexes JMdict + loads Sudachi
 - Bridge offline in popup → run `./start.sh`
 - Sudachi warn → `pip install sudachipy sudachidict_core` in `.venv`
 - Port busy → `lsof -i :8765` and kill old uvicorn
+- Hover dict “không có trong từ điển” / empty EN+VI → JMdict index missing
+  (`jmdict` rows in `data/dict/dict.sqlite`). Re-run bootstrap after fixing
+  download (URL is `https://www.edrdg.org/.../JMdict_e.gz` + certifi SSL).
+  Bootstrap must **not** report `done` while JMdict keys &lt; 150k.
 - IME not flipping → `curl http://127.0.0.1:8765/ime/status` (need Japanese
   Input Source + `bin/ime-select`); bridge offline = web `lang=ja-JP` only
 

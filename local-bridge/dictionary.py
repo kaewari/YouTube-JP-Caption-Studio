@@ -305,14 +305,67 @@ def is_loaded() -> bool:
     return _loaded or SQLITE_DB.is_file()
 
 
+def close_dictionary() -> None:
+    """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
+    global _db_conn, _loaded
+    if _db_conn is not None:
+        try:
+            _db_conn.close()
+        except Exception:
+            pass
+    _db_conn = None
+    _loaded = False
+    dict_cache.clear()
+
+
 def load_dictionary() -> bool:
-    """Ensure SQLite DB is ready."""
+    """Ensure SQLite DB is ready (reopens after close_dictionary / rebuild)."""
+    close_dictionary()
     conn = _get_db()
     if conn is not None:
-        dict_cache.clear()
         logger.info("Dictionary DB ready at %s", SQLITE_DB)
         return True
     return False
+
+
+def import_jmdict_xml(xml_path: Path, max_entries: int = 0) -> int:
+    """Index JMdict XML → jmdict_mini.json. max_entries=0 means no limit."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    index: dict[str, list[dict]] = {}
+    count = 0
+    for _event, elem in ET.iterparse(str(xml_path), events=("end",)):
+        if elem.tag != "entry":
+            continue
+        kebs = [k.text for k in elem.findall("k_ele/keb") if k.text]
+        rebs = [r.text for r in elem.findall("r_ele/reb") if r.text]
+        senses = []
+        for sense in elem.findall("sense"):
+            glosses = [
+                g.text
+                for g in sense.findall("gloss")
+                if g.text
+                and g.get("{http://www.w3.org/XML/1998/namespace}lang", "eng") in (None, "eng")
+            ]
+            pos = [p.text for p in sense.findall("pos") if p.text]
+            if glosses:
+                senses.append(
+                    {
+                        "gloss_en": glosses,
+                        "pos": pos,
+                        "reading": rebs[0] if rebs else "",
+                    }
+                )
+        if senses:
+            entry = {"senses": senses, "reading": rebs[0] if rebs else ""}
+            for key in kebs + rebs:
+                index.setdefault(key, []).append(entry)
+            count += 1
+        elem.clear()
+        if max_entries and count >= max_entries:
+            break
+    JMDICT_JSON.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    logger.info("Wrote JMdict EN index entries=%d keys=%d → %s", count, len(index), JMDICT_JSON)
+    return count
 
 
 def _query_jmdict(key: str) -> list[dict]:

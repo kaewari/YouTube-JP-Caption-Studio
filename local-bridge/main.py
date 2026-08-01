@@ -49,7 +49,7 @@ from vocab_freq import sample_preview_text
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bridge")
 
-app = FastAPI(title="YouTube Caption Bridge", version="0.3.0")
+app = FastAPI(title="YouTube JP Caption Studio Bridge", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^(chrome-extension://[a-z0-9]{32}|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
