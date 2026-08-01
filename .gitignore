@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+node_modules/
+.codegraph/
 local-bridge/.venv/
 local-bridge/data/models/
 local-bridge/data/dict/JMdict*
