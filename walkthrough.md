@@ -1,65 +1,96 @@
-# YouTube Caption Extension – Tổng quan Kiến trúc & Hoạt động
+# Kiến trúc & Phân tích chuyên sâu (Technical Walkthrough)
 
-Đây là tài liệu ghi nhận lại toàn bộ kiến trúc, các luồng hoạt động (workflow), và các component chính của dự án sau khi quét toàn bộ mã nguồn.
+Dự án **YouTube JP Caption Studio** là một hệ thống hỗ trợ học tiếng Nhật qua YouTube. Hệ thống sử dụng một kiến trúc **Decoupled (Phân tách) / Client-Server** kết hợp giữa Chrome Extension (Front-end), FastAPI (Local Backend), và Next.js (Popup UI). 
 
-## 1. Tổng quan dự án (Project Overview)
-Extension Chrome kiểu Language Reactor dành cho YouTube, chuyên dụng cho việc học tiếng Nhật. Hệ thống lấy phụ đề (timedtext), hiển thị overlay trực tiếp lên video và cung cấp Side Panel để người dùng chỉnh sửa/import phụ đề tiếng Nhật, Anh, Việt.
-- **Đặc điểm cốt lõi**: KHÔNG dùng OCR, KHÔNG dùng Machine Translation (dịch máy) tự động. Mọi bản dịch EN/VI đều từ import hoặc do người dùng tự dịch/chỉnh sửa tay.
-- **Công nghệ**: Chrome Extension MV3, FastAPI (Local Bridge), Next.js (cho phần UI Saved Items).
+Tài liệu này được viết dưới góc nhìn của một chuyên gia IT (Software Architect) nhằm phân tích chi tiết toàn bộ mã nguồn, cấu trúc thư mục, kiến trúc hệ thống, cũng như đánh giá ưu/nhược điểm của thiết kế.
 
-## 2. Kiến trúc Hệ thống (Architecture)
-Hệ thống được chia làm 3 mảng chính:
+---
 
-### 2.1. Chrome Extension (`extension/`)
-Là phần front-end tương tác trực tiếp với trình duyệt và YouTube.
-- **`injected/page_capture.js`**: Được inject vào MAIN world của trang web. Nhiệm vụ lấy thời gian hiện tại của video (`media_time`) và intercept các request `/api/timedtext` để bắt phụ đề gốc.
-- **`content/content.js`**: Script chạy ngầm trên trang YouTube. Xử lý logic hiển thị overlay (sub cứng) trên video, đồng bộ timeline, quản lý merge cache (phụ đề YT gốc + bản chỉnh sửa từ disk/storage).
-- **`background/service_worker.js`**: Chạy nền (Service Worker). Đảm nhiệm giao tiếp HTTP với Local Bridge, scrape phụ đề qua YouTube Innertube API (hoặc ytInitialPlayerResponse) khi cần, và hỗ trợ điều khiển IME của hệ điều hành.
-- **`sidepanel/`**: Giao diện Side Panel native của trình duyệt. Hiển thị danh sách các câu sub (cues), cho phép người dùng click để sửa chữ (JA/EN/VI) hoặc chỉnh lại timeline của từng câu.
-- **`popup/`**: Thư mục chứa giao diện tĩnh (HTML/CSS/JS) của menu "Saved Items", được build từ Next.js.
+## 1. Cấu trúc thư mục & Chi tiết các File/Folder
 
-### 2.2. Local Bridge (`local-bridge/`)
-Là backend cục bộ (chạy tại `127.0.0.1:8765`) xây dựng bằng Python/FastAPI để tránh giới hạn bộ nhớ/băng thông của trình duyệt.
-- **`main.py`**: Khai báo các API endpoints chính.
-- **Tính năng Xử lý ngôn ngữ**:
-  - Dùng Sudachi để tokenize tiếng Nhật (lấy furigana, pos, jlpt) qua API `/tokenize` và `/tokenize_batch`.
-  - Tích hợp từ điển JMdict (EN, VI) để tra từ qua API `/dict`.
-- **Lưu trữ cục bộ (Persistence)**: Quản lý ghi/xóa các bản script đã được người dùng chỉnh sửa vào ổ cứng (`scripts/{videoId}/`).
-- **IME Control**: Điều khiển chuyển đổi Input Method (VD: tự động bật bộ gõ tiếng Nhật khi click vào ô sửa JA) cho macOS.
+### 1.1. `extension/` (Chrome Extension MV3)
+Thư mục này chứa mã nguồn thuần của Extension, đóng vai trò là "Client" tương tác trực tiếp với người dùng và trang web YouTube.
 
-### 2.3. Saved Items UI (`web/saved-items/`)
-- Ứng dụng Next.js dùng để phát triển giao diện quản lý từ vựng và thiết lập (Settings) ở môi trường dev (`localhost:3000`).
-- Được export thành file tĩnh (static HTML) và nhúng vào `extension/popup/` để làm popup cho extension. Nó đồng bộ trạng thái (userVocab, hardsubSettings) thông qua API `/extension_state` của Bridge.
+- **`injected/`**:
+  - `page_capture.js`: File này đặc biệt quan trọng vì nó được inject thẳng vào **MAIN world** (môi trường của chính trang web YouTube, thay vì Isolated world của extension). Nó override `XMLHttpRequest` / `fetch` để "chặn bắt" (intercept) các request lấy phụ đề gốc (`/api/timedtext`) của YouTube và chèn logic lấy thời gian thực của video (`media_time`) qua API của player.
+- **`content/`**:
+  - `content.js`: Script chạy ngầm trên trang YouTube (Isolated world). File này đảm nhận việc tạo ra các overlay DOM (phụ đề cứng hiển thị trên màn hình), đồng bộ vị trí hiển thị, quản lý merge cache (trộn phụ đề gốc và phụ đề đã edit).
+  - `cue_timing.js` & `normalize_cues.js`: Các helper xử lý tính toán timing, dọn dẹp các ký tự đặc biệt (SFX) và chuẩn hóa cấu trúc dữ liệu của các đoạn sub (cue) lấy từ YouTube.
+- **`background/`**:
+  - `service_worker.js`: Trái tim của extension. Đóng vai trò làm Controller giao tiếp với Local Bridge qua HTTP, xử lý các tác vụ nền, và quản lý liên lạc (message passing) giữa Content script và Side panel.
+- **`sidepanel/`**:
+  - Chứa HTML/CSS/JS (`sidepanel.html`, `sidepanel.js`, `sidepanel.css`) render giao diện Side Panel dọc bên phải màn hình. Đây là nơi user chỉnh sửa phụ đề (JA, EN, VI) trực tiếp, chỉnh sửa timeline và cập nhật trạng thái đồng bộ real-time.
+- **`popup/`** (Được sinh ra từ thư mục `web/saved-items`):
+  - Chứa các file tĩnh HTML/JS sau khi build Next.js. Extension dùng nó làm giao diện khi người dùng bấm vào icon trên thanh công cụ.
 
-## 3. Các Luồng Hoạt Động Cốt Lõi (Core Workflows)
+### 1.2. `local-bridge/` (FastAPI Backend)
+Đây là Backend chạy ở localhost (`127.0.0.1:8765`). Lý do có service này là để gánh các tác vụ nặng mà Chrome Extension không thể làm tốt.
 
-### 3.1. Luồng tải và đồng bộ Phụ đề (Caption Flow)
-1. **Fetch**: Khi mở video YouTube, Service Worker tìm cách lấy file phụ đề qua nhiều cách: intercept `/api/timedtext`, parse `ytInitialPlayerResponse` trong HTML, hoặc gọi qua ANDROID Innertube API.
-2. **Parse & Normalize**: Nội dung trả về (thường là XML hoặc JSON3) được parse thành các "cues" (đoạn text có `start`, `end`, `durMs`). Logic đã được căn chỉnh để tôn trọng thuộc tính `dur` của YouTube, giúp giải quyết triệt để lỗi "lệch timeline" hoặc bị cắt sớm do overlap.
-3. **Merge Cache**: Các cues mới lấy từ YouTube sẽ được merge với `chrome.storage.local` và dữ liệu từ Local Bridge.
-   - Nguyên tắc: **Bản lưu của user luôn thắng**. Nếu một cue đã được user dịch hoặc chỉnh sửa (text_source = "edit" / "manual"), YouTube sẽ không thể ghi đè.
-4. **Hiển thị**: `content.js` so sánh `media_time` hiện tại của video với danh sách cues để làm nổi bật câu hiện tại trên màn hình (overlay) và auto-scroll trên Side Panel.
+- **`app/main.py`**: Điểm entrypoint của ứng dụng FastAPI, khai báo các routers và dependency injection.
+- **`app/api/`**: Chứa các khai báo route/endpoint.
+- **`app/services/`**: Chứa Business Logic:
+  - `dictionary.py`: Quản lý query dữ liệu từ điển JMdict (truy vấn SQLite).
+  - `tokenize_ja.py`: Sử dụng thư viện `sudachipy` để chia từ (tokenize), phân tích từ loại (POS), và bóc tách furigana từ text tiếng Nhật.
+  - `script_store.py`: Quản lý việc đọc, ghi, xóa (I/O) các file phụ đề `.json` và `.txt` vào ổ cứng (thư mục `data/subtitles/`).
+  - `ime_switch.py`: Logic gọi script hệ thống để tự động chuyển bộ gõ (IME) trên macOS.
+  - `vocab_freq.py`: Tính toán tần suất xuất hiện và cấp độ JLPT của từ vựng.
+- **`app/core/`**:
+  - `cache.py`, `governor.py`: Cung cấp các cơ chế giới hạn request (rate limit) hoặc lưu trữ cache tạm thời trong RAM cho backend để tối ưu query.
+- **`start.sh` / `Dockerfile`**: Scripts để tự động setup virtual environment (`.venv`), cài đặt dependencies và khởi chạy server.
 
-### 3.2. Luồng Chỉnh sửa tại Side Panel
-- Khi user focus vào ô tiếng Nhật (JA), hệ thống tự kích hoạt API chuyển IME sang tiếng Nhật. Nếu thay đổi JA và ấn Enter, câu sẽ được gửi qua Bridge để tokenize lại (cập nhật furigana) và giữ nguyên bản dịch EN/VI.
-- Khi user sửa EN hoặc VI, trạng thái của cue sẽ bị khóa (`mt_locked = true`), đánh dấu là đã dịch bằng tay.
-- Khi xoá trắng bản dịch, trạng thái dịch sẽ bị hủy. Việc xóa sub đã lưu (`wipe`) sẽ làm sạch cache trên disk và tải lại bản gốc từ YouTube.
-- Mọi thay đổi đều được auto-save (debounce 400ms) vào `chrome.storage` và lưu xuống Local Bridge (`scripts/{videoId}/`).
+### 1.3. `web/saved-items/` (Next.js App)
+- Đây là một React/Next.js source code độc lập, được tổ chức theo cấu trúc App Router hoặc Pages Router chuẩn của Next.
+- Nó chứa các UI Component hiện đại, sử dụng TailwindCSS (hoặc tương đương) để quản lý danh sách từ vựng cá nhân, cài đặt hiển thị phụ đề (Hardsub settings).
+- Khi dev xong, ứng dụng được export thành static file (`next export`) và chuyển vào thư mục `extension/popup/`.
 
-### 3.3. Từ điển và Quản lý từ vựng
-- Khi người dùng tương tác với các token (từ vựng) trên overlay hoặc Side Panel, Local Bridge sẽ trả về nghĩa từ JMdict.
-- UI cung cấp các nút đánh dấu trạng thái của từ ("Đã biết", "Học", "Đừng học"...).
-- Trạng thái `userVocab` này được lưu lại, đồng bộ giữa content script, side panel và popup menu (Saved Items) để highlight màu tương ứng ở mọi nơi.
+### 1.4. `data/` và `tools/`
+- **`data/`**: Nơi lưu trữ toàn bộ cơ sở dữ liệu của ứng dụng, bao gồm từ điển SQLite (`data/dict/`), config settings của user, và phụ đề video đã được lưu (`data/subtitles/{video_id}/`).
+- **`tools/ime-switch/`**: Mã nguồn Swift hoặc AppleScript để thao tác trực tiếp với API của macOS giúp chuyển đổi bộ gõ giữa tiếng Anh và tiếng Nhật (Romaji/Kana).
 
-## 4. Thiết kế Persistence (Lưu trữ dữ liệu)
-Hệ thống lưu dữ liệu theo kiến trúc phân tán để đảm bảo hiệu năng và không mất dữ liệu:
-- **`chrome.storage.local`**: Cache nhanh các script đang xem, `transcriptMeta`, `userVocab`, `hardsubSettings`.
-- **Ổ cứng (thông qua Bridge)**: 
-  - `scripts/{videoId}/cues.json`: Dữ liệu nguyên vẹn của toàn bộ cue.
-  - `scripts/{videoId}/script.txt`: File text dễ đọc để export.
-  - `data/extension_state.json`: File mirror state cho phép môi trường dev (Next.js localhost) đọc được setting mà không cần extension API.
+---
 
-## 5. Xử lý Edge Cases quan trọng
-- **Timeline Overlaps**: Subtitle gốc trên YouTube đôi khi bị đè lên nhau (overlapping) hoặc kéo dài quá lố ở các khoảng lặng. Bộ parser đã được fix để dùng thuộc tính `durMs` nhằm đảm bảo sub sẽ biến mất đúng lúc.
-- **Tombstones**: Nếu user chủ động xóa một cue, hệ thống sẽ lưu vết ("tombstone") để lần sau tải lại, cue đó không bị "đào mồ sống dậy" từ file gốc của YouTube.
-- **Giao tiếp liên Domain**: Sử dụng cơ chế `window.postMessage` giữa `injected script` và `content script` để lấy được object Player của trang YouTube một cách an toàn.
+## 2. Kiến trúc Dự án (System Architecture)
+
+### Tại sao lại sử dụng kiến trúc Phân tách (Client-Server Local)?
+Hệ thống sử dụng kiến trúc phân tách thay vì "Nhồi nhét" tất cả vào Chrome Extension vì các lý do kỹ thuật vô cùng quan trọng sau:
+
+1. **Giới hạn của Manifest V3 (MV3)**: 
+   - MV3 buộc sử dụng Service Workers không có DOM, bị kill nếu idle quá lâu.
+   - Giới hạn kích thước WASM và Memory của Chrome Extension. Việc load toàn bộ engine NLP tiếng Nhật như Sudachi và database từ điển khổng lồ JMdict (hàng chục/trăm MB) lên RAM của Extension là một thảm họa về hiệu năng, có thể gây crash trình duyệt.
+2. **Quyền truy cập File System**: 
+   - Ứng dụng muốn ưu tiên quyền "Data Ownership" của người dùng: Phụ đề sau khi dịch phải được lưu cứng xuống máy tính thành file dễ đọc (JSON/TXT), thay vì bị kẹt trong IndexedDB của Chrome (dễ bị mất khi xóa history trình duyệt). Local Bridge bằng Python xử lý file I/O một cách dễ dàng và an toàn.
+3. **Tương tác Hệ điều hành (OS Level Integration)**: 
+   - Extension không thể điều khiển bộ gõ (IME) của máy Mac. Cần một process chạy dưới quyền User trên OS (Python + Swift) để làm việc này.
+
+### Ưu Điểm (Pros)
+- **Hiệu năng cực cao**: Trình duyệt chỉ phải làm việc nhẹ là render UI và giao tiếp HTTP. Mọi tác vụ nặng (Search DB, Tokenize, NLP) đều được Python đa luồng xử lý mượt mà.
+- **Bảo mật và Quyền riêng tư**: Tất cả chạy local ở `127.0.0.1`, không gửi bất kỳ dữ liệu cá nhân hay text nào lên Cloud.
+- **Phát triển độc lập (Modularity)**: Team Front-end có thể thoải mái dev Next.js/React, team Extension làm Vanilla JS, và team Backend tối ưu Python/FastAPI mà không dẫm chân lên nhau. Dễ dàng viết Unit Test cho logic NLP độc lập.
+
+### Nhược Điểm (Cons)
+- **Rào cản Cài đặt (Friction)**: Người dùng cuối không thể chỉ đơn giản cài 1 cú click từ Chrome Web Store. Họ phải biết dùng Terminal để clone code, cài Python, và chạy `./start.sh`. Điều này giới hạn tệp người dùng chỉ ở mức Developers hoặc Power Users.
+- **Khó đóng gói (Distribution)**: Việc duy trì môi trường chạy ổn định cho ứng dụng Local (như Python version, dependencies, architecture ARM vs Intel) là một vấn đề nan giải nếu muốn scale dự án thành sản phẩm thương mại (SaaS/Desktop App).
+- **Phụ thuộc Hệ điều hành**: Tính năng Auto IME hiện tại bị trói buộc với macOS (qua Swift/AppleScript). Không hỗ trợ Windows/Linux natively mà không phải viết lại tool tương đương.
+
+---
+
+## 3. Các Luồng Xử Lý Cốt Lõi (Core Workflows)
+
+### 3.1. Luồng Bắt chặn và Xử lý Phụ đề (Caption Intercept Flow)
+- **Bước 1 (Intercept)**: Khi video bắt đầu, `page_capture.js` chặn (monkey-patch) đối tượng `XMLHttpRequest` / `fetch`. Nếu URL có chứa `/api/timedtext`, nó sẽ lấy payload của YouTube.
+- **Bước 2 (Parse)**: Dữ liệu (XML hoặc JSON3) được đưa qua `background` xử lý, dịch ra mảng các Cues (có thuộc tính startTime, duration, text).
+- **Bước 3 (Merge Data)**: Background gọi Local Bridge API `/scripts/{videoId}` để kiểm tra xem trên ổ cứng (Local Disk) có bản chỉnh sửa nào của video này chưa. 
+  - Nếu có, **Dữ liệu Local (Local Data) luôn giành quyền ưu tiên (Wins)**. Các câu sub user đã dịch/chỉnh sửa sẽ đè lên bản của YouTube.
+- **Bước 4 (Render Overlay)**: `content.js` nhận danh sách sub cuối cùng. Dùng hàm requestAnimationFrame theo dõi `media_time` từ trang, tạo các thẻ `div` bọc lơ lửng trên video để làm Sub cứng (Hardsub).
+
+### 3.2. Luồng Chỉnh Sửa & Auto-Save
+- **Tương tác**: Người dùng mở Side Panel, bấm vào một dòng sub tiếng Nhật để sửa chữ, hoặc dịch tiếng Anh/Việt.
+- **IME Magic**: Khi Input focus vào ô Tiếng Nhật, Frontend gọi `POST /ime/switch {to: "ja"}` lên Local Bridge. Bridge thực thi script gọi API của macOS ép bộ gõ chuyển sang tiếng Nhật ngay lập tức, giúp trải nghiệm mượt mà không cần ấn phím tắt.
+- **Tokenize**: Ấn Enter sau khi sửa, đoạn text tiếng Nhật được gửi về Bridge API `/tokenize`. Sudachi sẽ phân tích hình thái, gắn rễ từ, furigana và trả về Frontend để update DOM.
+- **Persistence**: Side panel thu thập mọi thay đổi, gom lại (debounce) và lưu song song:
+  - Lưu RAM (Chrome `storage.local`) để phản ứng tức thì.
+  - Lưu Ổ Cứng (Bridge `POST /scripts/save`) để lưu file `.json` vĩnh viễn.
+
+### 3.3. Xử Lý Xung Đột (Edge Cases)
+- **Tombstone (Cơ chế Xóa Sub)**: Trong YouTube, phụ đề thường được sinh tự động hoặc bị rác. Khi User ấn "Xóa" một dòng sub, thay vì xóa hoàn toàn khỏi mảng, hệ thống tạo một object **Tombstone** với cờ `deleted: true`. Khi merge với subtitle fetch mới từ YouTube ở các lần reload sau, hệ thống thấy Tombstone sẽ tự hiểu để loại bỏ câu gốc của YouTube đi, không để nó "hồi sinh".
+- **Timeline Overlapping**: Phụ đề YouTube đôi khi hiển thị 2 câu cùng 1 lúc (overlap) do lỗi của thuật toán Auto-gen. `content.js` quản lý một bộ lọc (queue) chặt chẽ bằng tham số `durMs` (Duration) để luôn ẩn đúng các thẻ DOM khi hết thời gian, tránh rác UI.
