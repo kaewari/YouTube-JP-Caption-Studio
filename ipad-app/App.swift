@@ -8,6 +8,9 @@ struct YouTubeJPCaptionStudioApp: App {
         SubtitleParserSmoke.run()
         LayoutSmoke.run()
         ImportSmoke.run()
+        NLPTaggerSmoke.run()
+        DictionarySmoke.run()
+        BackupSmoke.run()
         #endif
     }
 

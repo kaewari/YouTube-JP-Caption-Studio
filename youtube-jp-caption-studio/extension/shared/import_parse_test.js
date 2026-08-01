@@ -64,6 +64,22 @@ JA: range-arrow
 assert.strictEqual(indexRangeArrow[0].start_media_time, 28);
 assert.strictEqual(indexRangeArrow[0].end_media_time, 36);
 
+// Multi-head without ---------- → N rows (not overwrite to 1).
+const multiHead = parseExportTxt(`[001] 0:00 - 0:02
+JA: first
+EN: One
+[002] 0:02 - 0:05
+JA: second
+VI: Hai
+`);
+assert.strictEqual(multiHead.length, 2);
+assert.strictEqual(multiHead[0].source, "first");
+assert.strictEqual(multiHead[0].en, "One");
+assert.strictEqual(multiHead[1].source, "second");
+assert.strictEqual(multiHead[1].vi, "Hai");
+assert.strictEqual(multiHead[0].start_media_time, 0);
+assert.strictEqual(multiHead[1].start_media_time, 2);
+
 // Multi-cue file out of order → sorted by start then end.
 const unordered = parseExportTxt(`[020] 1:00 - 1:05
 JA: later

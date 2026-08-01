@@ -61,14 +61,29 @@
       let source = "";
       let en = null;
       let vi = null;
+      const flush = () => {
+        if (!Number.isFinite(start) && !source && en == null && vi == null) return;
+        if (!Number.isFinite(start) && !source) return;
+        out.push({
+          start_media_time: Number.isFinite(start) ? start : 0,
+          end_media_time: Number.isFinite(end) ? end : undefined,
+          source,
+          en,
+          vi,
+        });
+      };
       for (const line of lines) {
         const t = line.trim();
         if (!t) continue;
         // Accept 0:00 → 0:02, 0:00 -> 0:02, 0:00 - 0:02, 0:00-0:02, en/em dash.
         const head = t.match(HEAD_RE);
         if (head) {
+          flush();
           start = parseTimeToken(head[2]);
-          if (head[3]) end = parseTimeToken(head[3]);
+          end = head[3] ? parseTimeToken(head[3]) : NaN;
+          source = "";
+          en = null;
+          vi = null;
           continue;
         }
         if (/^JA:\s*/i.test(t)) {
@@ -84,15 +99,7 @@
           continue;
         }
       }
-      if (!Number.isFinite(start) && !source && en == null && vi == null) continue;
-      if (!Number.isFinite(start) && !source) continue;
-      out.push({
-        start_media_time: Number.isFinite(start) ? start : 0,
-        end_media_time: Number.isFinite(end) ? end : undefined,
-        source,
-        en,
-        vi,
-      });
+      flush();
     }
     out.sort(compareCueTimeline);
     return out;

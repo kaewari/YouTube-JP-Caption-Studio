@@ -5,12 +5,12 @@
     "autoTranslate": false,
     "barBgOpacity": 0.86,
     "barPos": {
-      "nx": 0.2065419493736952,
-      "ny": 0.7616317833951762
+      "nx": 0.21325620475698034,
+      "ny": 0.5876034007352942
     },
     "barScale": 1.145486111111111,
-    "barScaleH": 1.042312237394958,
-    "barScaleW": 0.8319652457757296,
+    "barScaleH": 1.27763671875,
+    "barScaleW": 0.9425994965805471,
     "barShowEn": true,
     "barShowJa": true,
     "barShowVi": true,
@@ -78,6 +78,6 @@
     "vocabHighlight": true,
     "vocabLevel": 5000
   },
-  "updatedAt": 1785599576.061557,
+  "updatedAt": 1785614895.494401,
   "source": "extension"
 }

@@ -1,0 +1,24 @@
+---
+description: iPad real-device deploy, signing renew, and Google Drive backup commands
+alwaysApply: true
+---
+
+# iPad deploy / signing / backup
+
+Canonical commands + Vietnamese notes: `ipad-app/scripts/COMMANDS.md`.
+
+## What to use when
+
+| Goal | Do this |
+|------|---------|
+| Code update on real iPad | `ipad-app/scripts/deploy-ipad.sh` (`DEVICE_UDID` required). Fast incremental — **no clean**, no DerivedData wipe. |
+| Free cert / profile expiry (~7d) | `ipad-app/scripts/renew-ipad-signing.sh` (`DEVICE_UDID` + `TEAM`). Optional LaunchAgent: `com.youtubejpcaptionstudio.renew.plist` every 12h. |
+| Persist data across reinstall | In-app **Thư mục** / **Backup** / **Restore** → Google Drive via Files (`BackupService`, file `caption-studio-backup.json`). |
+| First physical install | Manual Xcode Automatic Signing + Trust — see `ipad-app/scripts/FIRST_RUN.md`. |
+
+## Hard rules
+
+- **Never delete the app** on the iPad just to update or resign — that wipes the SwiftData sandbox. Overwrite install (same Bundle ID) only.
+- Prefer `deploy-ipad.sh` for day-to-day code; prefer `renew-ipad-signing.sh` for signing-only refresh.
+- Wireless works after one pair: same Wi‑Fi, unlocked iPad, same `DEVICE_UDID`.
+- UDID: `xcrun xctrace list devices` (or Xcode Devices → Identifier).

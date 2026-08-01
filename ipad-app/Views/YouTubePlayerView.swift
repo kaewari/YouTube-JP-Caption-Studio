@@ -9,6 +9,8 @@ struct YouTubePlayerView: UIViewRepresentable {
     var onVideoRect: ((CGRect) -> Void)? = nil
     /// Latest layout smoke from page (`LAYOUT_CHECK`).
     var onLayoutCheck: (([String: Any]) -> Void)? = nil
+    /// Watch-page video id from `?v=` (empty when on YouTube home/search — gate overlay/panel).
+    var onPageVideoID: ((String?) -> Void)? = nil
     @Binding var seekRequest: Double?
     /// Bump to force a page reload without changing `videoID`.
     @Binding var reloadNonce: Int
@@ -47,6 +49,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "timeHandler")
         contentController.add(context.coordinator, name: "rectHandler")
         contentController.add(context.coordinator, name: "layoutHandler")
+        contentController.add(context.coordinator, name: "navHandler")
 
         configuration.userContentController = contentController
         configuration.allowsInlineMediaPlayback = true
@@ -134,6 +137,12 @@ struct YouTubePlayerView: UIViewRepresentable {
                 }
             } else if type == "LAYOUT_CHECK" {
                 DispatchQueue.main.async { [parent] in parent.onLayoutCheck?(dict) }
+            } else if type == "PAGE_NAV" {
+                let raw = (dict["videoId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let id = raw.isEmpty ? nil : YouTubeURL.videoID(from: raw)
+                // SPA already moved — keep updateUIView from reloading the same watch URL.
+                if let id { loadedID = id }
+                DispatchQueue.main.async { [parent] in parent.onPageVideoID?(id) }
             }
         }
 

@@ -17,6 +17,9 @@ targets:
       - path: Resources/dict.sqlite
         type: file
         buildPhase: resources
+      - path: Resources/freq_ja.json
+        type: file
+        buildPhase: resources
     info:
       path: Info.plist
       properties:

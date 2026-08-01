@@ -10,6 +10,9 @@ struct SidePanelToolbar: View {
     var onWipeScript: () -> Void
     var onExport: () -> Void
     var onImport: () -> Void
+    var onPickBackupFolder: () -> Void
+    var onBackupNow: () -> Void
+    var onRestore: () -> Void
     var onSettings: () -> Void
 
     private let accent = Color(red: 0.48, green: 0.28, blue: 0.85)
@@ -24,6 +27,9 @@ struct SidePanelToolbar: View {
                 toolButton("Xóa sub", action: onWipeScript)
                 toolButton("Export", action: onExport)
                 toolButton("Import", action: onImport)
+                toolButton("Thư mục", action: onPickBackupFolder)
+                toolButton("Backup", action: onBackupNow)
+                toolButton("Restore", action: onRestore)
                 Button(action: onSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.caption.weight(.semibold))
@@ -56,11 +62,12 @@ struct SidePanelToolbar: View {
 }
 
 struct SidePanelSettingsSheet: View {
-    @AppStorage("hardsubOverlayOn") var overlayOn = true
-    @AppStorage("sidePanelOn") var sidePanelOn = true
+    @AppStorage("hardsubOverlayOn") var overlayOn = false
+    @AppStorage("sidePanelOn") var sidePanelOn = false
     @AppStorage("hardsubShowJA") var showJA = true
-    @AppStorage("hardsubShowEN") var showEN = false
-    @AppStorage("hardsubShowVI") var showVI = false
+    @AppStorage("hardsubShowEN.v2") var showEN = true
+    @AppStorage("hardsubShowVI.v2") var showVI = true
+    @AppStorage("hardsubShowFurigana") var showFurigana = true
     @AppStorage("hardsubBarScale") var overlayFontScale = 1.0
     @AppStorage("sidePanelFontScale") var sidePanelFontScale = 1.0
     @Environment(\.dismiss) private var dismiss
@@ -74,6 +81,7 @@ struct SidePanelSettingsSheet: View {
                     Toggle("Hiện JA", isOn: $showJA)
                     Toggle("Hiện EN", isOn: $showEN)
                     Toggle("Hiện VI", isOn: $showVI)
+                    Toggle("Furigana", isOn: $showFurigana)
                 }
                 Section("Cỡ chữ") {
                     Stepper(value: $overlayFontScale, in: 0.55...2.4, step: 0.1) {
@@ -82,6 +90,11 @@ struct SidePanelSettingsSheet: View {
                     Stepper(value: $sidePanelFontScale, in: 0.7...1.8, step: 0.1) {
                         Text("Side panel \(String(format: "%.1f", sidePanelFontScale))×")
                     }
+                }
+                Section("Backup") {
+                    Text("Chọn folder trên Google Drive trong Files (nút Thư mục trên toolbar). Mỗi lần sửa sẽ tự ghi caption-studio-backup.json.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Settings")

@@ -105,6 +105,29 @@
     } catch (e) {}
   }
 
+  // Match desktop: only watch?v=… is a caption session; home/search → no overlay/panel.
+  function videoIdFromUrl() {
+    try {
+      return new URLSearchParams(location.search).get("v") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+  function postNav() {
+    if (window !== window.top) return;
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.navHandler)) return;
+    try {
+      window.webkit.messageHandlers.navHandler.postMessage({
+        type: "PAGE_NAV",
+        videoId: videoIdFromUrl(),
+        url: String(location.href || "")
+      });
+    } catch (e) {}
+  }
+  document.addEventListener("yt-navigate-finish", postNav);
+  postNav();
+  setTimeout(postNav, 800);
+
   setTimeout(postLayout, 2500);
 
   setInterval(function () {

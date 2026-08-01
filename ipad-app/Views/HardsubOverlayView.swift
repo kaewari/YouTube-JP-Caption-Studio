@@ -7,8 +7,9 @@ struct HardsubOverlayView: View {
     /// Video bounds in the player pane (points), from WKWebView VIDEO_RECT.
     var videoFrame: CGRect?
     var showJA: Bool = true
-    var showEN: Bool = false
-    var showVI: Bool = false
+    var showEN: Bool = true
+    var showVI: Bool = true
+    var showFurigana: Bool = true
 
     /// Normalized top-left inside video; -1 = default (center × 70%).
     @AppStorage("hardsubBarNx") private var barNx = -1.0
@@ -20,11 +21,14 @@ struct HardsubOverlayView: View {
 
     @State private var dragOrigin: CGPoint?
     @State private var resizeStart: (scaleW: Double, scaleH: Double, origin: CGPoint, box: CGSize)?
+    @State private var selectedToken: Token?
 
     private var activeCues: [ScriptCue] {
         if let c = ScriptCue.active(in: cues, atMs: currentTimeMs) { return [c] }
         return []
     }
+
+    private var activeCue: ScriptCue? { activeCues.first }
 
     var body: some View {
         GeometryReader { geo in
@@ -44,11 +48,17 @@ struct HardsubOverlayView: View {
                         .overlay { cornerHandles(video: vr, box: box, origin: origin) }
                         .contentShape(Rectangle())
                         .position(x: origin.x + box.width / 2, y: origin.y + box.height / 2)
-                        .gesture(moveGesture(video: vr, box: box))
+                        .simultaneousGesture(moveGesture(video: vr, box: box))
                         .onTapGesture(count: 2) { resetBar() }
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .dictPopup(
+                token: $selectedToken,
+                sentenceJA: activeCue?.textJA ?? "",
+                sentenceEN: activeCue?.textEN,
+                sentenceVI: activeCue?.textVI
+            )
         }
     }
 
@@ -108,7 +118,7 @@ struct HardsubOverlayView: View {
     private func clampScale(_ v: Double) -> Double { min(2.5, max(0.45, v)) }
 
     private func moveGesture(video vr: CGRect, box: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 8)
             .onChanged { value in
                 if dragOrigin == nil { dragOrigin = barOrigin(video: vr, box: box) }
                 guard let start = dragOrigin else { return }
@@ -127,8 +137,7 @@ struct HardsubOverlayView: View {
     private enum Corner { case topLeading, topTrailing, bottomLeading, bottomTrailing }
 
     private func cornerHandles(video vr: CGRect, box: CGSize, origin: CGPoint) -> some View {
-        let g: CGFloat = 20
-        return ZStack {
+        ZStack {
             handle(.topLeading, video: vr, box: box, origin: origin).position(x: 6, y: 6)
             handle(.topTrailing, video: vr, box: box, origin: origin).position(x: box.width - 6, y: 6)
             handle(.bottomLeading, video: vr, box: box, origin: origin).position(x: 6, y: box.height - 6)
@@ -192,22 +201,33 @@ struct HardsubOverlayView: View {
                 ForEach(activeCues, id: \.id) { cue in
                     VStack(spacing: 2 * fontScale) {
                         if showJA, !cue.textJA.isEmpty {
-                            Text(cue.textJA)
-                                .font(.system(size: 22 * fontScale, weight: .bold))
+                            TokenizedJAView(
+                                text: cue.textJA,
+                                fontSize: 24 * fontScale,
+                                weight: .bold,
+                                showFurigana: showFurigana,
+                                centered: true,
+                                shadowed: true
+                            ) { tok in
+                                guard tok.isContentWord else { return }
+                                selectedToken = tok
+                            }
                         }
                         if showEN, let en = cue.textEN, !en.isEmpty {
                             Text(en)
                                 .font(.system(size: 17 * fontScale, weight: .medium))
+                                .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.82))
+                                .multilineTextAlignment(.center)
                         }
                         if showVI, let vi = cue.textVI, !vi.isEmpty {
                             Text(vi)
-                                .font(.system(size: 17 * fontScale, weight: .medium))
+                                .font(.system(size: 17 * fontScale, weight: .semibold))
+                                .foregroundStyle(Color(red: 0.91, green: 0.91, blue: 0.94))
+                                .multilineTextAlignment(.center)
                         }
                     }
                 }
             }
-            .foregroundStyle(.white)
-            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 14 * fontScale)
             .padding(.vertical, 10 * fontScale)

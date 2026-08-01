@@ -3,14 +3,19 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query private var vocabularies: [Vocabulary]
 
     @AppStorage("sidePanelFraction") private var sidePanelFraction = 0.28
-    @AppStorage("hardsubOverlayOn") private var overlayOn = true
-    @AppStorage("sidePanelOn") private var sidePanelOn = true
+    /// Match desktop `showOnVideo: false` — user enables on a watch page.
+    @AppStorage("hardsubOverlayOn") private var overlayOn = false
+    @AppStorage("sidePanelOn") private var sidePanelOn = false
     @AppStorage("hardsubShowJA") private var showJA = true
-    @AppStorage("hardsubShowEN") private var showEN = false
-    @AppStorage("hardsubShowVI") private var showVI = false
+    /// Desktop defaults: barShowEn / barShowVi are on unless explicitly off.
+    /// `.v2` keys: older builds stored false; rename so new defaults apply once.
+    @AppStorage("hardsubShowEN.v2") private var showEN = true
+    @AppStorage("hardsubShowVI.v2") private var showVI = true
+    @AppStorage("hardsubShowFurigana") private var showFurigana = true
     @AppStorage("isDarkTheme") private var isDarkTheme = true
     @AppStorage("followTimeline") private var followTimeline = true
     @AppStorage("hardsubBarScale") private var overlayFontScale = 1.0
@@ -37,7 +42,14 @@ struct ContentView: View {
     @State private var confirmClearMT = false
     @State private var confirmWipe = false
     @State private var showImporter = false
+    @State private var showBackupFolderPicker = false
+    @State private var pendingImport: PendingImport?
+    @State private var importMode: ScriptCue.ImportMode = .merge
+    @State private var importIncludeJA = false
     @State private var exportURL: URL?
+    /// From WKWebView `PAGE_NAV` — nil on YT home/search (desktop-equivalent gate).
+    @State private var pageWatchID: String?
+    @State private var pageNavKnown = false
     @FocusState private var urlFocused: Bool
 
     private enum ToolTab: String, CaseIterable {
@@ -48,6 +60,14 @@ struct ContentView: View {
     private var activeCue: ScriptCue? {
         ScriptCue.active(in: currentCues, atMs: currentTimeMs)
     }
+
+    /// Desktop: content/side panel only on YouTube watch with `?v=`.
+    private var onYouTubeWatch: Bool {
+        pageNavKnown ? pageWatchID != nil : !videoID.isEmpty
+    }
+
+    private var overlayShown: Bool { overlayOn && onYouTubeWatch }
+    private var sidePanelShown: Bool { sidePanelOn && onYouTubeWatch }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,6 +97,16 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SidePanelSettingsSheet() }
+        .sheet(isPresented: $showBackupFolderPicker) {
+            BackupFolderPicker { url in
+                BackupService.shared.setFolder(url)
+                BackupService.shared.autoRestoreIfEmpty(context: modelContext)
+                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                statusMessage = BackupService.shared.status
+                showBackupFolderPicker = false
+            }
+            .ignoresSafeArea()
+        }
         .confirmationDialog("Xóa toàn bộ EN/VI?", isPresented: $confirmClearMT, titleVisibility: .visible) {
             Button("Xóa dịch", role: .destructive) { clearTranslations() }
             Button("Hủy", role: .cancel) {}
@@ -85,7 +115,7 @@ struct ContentView: View {
             Button("Xóa sub", role: .destructive) { wipeAndReload() }
             Button("Hủy", role: .cancel) {}
         }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText, .json, .data], allowsMultipleSelection: false) { result in
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText, .json], allowsMultipleSelection: false) { result in
             handleImport(result)
         }
         .sheet(isPresented: Binding(
@@ -94,6 +124,15 @@ struct ContentView: View {
         )) {
             if let url = exportURL {
                 ActivityView(url: url)
+            }
+        }
+        .task {
+            BackupService.shared.autoRestoreIfEmpty(context: modelContext)
+            if let s = BackupService.shared.status { statusMessage = s }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                BackupService.shared.flushPending(context: modelContext)
             }
         }
     }
@@ -105,7 +144,7 @@ struct ContentView: View {
         return HStack(spacing: 0) {
             playerPane
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if sidePanelOn {
+            if sidePanelShown {
                 resizeSplit(axis: .horizontal, total: size.width)
                 toolsColumn
                     .frame(width: panel)
@@ -119,7 +158,7 @@ struct ContentView: View {
         return VStack(spacing: 0) {
             playerPane
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if sidePanelOn {
+            if sidePanelShown {
                 resizeSplit(axis: .vertical, total: size.height)
                 toolsColumn
                     .frame(height: panel)
@@ -215,19 +254,28 @@ struct ContentView: View {
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
                     #endif
                 },
+                onPageVideoID: { id in
+                    pageNavKnown = true
+                    pageWatchID = id
+                    // Keep url chrome in sync on in-page YT nav without remounting via `.id(videoID)`.
+                    if let id, id != videoID {
+                        videoID = id
+                        urlField = "https://www.youtube.com/watch?v=\(id)"
+                    }
+                },
                 seekRequest: $seekRequest,
                 reloadNonce: $reloadNonce
             )
-            .id(videoID)
 
-            if overlayOn {
+            if overlayShown {
                 HardsubOverlayView(
                     cues: currentCues,
                     currentTimeMs: currentTimeMs,
                     videoFrame: videoFrame,
                     showJA: showJA,
                     showEN: showEN,
-                    showVI: showVI
+                    showVI: showVI,
+                    showFurigana: showFurigana
                 )
             }
         }
@@ -235,7 +283,7 @@ struct ContentView: View {
     }
 
     private func saveCues() {
-        try? modelContext.save()
+        modelContext.saveAndScheduleBackup()
     }
 
     // MARK: - Top bar
@@ -279,13 +327,19 @@ struct ContentView: View {
                 loadAndRefresh()
             }
 
-            iconPill("captions.bubble.fill", active: overlayOn, label: overlayOn ? "Tắt overlay" : "Bật overlay") {
+            iconPill("captions.bubble.fill", active: overlayShown, label: overlayOn ? "Tắt overlay" : "Bật overlay") {
+                guard onYouTubeWatch else { return }
                 overlayOn.toggle()
             }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
 
-            iconPill("sidebar.trailing", active: sidePanelOn, label: sidePanelOn ? "Ẩn side panel" : "Hiện side panel") {
+            iconPill("sidebar.trailing", active: sidePanelShown, label: sidePanelOn ? "Ẩn side panel" : "Hiện side panel") {
+                guard onYouTubeWatch else { return }
                 sidePanelOn.toggle()
             }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
 
             Menu {
                 Stepper(value: $overlayFontScale, in: 0.55...2.4, step: 0.1) {
@@ -341,16 +395,37 @@ struct ContentView: View {
     private var toolsColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
             SidePanelToolbar(
-                overlayOn: overlayOn,
+                overlayOn: overlayShown,
                 onReload: { Task { await loadCaptions(for: videoID) } },
                 onAddCue: addCueAtPlayhead,
-                onToggleOverlay: { overlayOn.toggle() },
+                onToggleOverlay: {
+                    guard onYouTubeWatch else { return }
+                    overlayOn.toggle()
+                },
                 onClearTranslations: { confirmClearMT = true },
                 onWipeScript: { confirmWipe = true },
                 onExport: exportScript,
                 onImport: { showImporter = true },
+                onPickBackupFolder: {
+                    statusMessage = "Chọn folder trên Google Drive trong Files"
+                    showBackupFolderPicker = true
+                },
+                onBackupNow: {
+                    BackupService.shared.backupNow(context: modelContext)
+                    statusMessage = BackupService.shared.status
+                },
+                onRestore: {
+                    if BackupService.shared.restore(context: modelContext) {
+                        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                    }
+                    statusMessage = BackupService.shared.status
+                },
                 onSettings: { showSettings = true }
             )
+
+            if pendingImport != nil {
+                importPanel
+            }
 
             if let active = activeCue {
                 Text(active.textJA)
@@ -439,11 +514,18 @@ struct ContentView: View {
                     List {
                         ForEach(live) { cue in
                             let active = activeCue?.id == cue.id
-                            CueEditorRow(cue: cue, isActive: active, fontScale: sidePanelFontScale, onSeek: { seekRequest = $0 }, onSave: {
-                                saveCues()
-                                // @State array identity doesn't change when ScriptCue.isDeleted flips
-                                currentCues = currentCues.filter { !$0.isDeleted }
-                            })
+                            CueEditorRow(
+                                cue: cue,
+                                isActive: active,
+                                neighbors: live,
+                                fontScale: sidePanelFontScale,
+                                onSeek: { seekRequest = $0 },
+                                onSave: {
+                                    saveCues()
+                                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
+                                        .filter { !$0.isDeleted }
+                                }
+                            )
                                 .id(cue.id)
                                 .listRowBackground(
                                     active
@@ -480,7 +562,7 @@ struct ContentView: View {
                 ContentUnavailableView(
                     "Chưa lưu từ nào",
                     systemImage: "bookmark",
-                    description: Text("Chạm giữ một từ trong phụ đề để lưu (sắp có).")
+                    description: Text("Chạm một từ trên overlay hoặc phụ đề → Lưu từ.")
                 )
             } else {
                 List(vocabularies) { vocab in
@@ -493,6 +575,72 @@ struct ContentView: View {
                 .listStyle(.plain)
             }
         }
+    }
+
+    private var importPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Nhập bản dịch")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(pendingImport?.fileName ?? "file") · \(pendingImport?.rows.count ?? 0) mục")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Button {
+                    pendingImport = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Đóng phần nhập bản dịch")
+            }
+
+            Text("Gộp: khớp theo cue id hoặc thời điểm ±0,35s + JA (mặc định chỉ EN/VI). Full: thay toàn bộ script (dịch + timeline) và xóa bản lưu cũ.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            importModeButton(
+                .merge,
+                title: "Gộp (partial) — chỉ các mục có trong file"
+            )
+            importModeButton(
+                .replace,
+                title: "Thay thế (full) — xóa script cũ, ghi đè toàn bộ dịch + timeline từ file"
+            )
+
+            Toggle("Gồm JA/timeline (chỉ Gộp; Full luôn gồm)", isOn: $importIncludeJA)
+                .font(.caption)
+                .disabled(importMode == .replace)
+
+            Button("Áp dụng", action: applyImport)
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.48, green: 0.28, blue: 0.85))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(red: 0.086, green: 0.086, blue: 0.122))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func importModeButton(_ mode: ScriptCue.ImportMode, title: String) -> some View {
+        Button {
+            importMode = mode
+            if mode == .replace { importIncludeJA = true }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: importMode == mode ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(importMode == mode ? Color.accentColor : .secondary)
+                Text(title)
+                    .font(.caption)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
@@ -528,12 +676,24 @@ struct ContentView: View {
         isLoadingCaptions = true
         statusMessage = "Đang lấy phụ đề…"
 
-        await MainActor.run {
-            let local = ScriptCue.load(videoId: id, context: modelContext)
+        let keepOwned: Bool = await MainActor.run {
+            let local = ScriptCue.load(videoId: id, context: modelContext).filter { !$0.isDeleted }
+            let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == id })
+            let owned = (try? modelContext.fetch(descriptor).first)?.owned == true
             if !local.isEmpty {
                 currentCues = local
-                statusMessage = "Đã tải \(local.count) câu từ lưu trữ cục bộ"
+                statusMessage = owned
+                    ? "Đã giữ script đã import (\(local.count) cue)"
+                    : "Đã tải \(local.count) câu từ lưu trữ cục bộ"
             }
+            return owned && !local.isEmpty
+        }
+
+        // Owned import: keep local timeline; page refresh still via reloadNonce.
+        // wipeAndReload deletes the script first, so owned is cleared and YouTube fetch runs.
+        if keepOwned {
+            await MainActor.run { isLoadingCaptions = false }
+            return
         }
 
         let cues = await CaptionService.fetchCues(videoId: id)
@@ -597,18 +757,42 @@ struct ContentView: View {
                 statusMessage = "Import: không parse được — dùng TXT/JSON export từ app hoặc extension"
                 return
             }
-            let n = ScriptCue.importTXT(videoId: videoID, text: text, context: modelContext)
-            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-            statusMessage = n > 0
-                ? "Import: cập nhật \(n)/\(parsed.count) cue"
-                : "Import: đọc \(parsed.count) dòng nhưng không khớp/ghi được cue"
+            importMode = .merge
+            importIncludeJA = false
+            pendingImport = PendingImport(fileName: url.lastPathComponent, rows: parsed)
+            statusMessage = "Đã đọc \(parsed.count) mục — chọn chế độ rồi Áp dụng"
         }
+    }
+
+    private func applyImport() {
+        guard let pendingImport else {
+            statusMessage = "Chưa chọn file"
+            return
+        }
+        let result = ScriptCue.importRows(
+            videoId: videoID,
+            rows: pendingImport.rows,
+            mode: importMode,
+            includeJA: importMode == .replace || importIncludeJA,
+            context: modelContext
+        )
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        statusMessage = importMode == .replace
+            ? "Import: đã thay thế \(result.replaced) cue"
+            : "Import: cập nhật \(result.updated) · bỏ qua \(result.skipped) · không khớp \(result.unmatched)"
+        self.pendingImport = nil
+        toolTab = .subtitles
     }
 
     private func formatTime(_ ms: Double) -> String {
         let total = Int(ms / 1000)
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+private struct PendingImport {
+    let fileName: String
+    let rows: [ScriptCue.ImportRow]
 }
 
 // Share sheet for Export
