@@ -70,7 +70,12 @@ extension ScriptCue {
         // Fetch parent first — optional-relationship predicates miss after insert.
         let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
         guard let script = try? context.fetch(descriptor).first else { return [] }
-        return script.cues.sorted { $0.startTime < $1.startTime }
+        let related = script.cues
+        if !related.isEmpty { return related.sorted { $0.startTime < $1.startTime } }
+        // SwiftData sometimes leaves script.cues empty after cue.video= inserts; scan in memory.
+        let all = (try? context.fetch(FetchDescriptor<ScriptCue>())) ?? []
+        return all.filter { $0.video?.videoId == videoId || $0.video?.persistentModelID == script.persistentModelID }
+            .sorted { $0.startTime < $1.startTime }
     }
 
     @MainActor
@@ -87,10 +92,9 @@ extension ScriptCue {
             context.insert(script!)
         }
 
-        // Owned/import timeline wins — do not rebuild from YouTube IDs.
+        // Owned/import timeline wins — never fall through to YouTube (empty load must not wipe Drive).
         if script?.owned == true {
-            let live = localCues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
-            if !live.isEmpty { return live }
+            return localCues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
         }
         
         var merged: [ScriptCue] = []
@@ -251,6 +255,8 @@ extension ScriptCue {
         var skipped = 0
         var unmatched = 0
         var replaced = 0
+        /// Replace-mode inserts — assign to UI directly; don't re-fetch via relationship.
+        var cues: [ScriptCue] = []
     }
 
     /// Extension-compatible TXT/JSON → rows (times in ms).
@@ -307,6 +313,7 @@ extension ScriptCue {
                     textVI: row.vi
                 )
                 cue.video = script
+                script.cues.append(cue)
                 context.insert(cue)
                 next.append(cue)
             }
@@ -314,6 +321,7 @@ extension ScriptCue {
             repairImportEnds(next)
             result.updated = next.count
             result.replaced = next.count
+            result.cues = next
             context.saveAndScheduleBackup()
             return result
         }

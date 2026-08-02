@@ -21,6 +21,8 @@ enum DriveScriptsService {
     struct SyncResult {
         var changed: Bool
         var message: String
+        /// Live cues after pull/import — UI must use this; `ScriptCue.load` can miss relationship.
+        var cues: [ScriptCue]? = nil
     }
 
     // MARK: - Sync
@@ -96,20 +98,26 @@ enum DriveScriptsService {
                 return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu script.txt")
             }
             let scriptText = try await DriveAPIClient.getText(fileId: scriptFileId)
-            let count = pull(videoId: videoId, scriptText: scriptText, meta: meta, rev: driveRev, context: context)
-            guard count > 0 else {
+            let pulled = pull(videoId: videoId, scriptText: scriptText, meta: meta, rev: driveRev, context: context)
+            guard !pulled.isEmpty else {
                 return SyncResult(changed: false, message: "Drive: script.txt trống (\(videoId))")
             }
-            return SyncResult(changed: true, message: "Drive: đã nạp \(videoId) (\(count) cue · rev \(driveRev))")
+            return SyncResult(
+                changed: true,
+                message: "Drive: đã nạp \(videoId) (\(pulled.count) cue · rev \(driveRev))",
+                cues: pulled
+            )
         }
 
         guard let script,
               let live = liveCues(videoId: videoId, context: context),
               var patched = patchedCues(original: cuesRoot, cues: live)
         else {
+            let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
             return SyncResult(
                 changed: false,
-                message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script?.rev ?? driveRev))"
+                message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script?.rev ?? driveRev))",
+                cues: live.isEmpty ? nil : live
             )
         }
 
@@ -146,9 +154,9 @@ enum DriveScriptsService {
         meta: [String: Any],
         rev: Int,
         context: ModelContext
-    ) -> Int {
+    ) -> [ScriptCue] {
         let rows = ScriptCue.parseImportRows(scriptText)
-        guard !rows.isEmpty else { return 0 }
+        guard !rows.isEmpty else { return [] }
         let result = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
         if let script = fetchScript(videoId: videoId, context: context) {
             script.rev = rev
@@ -156,7 +164,11 @@ enum DriveScriptsService {
             if let title = meta["title"] as? String, !title.isEmpty { script.title = title }
             try? context.save()
         }
-        return result.replaced
+        // Prefer import's inserted array — relationship reload can still be empty.
+        let live = result.cues.filter { !$0.isDeleted }
+        return live.isEmpty
+            ? ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
+            : live
     }
 
     // MARK: - Patch merge
@@ -341,8 +353,30 @@ enum DriveScriptsSmoke {
         let imported = ScriptCue.importRows(
             videoId: "smoke-v", rows: pullRows, mode: .replace, includeJA: true, context: ctx
         )
+        assert(imported.cues.count == imported.replaced, "import returns cue array")
         assert(ScriptCue.load(videoId: "smoke-v", context: ctx).count == imported.replaced,
                "load.count == replaced after script.txt import")
+
+        // Shape of real Drive export (MOIbaNe4Pmw): # --- headers + furigana (…） lines.
+        let moiShape = """
+        # ----------------------------------------
+        # YouTube Caption Script
+        video_id: MOIbaNe4Pmw
+        # ----------------------------------------
+
+        [001] 0:00 → 0:03.10
+        JA: なーヒカル、リコちゃんと喋ったことある？
+            (なーヒカル、リコちゃんと喋っ(しゃべっ)たことある？)
+        EN: Hey Hikaru
+        VI: Này Hikaru
+        # ----------------------------------------
+        [002] 0:04 → 0:07.10
+        JA: リコって、ほらあそこに座ってる
+            (リコって、ほらあそこに座っ(すわっ)てる)
+        """
+        let moiRows = ScriptCue.parseImportRows(moiShape)
+        assert(moiRows.count == 2, "MOIbaNe4Pmw-shaped parse (got \(moiRows.count))")
+        assert(moiRows[0].ja.contains("ヒカル") && moiRows[0].endMs == 3100, "MOIbaNe4Pmw first cue")
 
         print("[DriveScriptsSmoke] ok")
     }

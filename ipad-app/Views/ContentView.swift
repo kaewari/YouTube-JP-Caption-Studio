@@ -21,8 +21,8 @@ struct ContentView: View {
     @AppStorage("hardsubBarScale") private var overlayFontScale = 1.0
     @AppStorage("sidePanelFontScale") private var sidePanelFontScale = 1.0
 
-    @State private var urlField = "https://www.youtube.com/watch?v=EiISOvl2_tQ"
-    @State private var videoID = "EiISOvl2_tQ"
+    @State private var urlField = "https://www.youtube.com/watch?v=MOIbaNe4Pmw"
+    @State private var videoID = "MOIbaNe4Pmw"
     @State private var currentCues: [ScriptCue] = []
     /// YT sync anchors (class so high-freq writes don't invalidate SwiftUI).
     @State private var playheadSync = PlayheadSync()
@@ -106,9 +106,7 @@ struct ContentView: View {
             await loadCaptions(for: videoID)
             guard DriveAuthService.shared.hasToken else { return }
             let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
-            // Always reload: pull writes SwiftData; "đã đồng bộ" must still reflect live cue count.
-            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-            statusMessage = result.message
+            applyDriveSync(result)
         }
         // ponytail: was 30Hz @State (full tree); now only refresh activeCueId (~8Hz, writes when id changes)
         .onReceive(Timer.publish(every: 0.125, on: .main, in: .common).autoconnect()) { _ in
@@ -157,8 +155,7 @@ struct ContentView: View {
                 Task {
                     guard DriveAuthService.shared.hasToken else { return }
                     let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
-                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                    statusMessage = result.message
+                    applyDriveSync(result)
                 }
             }
         }
@@ -251,6 +248,9 @@ struct ContentView: View {
                     let parsed = SubtitleParser.parseTimedtext(body: payload)
                     guard !parsed.isEmpty else { return }
                     Task { @MainActor in
+                        // Owned Drive/import script: keep panel; don't let YT wipe after sync.
+                        let d = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoID })
+                        if let s = try? modelContext.fetch(d).first, s.owned, !currentCues.isEmpty { return }
                         currentCues = ScriptCue.mergeWithLocal(videoId: videoID, youtubeCues: parsed, context: modelContext)
                         statusMessage = nil
                     }
@@ -757,11 +757,20 @@ struct ContentView: View {
             }
             statusMessage = "Drive: đã kết nối · đang tìm \(videoID)…"
             let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
-            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-            statusMessage = result.message
+            applyDriveSync(result)
         } catch {
             statusMessage = "Drive: \(error.localizedDescription)"
         }
+    }
+
+    /// Prefer cues returned by pull/import — `ScriptCue.load` can miss SwiftData relationship.
+    private func applyDriveSync(_ result: DriveScriptsService.SyncResult) {
+        if let cues = result.cues, !cues.isEmpty {
+            currentCues = cues.filter { !$0.isDeleted }
+        } else {
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        }
+        statusMessage = result.message
     }
 
     private func addCueAtPlayhead() {
@@ -833,7 +842,11 @@ struct ContentView: View {
             includeJA: importMode == .replace || importIncludeJA,
             context: modelContext
         )
-        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        if !result.cues.isEmpty {
+            currentCues = result.cues.filter { !$0.isDeleted }
+        } else {
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        }
         statusMessage = importMode == .replace
             ? "Import: đã thay thế \(result.replaced) cue"
             : "Import: cập nhật \(result.updated) · bỏ qua \(result.skipped) · không khớp \(result.unmatched)"
