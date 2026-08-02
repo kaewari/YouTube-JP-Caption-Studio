@@ -86,9 +86,12 @@ enum DriveScriptsService {
             meta = cuesRoot["meta"] as? [String: Any] ?? [:]
         }
         let driveRev = DriveAPIClient.parseRev(meta)
-
+        let driveCueCount = (cuesRoot["cues"] as? [[String: Any]])?.count ?? 0
         let script = fetchScript(videoId: videoId, context: context)
-        if script == nil || driveRev > (script?.rev ?? 0) {
+        let liveCount = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }.count
+        // Rev gate alone is not enough: a stale/empty local script with matching rev
+        // must still pull when Drive actually has cues (else "đã đồng bộ" is a false success).
+        if needsPull(driveRev: driveRev, localRev: script?.rev ?? 0, localLiveCount: liveCount, driveCueCount: driveCueCount) {
             let count = pull(videoId: videoId, cuesData: cuesData, meta: meta, rev: driveRev, context: context)
             guard count > 0 else {
                 return SyncResult(changed: false, message: "Drive: cues.json trống (\(videoId))")
@@ -96,7 +99,6 @@ enum DriveScriptsService {
             return SyncResult(changed: true, message: "Drive: đã nạp \(videoId) (\(count) cue · rev \(driveRev))")
         }
 
-        let liveCount = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }.count
         guard let script,
               let live = liveCues(videoId: videoId, context: context),
               var patched = patchedCues(original: cuesRoot, cues: live)
@@ -223,6 +225,11 @@ enum DriveScriptsService {
 
     // MARK: - Helpers
 
+    /// Pull when Drive rev is ahead, or local panel would stay empty while Drive has cues.
+    static func needsPull(driveRev: Int, localRev: Int, localLiveCount: Int, driveCueCount: Int) -> Bool {
+        driveRev > localRev || (localLiveCount == 0 && driveCueCount > 0)
+    }
+
     private static func encode(_ object: [String: Any]) -> Data? {
         try? JSONSerialization.data(
             withJSONObject: object,
@@ -300,6 +307,20 @@ enum DriveScriptsSmoke {
         // Status copy must name the videoId so Connect UI can show found/missing clearly.
         let missing = DriveScriptsService.SyncResult(changed: false, message: "Drive: không thấy folder EiISOvl2_tQ")
         assert(missing.message.contains("EiISOvl2_tQ"), "missing status includes videoId")
+
+        // Empty local + Drive cues → force pull even when revs match (false "đã đồng bộ").
+        assert(DriveScriptsService.needsPull(driveRev: 5, localRev: 5, localLiveCount: 0, driveCueCount: 2),
+               "empty local must pull when Drive has cues")
+        assert(!DriveScriptsService.needsPull(driveRev: 5, localRev: 5, localLiveCount: 2, driveCueCount: 2),
+               "matching rev with live cues stays put")
+        assert(DriveScriptsService.needsPull(driveRev: 6, localRev: 5, localLiveCount: 2, driveCueCount: 2),
+               "higher Drive rev must pull")
+
+        // Simulated pull path: parse Drive-shaped cues.json → row count matches panel load.
+        let pullRows = ScriptCue.parseImportRows(json)
+        assert(pullRows.count == 2, "pull parse cue count")
+        assert(pullRows[0].id == "a" && pullRows[0].ja == "あ", "pull row id/source")
+        assert(abs(pullRows[0].startMs - 599) < 1e-6, "pull start_media_time → ms")
 
         print("[DriveScriptsSmoke] ok")
     }

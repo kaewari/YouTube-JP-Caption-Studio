@@ -106,9 +106,8 @@ struct ContentView: View {
             await loadCaptions(for: videoID)
             guard DriveAuthService.shared.hasToken else { return }
             let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
-            if result.changed {
-                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-            }
+            // Always reload: pull writes SwiftData; "đã đồng bộ" must still reflect live cue count.
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
             statusMessage = result.message
         }
         // ponytail: was 30Hz @State (full tree); now only refresh activeCueId (~8Hz, writes when id changes)
@@ -158,9 +157,7 @@ struct ContentView: View {
                 Task {
                     guard DriveAuthService.shared.hasToken else { return }
                     let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
-                    if result.changed {
-                        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                    }
+                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
                     statusMessage = result.message
                 }
             }
