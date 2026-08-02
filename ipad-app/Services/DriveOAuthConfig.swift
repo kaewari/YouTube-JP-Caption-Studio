@@ -1,8 +1,11 @@
 import Foundation
 
-/// iOS OAuth client for Drive REST. Chrome extension `client_id` cannot be reused here.
+/// Google Drive OAuth — requires an **iOS** OAuth client from GCP.
+/// Do NOT paste the Chrome extension `client_id` (→ Error 400: invalid_request).
 enum DriveOAuthConfig {
-    static let clientId = "886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns.apps.googleusercontent.com"
+    /// Paste iOS client id (`….apps.googleusercontent.com`). Bundle: `com.example.YouTubeJPCaptionStudio`.
+    /// Then update `Info.plist` / `project.yml` URL scheme to `com.googleusercontent.apps.<prefix>`.
+    static let clientId = ""
     static let folderId = "1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA"
     static let scope = "https://www.googleapis.com/auth/drive"
     static let authURL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
@@ -16,5 +19,6 @@ enum DriveOAuthConfig {
         return "com.googleusercontent.apps.\(prefix)"
     }
 
+    /// Google iOS clients expect reverse-client-id + `/oauth2redirect`.
     static var redirectURI: String { "\(urlScheme):/oauth2redirect" }
 }

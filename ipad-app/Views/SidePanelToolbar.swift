@@ -127,7 +127,7 @@ struct SidePanelSettingsSheet: View {
                     Text("Màu JLPT")
                 }
                 Section("Connect Drive") {
-                    Text("Nút Thư mục → OAuth Google (Drive API). Folder cố định 1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA. Cần iOS client_id trong DriveOAuthConfig.swift (xem COMMANDS.md).")
+                    Text("Nút Thư mục → OAuth Google (Drive API). Folder cố định 1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA. Bắt buộc OAuth client kiểu iOS trên GCP (không dùng client Chrome extension) — paste vào DriveOAuthConfig.swift (xem COMMANDS.md).")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

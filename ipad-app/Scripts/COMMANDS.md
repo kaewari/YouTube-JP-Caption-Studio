@@ -79,12 +79,14 @@ Paid Developer Program: bỏ qua chu kỳ ~7 ngày free.
 
 ## OAuth Drive API (iPad)
 
-Chrome extension `client_id` **không** dùng được trên iOS. Một lần trên GCP (cùng project với extension):
+Chrome extension `client_id` **không** dùng được trên iOS — Google trả **Error 400: invalid_request** / “Yêu cầu … không hợp lệ”. App dùng `ASWebAuthenticationSession` + PKCE (S256) + reverse-client-id redirect (`com.googleusercontent.apps.<prefix>:/oauth2redirect`); không có `client_secret`.
+
+Một lần trên GCP (cùng project với extension):
 
 1. Credentials → Create OAuth client ID → kiểu **iOS** → bundle `com.example.YouTubeJPCaptionStudio`.
-2. Paste full `….apps.googleusercontent.com` vào `ipad-app/Services/DriveOAuthConfig.swift` (`clientId`).
+2. Paste full `….apps.googleusercontent.com` vào `ipad-app/Services/DriveOAuthConfig.swift` (`clientId`) — **không** paste client của Chrome extension.
 3. Đổi URL scheme trong `Info.plist` / `project.yml` thành reverse-client-id: `com.googleusercontent.apps.<prefix>` (bỏ `.apps.googleusercontent.com` khỏi client_id).
-4. Consent Testing → thêm email Test users nếu app chưa publish.
+4. Consent Testing → thêm email Test users (vd. `sonhoang236@gmail.com`) nếu app chưa publish.
 
 Scope: `https://www.googleapis.com/auth/drive`. Folder cố định: `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`.
 

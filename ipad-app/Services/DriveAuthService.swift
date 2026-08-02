@@ -1,9 +1,10 @@
 import AuthenticationServices
+import CryptoKit
 import Foundation
 import Security
 import UIKit
 
-/// Google OAuth via `ASWebAuthenticationSession` + Keychain. No GoogleSignIn SPM.
+/// Google OAuth via `ASWebAuthenticationSession` + PKCE + Keychain. No GoogleSignIn SPM.
 @MainActor
 final class DriveAuthService: NSObject {
     static let shared = DriveAuthService()
@@ -59,6 +60,7 @@ final class DriveAuthService: NSObject {
     }
 
     private func authorize() async throws -> Tokens {
+        let pkce = Self.makePKCE()
         var comps = URLComponents(url: DriveOAuthConfig.authURL, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "client_id", value: DriveOAuthConfig.clientId),
@@ -67,6 +69,8 @@ final class DriveAuthService: NSObject {
             URLQueryItem(name: "scope", value: DriveOAuthConfig.scope),
             URLQueryItem(name: "access_type", value: "offline"),
             URLQueryItem(name: "prompt", value: "consent"),
+            URLQueryItem(name: "code_challenge", value: pkce.challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
         ]
         guard let url = comps.url else { throw DriveAuthError.badURL }
 
@@ -92,14 +96,19 @@ final class DriveAuthService: NSObject {
         }
         self.session = nil
 
-        guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "code" })?.value
+        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if let oauthErr = items.first(where: { $0.name == "error" })?.value {
+            if oauthErr == "invalid_request" { throw DriveAuthError.invalidRequest }
+            let desc = items.first(where: { $0.name == "error_description" })?.value
+            throw DriveAuthError.oauthError(oauthErr, desc)
+        }
+        guard let code = items.first(where: { $0.name == "code" })?.value
         else { throw DriveAuthError.noCode }
 
-        return try await exchange(code: code)
+        return try await exchange(code: code, verifier: pkce.verifier)
     }
 
-    private func exchange(code: String) async throws -> Tokens {
+    private func exchange(code: String, verifier: String) async throws -> Tokens {
         var req = URLRequest(url: DriveOAuthConfig.tokenURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -108,6 +117,7 @@ final class DriveAuthService: NSObject {
             "client_id": DriveOAuthConfig.clientId,
             "redirect_uri": DriveOAuthConfig.redirectURI,
             "grant_type": "authorization_code",
+            "code_verifier": verifier,
         ])
         return try await decodeTokens(req)
     }
@@ -130,6 +140,7 @@ final class DriveAuthService: NSObject {
         let (data, res) = try await URLSession.shared.data(for: req)
         guard let http = res as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            if body.contains("invalid_request") { throw DriveAuthError.invalidRequest }
             throw DriveAuthError.tokenHTTP((res as? HTTPURLResponse)?.statusCode ?? 0, body)
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -148,6 +159,16 @@ final class DriveAuthService: NSObject {
             .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
             .joined(separator: "&")
             .data(using: .utf8)!
+    }
+
+    /// PKCE S256: 32 random bytes → base64url verifier; SHA256(verifier) → base64url challenge.
+    private static func makePKCE() -> (verifier: String, challenge: String) {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let verifier = Data(bytes).base64URLEncoded
+        let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
+        assert(!challenge.contains("+") && !challenge.contains("/") && !challenge.contains("="))
+        return (verifier, challenge)
     }
 
     // MARK: - Keychain
@@ -197,6 +218,15 @@ final class DriveAuthService: NSObject {
     }
 }
 
+private extension Data {
+    var base64URLEncoded: String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
+
 extension DriveAuthService: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -207,6 +237,8 @@ extension DriveAuthService: ASWebAuthenticationPresentationContextProviding {
 
 enum DriveAuthError: LocalizedError {
     case missingClientId
+    case invalidRequest
+    case oauthError(String, String?)
     case notConnected
     case noToken
     case cancelled
@@ -218,7 +250,11 @@ enum DriveAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingClientId:
-            return "Chưa paste iOS client_id vào DriveOAuthConfig.swift (xem COMMANDS.md)"
+            return "Cần OAuth client kiểu iOS trên GCP, không dùng client Chrome extension (xem COMMANDS.md)"
+        case .invalidRequest:
+            return "Cần OAuth client kiểu iOS trên GCP, không dùng client Chrome extension"
+        case .oauthError(let err, let desc):
+            return desc.map { "OAuth \(err): \($0)" } ?? "OAuth: \(err)"
         case .notConnected:
             return "Chưa Connect Drive"
         case .noToken:
