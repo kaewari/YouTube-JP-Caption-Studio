@@ -48,4 +48,4 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.example.YouTubeJPCaptionStudio.drive-oauth
             CFBundleURLSchemes:
-              - com.googleusercontent.apps.886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns
+              - com.googleusercontent.apps.886146342458-ik5d09sgushl9itr8csk6mj1ordv8ii2
