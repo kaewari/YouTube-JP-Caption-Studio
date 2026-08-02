@@ -24,10 +24,10 @@ struct ContentView: View {
     @State private var urlField = "https://www.youtube.com/watch?v=EiISOvl2_tQ"
     @State private var videoID = "EiISOvl2_tQ"
     @State private var currentCues: [ScriptCue] = []
-    /// Authoritative playhead from YT; UI reads `currentTimeMs` (extrapolated while playing).
-    @State private var syncedTimeMs: Double = 0
-    @State private var syncedAt: Date = Date()
-    @State private var currentTimeMs: Double = 0
+    /// YT sync anchors (class so high-freq writes don't invalidate SwiftUI).
+    @State private var playheadSync = PlayheadSync()
+    /// Stable id for list highlight / scroll — updated only when the active cue changes.
+    @State private var activeCueId: String?
     @State private var isPlaying: Bool = false
     @State private var seekRequest: Double? = nil
     @State private var reloadNonce = 0
@@ -42,7 +42,6 @@ struct ContentView: View {
     @State private var confirmClearMT = false
     @State private var confirmWipe = false
     @State private var showImporter = false
-    @State private var showBackupFolderPicker = false
     @State private var pendingImport: PendingImport?
     @State private var importMode: ScriptCue.ImportMode = .merge
     @State private var importIncludeJA = false
@@ -64,7 +63,17 @@ struct ContentView: View {
     }
 
     private var activeCue: ScriptCue? {
-        ScriptCue.active(in: currentCues, atMs: currentTimeMs)
+        guard let id = activeCueId else { return nil }
+        return currentCues.first { $0.id == id && !$0.isDeleted }
+    }
+
+    /// Live playhead (ms) from last YT sync + short extrapolate — not @State.
+    private var playheadMs: Double {
+        if isPlaying {
+            let elapsed = Date().timeIntervalSince(playheadSync.at) * 1000
+            return playheadSync.timeMs + min(elapsed, 300)
+        }
+        return playheadSync.timeMs
     }
 
     /// Desktop: content/side panel only on YouTube watch with `?v=`.
@@ -92,29 +101,20 @@ struct ContentView: View {
         }
         .background(Color.black)
         .preferredColorScheme(isDarkTheme ? .dark : .light)
-        .task(id: videoID) { await loadCaptions(for: videoID) }
-        .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { _ in
-            // Gate: no extrapolator work while backgrounded (player keeps playing; we only flush backup).
-            guard scenePhase == .active else { return }
-            if isPlaying {
-                // Extrapolate from last YT sync — cap so stalled posts can't race ahead of speech.
-                let elapsed = Date().timeIntervalSince(syncedAt) * 1000
-                currentTimeMs = syncedTimeMs + min(elapsed, 300)
-            } else if currentTimeMs != syncedTimeMs {
-                currentTimeMs = syncedTimeMs
+        // Saved cues first, Drive REST after (needs prior Connect / token in Keychain).
+        .task(id: videoID) {
+            await loadCaptions(for: videoID)
+            if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
+                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                statusMessage = "Drive: đã nạp bản mới (\(currentCues.count) cue)"
             }
+        }
+        // ponytail: was 30Hz @State (full tree); now only refresh activeCueId (~8Hz, writes when id changes)
+        .onReceive(Timer.publish(every: 0.125, on: .main, in: .common).autoconnect()) { _ in
+            guard scenePhase == .active else { return }
+            refreshActiveCueId(at: playheadMs)
         }
         .sheet(isPresented: $showSettings) { SidePanelSettingsSheet() }
-        .sheet(isPresented: $showBackupFolderPicker) {
-            BackupFolderPicker { url in
-                BackupService.shared.setFolder(url)
-                BackupService.shared.autoRestoreIfEmpty(context: modelContext)
-                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                statusMessage = BackupService.shared.status
-                showBackupFolderPicker = false
-            }
-            .ignoresSafeArea()
-        }
         .confirmationDialog("Xóa toàn bộ EN/VI?", isPresented: $confirmClearMT, titleVisibility: .visible) {
             Button("Xóa dịch", role: .destructive) { clearTranslations() }
             Button("Hủy", role: .cancel) {}
@@ -136,12 +136,28 @@ struct ContentView: View {
         }
         .task {
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
+            if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
+                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+            }
             if let s = BackupService.shared.status { statusMessage = s }
         }
         .onChange(of: scenePhase) { _, phase in
             // Flush only — do not pause YouTube when backgrounding.
             if phase == .background {
                 BackupService.shared.flushPending(context: modelContext)
+            } else if phase == .active {
+                // Backup first: its restore rebuilds VideoScript rows, so the Drive sync
+                // must run after to re-establish rev.
+                let restored = BackupService.shared.syncFromDriveIfNewer(context: modelContext)
+                if restored {
+                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                }
+                if let s = BackupService.shared.status { statusMessage = s }
+                Task {
+                    if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
+                        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                    }
+                }
             }
         }
     }
@@ -238,12 +254,20 @@ struct ContentView: View {
                     }
                 },
                 onTimeUpdate: { currentTime, _, paused in
-                    syncedTimeMs = currentTime * 1000
-                    syncedAt = Date()
-                    isPlaying = !paused
-                    currentTimeMs = syncedTimeMs
+                    playheadSync.timeMs = currentTime * 1000
+                    playheadSync.at = Date()
+                    let playing = !paused
+                    if isPlaying != playing { isPlaying = playing }
+                    refreshActiveCueId(at: playheadSync.timeMs)
                 },
-                onVideoRect: { videoFrame = $0 },
+                onVideoRect: { rect in
+                    if let prev = videoFrame,
+                       abs(prev.minX - rect.minX) < 2, abs(prev.minY - rect.minY) < 2,
+                       abs(prev.width - rect.width) < 2, abs(prev.height - rect.height) < 2 {
+                        return
+                    }
+                    videoFrame = rect
+                },
                 onLayoutCheck: { dict in
                     let noFixed = (dict["noFixedPlayer"] as? Bool) ?? ((dict["noFixedPlayer"] as? NSNumber)?.boolValue ?? false)
                     let hasBottom = (dict["hasBottomChrome"] as? Bool) ?? ((dict["hasBottomChrome"] as? NSNumber)?.boolValue ?? false)
@@ -278,8 +302,7 @@ struct ContentView: View {
 
             if overlayShown {
                 HardsubOverlayView(
-                    cues: currentCues,
-                    currentTimeMs: currentTimeMs,
+                    activeCue: activeCue,
                     videoFrame: videoFrame,
                     showJA: showJA,
                     showEN: showEN,
@@ -404,31 +427,13 @@ struct ContentView: View {
     private var toolsColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
             SidePanelToolbar(
-                overlayOn: overlayShown,
                 onReload: { Task { await loadCaptions(for: videoID) } },
                 onAddCue: addCueAtPlayhead,
-                onToggleOverlay: {
-                    guard onYouTubeWatch else { return }
-                    overlayOn.toggle()
-                },
                 onClearTranslations: { confirmClearMT = true },
                 onWipeScript: { confirmWipe = true },
                 onExport: exportScript,
                 onImport: { showImporter = true },
-                onPickBackupFolder: {
-                    statusMessage = "Chọn folder trên Google Drive trong Files"
-                    showBackupFolderPicker = true
-                },
-                onBackupNow: {
-                    BackupService.shared.backupNow(context: modelContext)
-                    statusMessage = BackupService.shared.status
-                },
-                onRestore: {
-                    if BackupService.shared.restore(context: modelContext) {
-                        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                    }
-                    statusMessage = BackupService.shared.status
-                },
+                onConnectDrive: { Task { await connectDrive() } },
                 onSettings: { showSettings = true }
             )
 
@@ -437,19 +442,12 @@ struct ContentView: View {
             }
 
             HStack(spacing: 10) {
-                Image(systemName: isPlaying ? "play.fill" : "pause.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(formatTime(currentTimeMs))
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(Color.primary)
-                if let active = activeCue {
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text(formatTime(active.startTime))
-                        .font(.subheadline.monospacedDigit().weight(.medium))
-                        .foregroundStyle(.primary.opacity(0.75))
-                }
+                // Isolated so ~4Hz clock ticks don't rebuild the cue List below.
+                PlayheadStatusChip(
+                    sync: playheadSync,
+                    isPlaying: isPlaying,
+                    activeStartMs: activeCue?.startTime
+                )
                 Spacer()
                 Toggle(isOn: Binding(
                     get: { followTimeline },
@@ -518,7 +516,7 @@ struct ContentView: View {
                 ScrollViewReader { proxy in
                     List {
                         ForEach(live) { cue in
-                            let active = activeCue?.id == cue.id
+                            let active = activeCueId == cue.id
                             CueEditorRow(
                                 cue: cue,
                                 isActive: active,
@@ -561,11 +559,11 @@ struct ContentView: View {
                         DragGesture(minimumDistance: 8)
                             .onChanged { _ in pauseFollowFromUser() }
                     )
-                    .onChange(of: activeCue?.id) { _, newId in
+                    .onChange(of: activeCueId) { _, newId in
                         scrollActiveIntoView(proxy, id: newId)
                     }
                     .onChange(of: followResumeNonce) { _, _ in
-                        scrollActiveIntoView(proxy, id: activeCue?.id)
+                        scrollActiveIntoView(proxy, id: activeCueId)
                     }
                 }
             }
@@ -661,6 +659,11 @@ struct ContentView: View {
 
     // MARK: - Actions
 
+    private func refreshActiveCueId(at timeMs: Double) {
+        let id = ScriptCue.active(in: currentCues, atMs: timeMs)?.id
+        if id != activeCueId { activeCueId = id }
+    }
+
     /// Desktop `pauseFollowFromUser` — user drag on subtitle list stops auto-scroll.
     private func pauseFollowFromUser() {
         if ignoreScrollEvent { return }
@@ -689,9 +692,9 @@ struct ContentView: View {
         let same = id == videoID
         if !same {
             currentCues = []
-            syncedTimeMs = 0
-            syncedAt = Date()
-            currentTimeMs = 0
+            playheadSync.timeMs = 0
+            playheadSync.at = Date()
+            activeCueId = nil
             isPlaying = false
             videoID = id
             // `.task(id:)` + player `.id` handle first load; still bump nonce so a
@@ -743,10 +746,26 @@ struct ContentView: View {
         }
     }
 
+    private func connectDrive() async {
+        do {
+            _ = try await DriveAuthService.shared.connect()
+            statusMessage = "Drive: đã kết nối"
+            if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
+                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                statusMessage = "Drive: đã nạp bản mới (\(currentCues.count) cue)"
+            } else if !videoID.isEmpty {
+                statusMessage = "Drive: đã kết nối · không có bản mới hơn"
+            }
+        } catch {
+            statusMessage = "Drive: \(error.localizedDescription)"
+        }
+    }
+
     private func addCueAtPlayhead() {
-        let cue = ScriptCue.addCueAtPlayhead(videoId: videoID, atMs: currentTimeMs, context: modelContext)
+        let cue = ScriptCue.addCueAtPlayhead(videoId: videoID, atMs: playheadMs, context: modelContext)
         currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-        statusMessage = "Đã thêm cue tại \(formatTime(cue.startTime))"
+        let total = Int(cue.startTime / 1000)
+        statusMessage = String(format: "Đã thêm cue tại %d:%02d", total / 60, total % 60)
         toolTab = .subtitles
     }
 
@@ -819,7 +838,50 @@ struct ContentView: View {
         toolTab = .subtitles
     }
 
-    private func formatTime(_ ms: Double) -> String {
+}
+
+/// Mutable YT playhead anchors — not @Published; writes must not rebuild ContentView.
+private final class PlayheadSync {
+    var timeMs: Double = 0
+    var at: Date = Date()
+}
+
+/// Own timer for the clock so ContentView / cue List don't rebuild on playhead ticks.
+private struct PlayheadStatusChip: View {
+    let sync: PlayheadSync
+    let isPlaying: Bool
+    let activeStartMs: Double?
+    @State private var displayMs: Double = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: isPlaying ? "play.fill" : "pause.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(Self.format(displayMs))
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(Color.primary)
+            if let activeStartMs {
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(Self.format(activeStartMs))
+                    .font(.subheadline.monospacedDigit().weight(.medium))
+                    .foregroundStyle(.primary.opacity(0.75))
+            }
+        }
+        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { _ in
+            if isPlaying {
+                let elapsed = Date().timeIntervalSince(sync.at) * 1000
+                displayMs = sync.timeMs + min(elapsed, 300)
+            } else {
+                displayMs = sync.timeMs
+            }
+        }
+        .onAppear { displayMs = sync.timeMs }
+        .onChange(of: isPlaying) { _, _ in displayMs = sync.timeMs }
+    }
+
+    private static func format(_ ms: Double) -> String {
         let total = Int(ms / 1000)
         return String(format: "%d:%02d", total / 60, total % 60)
     }

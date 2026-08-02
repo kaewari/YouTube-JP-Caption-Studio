@@ -45,3 +45,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.YouTubeJPCaptionStudio.drive-oauth
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.TODO_PASTE_IOS_OAUTH_CLIENT_ID

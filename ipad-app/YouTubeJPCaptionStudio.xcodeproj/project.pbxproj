@@ -29,6 +29,10 @@
 		7591A5CC949393153148BC50 /* SidePanelToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6580BF9872D9EF8A938FE98B /* SidePanelToolbar.swift */; };
 		89B93159ED10CE80DE5A5A9C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 52749AE07D2A32FD0449805B /* Assets.xcassets */; };
 		9BD9D1B9F216D5F365E9565D /* com.youtubejpcaptionstudio.renew.plist in Resources */ = {isa = PBXBuildFile; fileRef = B32DB15C0FDA3CAC2F21770F /* com.youtubejpcaptionstudio.renew.plist */; };
+		9C6414DBCF894434894CBE4A /* DriveScriptsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */; };
+		A11D01A11D01A11D01A11D01 /* DriveOAuthConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11F01A11F01A11F01A11F01 /* DriveOAuthConfig.swift */; };
+		A22D02A22D02A22D02A22D02 /* DriveAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22F02A22F02A22F02A22F02 /* DriveAuthService.swift */; };
+		A33D03A33D03A33D03A33D03 /* DriveAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33F03A33F03A33F03A33F03 /* DriveAPIClient.swift */; };
 		A7C26371E39F13323A493A6B /* YouTubeURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234AADBCA61338B8D3029066 /* YouTubeURL.swift */; };
 		A8F4CD84F7A4F5E1B7BEB6E4 /* user_script.js in Resources */ = {isa = PBXBuildFile; fileRef = AC30B7BA79D24C36DF1F07B7 /* user_script.js */; };
 		AFE02A501F9E66E1ED07F15B /* DictionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB0C5EC7EE3FBD9314E4A33 /* DictionaryService.swift */; };
@@ -62,6 +66,10 @@
 		B19A515A7A2B3E46AC8A08CB /* NLPTagger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NLPTagger.swift; sourceTree = "<group>"; };
 		B32DB15C0FDA3CAC2F21770F /* com.youtubejpcaptionstudio.renew.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = com.youtubejpcaptionstudio.renew.plist; sourceTree = "<group>"; };
 		B56ABD8897AE0C10EDDCEC4D /* deploy-ipad.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "deploy-ipad.sh"; sourceTree = "<group>"; };
+		BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScriptsService.swift; sourceTree = "<group>"; };
+		A11F01A11F01A11F01A11F01 /* DriveOAuthConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveOAuthConfig.swift; sourceTree = "<group>"; };
+		A22F02A22F02A22F02A22F02 /* DriveAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAuthService.swift; sourceTree = "<group>"; };
+		A33F03A33F03A33F03A33F03 /* DriveAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAPIClient.swift; sourceTree = "<group>"; };
 		D21F3F0ACBF8F3113924F89A /* COMMANDS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = COMMANDS.md; sourceTree = "<group>"; };
 		DFA44EB643E9B19B9120686B /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		E5179757783FD2C728EB630E /* YouTubeJPCaptionStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,6 +86,10 @@
 				DFA44EB643E9B19B9120686B /* BackupService.swift */,
 				F574C181FD17FD9F058C61F7 /* CaptionService.swift */,
 				5CB0C5EC7EE3FBD9314E4A33 /* DictionaryService.swift */,
+				A33F03A33F03A33F03A33F03 /* DriveAPIClient.swift */,
+				A22F02A22F02A22F02A22F02 /* DriveAuthService.swift */,
+				A11F01A11F01A11F01A11F01 /* DriveOAuthConfig.swift */,
+				BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */,
 				08484CEA80A422900B3C8E28 /* FreqService.swift */,
 				2BD266EBFF07B4E913FB60E0 /* LayoutSmoke.swift */,
 				B19A515A7A2B3E46AC8A08CB /* NLPTagger.swift */,
@@ -242,6 +254,10 @@
 				5998796F7B90F735CF857B56 /* CueEditorRow.swift in Sources */,
 				4D9481325360B151247A1C28 /* DictPopupView.swift in Sources */,
 				AFE02A501F9E66E1ED07F15B /* DictionaryService.swift in Sources */,
+				A33D03A33D03A33D03A33D03 /* DriveAPIClient.swift in Sources */,
+				A22D02A22D02A22D02A22D02 /* DriveAuthService.swift in Sources */,
+				A11D01A11D01A11D01A11D01 /* DriveOAuthConfig.swift in Sources */,
+				9C6414DBCF894434894CBE4A /* DriveScriptsService.swift in Sources */,
 				49D25F1C933A12A70F36DCCE /* FreqService.swift in Sources */,
 				1996D0D18771C283A322FD87 /* HardsubOverlayView.swift in Sources */,
 				32DC632DEA3CC943327197AE /* LayoutSmoke.swift in Sources */,

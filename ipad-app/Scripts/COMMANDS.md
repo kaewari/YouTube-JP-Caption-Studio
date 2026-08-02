@@ -13,7 +13,7 @@ Làm **một lần** trên Mac + iPad (manual):
 1. Mở `ipad-app/YouTubeJPCaptionStudio.xcodeproj` trong Xcode.
 2. Chọn iPad làm destination → **Automatic Signing** + **Team** (Apple ID). Giữ nguyên Bundle ID.
 3. ⌘R. Trên iPad: **Settings → General → VPN & Device Management → Trust** developer cert.
-4. Smoke: Overlay / Side panel. Trong app: **Thư mục** → Files → Google Drive → chọn folder (vd. `YouTube JP Caption Studio`).
+4. Smoke: Overlay / Side panel. Trong app: **Thư mục** → Connect Drive (OAuth). Cần iOS `client_id` trong `Services/DriveOAuthConfig.swift` (xem mục OAuth bên dưới).
 
 Free account: chữ ký ~7 ngày. Renew từ Mac — **không xoá app**.
 
@@ -77,17 +77,40 @@ Paid Developer Program: bỏ qua chu kỳ ~7 ngày free.
 
 ---
 
+## OAuth Drive API (iPad)
+
+Chrome extension `client_id` **không** dùng được trên iOS. Một lần trên GCP (cùng project với extension):
+
+1. Credentials → Create OAuth client ID → kiểu **iOS** → bundle `com.example.YouTubeJPCaptionStudio`.
+2. Paste full `….apps.googleusercontent.com` vào `ipad-app/Services/DriveOAuthConfig.swift` (`clientId`).
+3. Đổi URL scheme trong `Info.plist` / `project.yml` thành reverse-client-id: `com.googleusercontent.apps.<prefix>` (bỏ `.apps.googleusercontent.com` khỏi client_id).
+4. Consent Testing → thêm email Test users nếu app chưa publish.
+
+Scope: `https://www.googleapis.com/auth/drive`. Folder cố định: `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`.
+
+---
+
 ## Backup / Restore Google Drive (trong app)
 
-File: `caption-studio-backup.json` trong folder đã chọn.
+File vocab snapshot: `caption-studio-backup.json` (vẫn qua Files bookmark nếu đã chọn trước). Script sync: Drive REST + OAuth.
+
+**Folder dùng chung với Desktop extension:** [Drive folder](https://drive.google.com/drive/folders/1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA) (`1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`).
 
 | Nút toolbar | Việc làm |
 |-------------|----------|
-| **Thư mục** | Files → Google Drive → chọn folder (bookmark lưu lại) |
-| **Backup** | Ghi snapshot ngay (scripts + vocab) |
+| **Thư mục** | Connect Drive (OAuth) nếu chưa token; có token thì sync video đang xem |
+| **Backup** | Ghi snapshot vocab ngay (nếu đã có folder bookmark) |
 | **Restore** | Đọc JSON → ghi đè SwiftData |
 
-Sau khi chọn folder: mỗi lần sửa tự backup (debounce ~1.5s). App trống lúc mở → tự restore nếu có file. Xoá app = mất sandbox local; data vẫn ở Drive nếu đã backup.
+### Script theo folder từng video (`<videoId>/cues.json` + `meta.json`)
+
+Script không đi qua `caption-studio-backup.json`. Mỗi video là một subfolder trên Drive; iPad đồng bộ qua Drive API khi đổi video / foreground / nút **Thư mục**.
+
+Mới/cũ so bằng `rev` (đồng hồ Lamport int trong `meta.json`), **không** dùng thời gian file — đồng hồ Mac/iPad lệch và mtime trên Drive là lúc sync. `rev` Drive lớn hơn → iPad nạp về; iPad có sửa thật → ghi lên với `rev + 1`.
+
+Ghi ngược là **patch**: chỉ `start_media_time`/`end_media_time`/`source`/`en`/`vi` bị ghi đè, `tokens`/`mt_locked`/`translation_source` của PC giữ nguyên. Không sửa gì thì không ghi, nên `rev` không tự tăng qua lại.
+
+Sau khi chọn folder: mỗi lần sửa tự backup (debounce ~1.5s). Khi app vào foreground → **auto-pull** nếu Drive `updatedAt` mới hơn (bỏ qua nếu đang dirty). App trống lúc mở → tự restore nếu có file. Timing wire: chỉ `start`; `duration` suy ra local. Xoá app = mất sandbox local; data vẫn ở Drive nếu đã backup.
 
 ---
 

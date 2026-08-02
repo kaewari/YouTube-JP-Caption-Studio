@@ -2,34 +2,25 @@ import SwiftUI
 
 /// Dark pill toolbar matching extension side panel.
 struct SidePanelToolbar: View {
-    var overlayOn: Bool
     var onReload: () -> Void
     var onAddCue: () -> Void
-    var onToggleOverlay: () -> Void
     var onClearTranslations: () -> Void
     var onWipeScript: () -> Void
     var onExport: () -> Void
     var onImport: () -> Void
-    var onPickBackupFolder: () -> Void
-    var onBackupNow: () -> Void
-    var onRestore: () -> Void
+    var onConnectDrive: () -> Void
     var onSettings: () -> Void
-
-    private let accent = Color(red: 0.48, green: 0.28, blue: 0.85)
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 toolButton("Reload", action: onReload)
                 toolButton("+ Cue", action: onAddCue)
-                toolButton("Overlay", active: overlayOn, action: onToggleOverlay)
                 toolButton("Xóa dịch", action: onClearTranslations)
                 toolButton("Xóa sub", action: onWipeScript)
                 toolButton("Export", action: onExport)
                 toolButton("Import", action: onImport)
-                toolButton("Thư mục", action: onPickBackupFolder)
-                toolButton("Backup", action: onBackupNow)
-                toolButton("Restore", action: onRestore)
+                toolButton("Thư mục", action: onConnectDrive)
                 Button(action: onSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.caption.weight(.semibold))
@@ -45,7 +36,7 @@ struct SidePanelToolbar: View {
         .background(Color.black)
     }
 
-    private func toolButton(_ title: String, active: Bool = false, action: @escaping () -> Void) -> some View {
+    private func toolButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -53,7 +44,7 @@ struct SidePanelToolbar: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(
-                    active ? accent : Color(white: 0.22),
+                    Color(white: 0.22),
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                 )
         }
@@ -135,8 +126,8 @@ struct SidePanelSettingsSheet: View {
                 } header: {
                     Text("Màu JLPT")
                 }
-                Section("Backup") {
-                    Text("Chọn folder trên Google Drive trong Files (nút Thư mục trên toolbar). Mỗi lần sửa sẽ tự ghi caption-studio-backup.json.")
+                Section("Connect Drive") {
+                    Text("Nút Thư mục → OAuth Google (Drive API). Folder cố định 1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA. Cần iOS client_id trong DriveOAuthConfig.swift (xem COMMANDS.md).")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
