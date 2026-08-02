@@ -104,10 +104,12 @@ struct ContentView: View {
         // Saved cues first, Drive REST after (needs prior Connect / token in Keychain).
         .task(id: videoID) {
             await loadCaptions(for: videoID)
-            if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
+            guard DriveAuthService.shared.hasToken else { return }
+            let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
+            if result.changed {
                 currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                statusMessage = "Drive: đã nạp bản mới (\(currentCues.count) cue)"
             }
+            statusMessage = result.message
         }
         // ponytail: was 30Hz @State (full tree); now only refresh activeCueId (~8Hz, writes when id changes)
         .onReceive(Timer.publish(every: 0.125, on: .main, in: .common).autoconnect()) { _ in
@@ -154,9 +156,12 @@ struct ContentView: View {
                 }
                 if let s = BackupService.shared.status { statusMessage = s }
                 Task {
-                    if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
+                    guard DriveAuthService.shared.hasToken else { return }
+                    let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
+                    if result.changed {
                         currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
                     }
+                    statusMessage = result.message
                 }
             }
         }
@@ -749,13 +754,14 @@ struct ContentView: View {
     private func connectDrive() async {
         do {
             _ = try await DriveAuthService.shared.connect()
-            statusMessage = "Drive: đã kết nối"
-            if await DriveScriptsService.sync(videoId: videoID, context: modelContext) {
-                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
-                statusMessage = "Drive: đã nạp bản mới (\(currentCues.count) cue)"
-            } else if !videoID.isEmpty {
-                statusMessage = "Drive: đã kết nối · không có bản mới hơn"
+            guard DriveAuthService.shared.hasToken else {
+                statusMessage = "Drive: OAuth xong nhưng chưa lưu được token"
+                return
             }
+            statusMessage = "Drive: đã kết nối · đang tìm \(videoID)…"
+            let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+            statusMessage = result.message
         } catch {
             statusMessage = "Drive: \(error.localizedDescription)"
         }

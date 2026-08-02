@@ -47,7 +47,7 @@ final class DriveAuthService: NSObject {
             if !tokens.refreshToken.isEmpty,
                let refreshed = try? await refresh(tokens.refreshToken) {
                 tokens = refreshed
-                saveTokens(tokens)
+                try saveTokens(tokens)
                 return tokens.accessToken
             }
             if !interactive { return nil }
@@ -55,7 +55,7 @@ final class DriveAuthService: NSObject {
             return nil
         }
         let tokens = try await authorize()
-        saveTokens(tokens)
+        try saveTokens(tokens)
         return tokens.accessToken
     }
 
@@ -179,8 +179,10 @@ final class DriveAuthService: NSObject {
         var expiresAt: Date
     }
 
-    private func saveTokens(_ tokens: Tokens) {
-        guard let data = try? JSONEncoder().encode(tokens) else { return }
+    private func saveTokens(_ tokens: Tokens) throws {
+        guard let data = try? JSONEncoder().encode(tokens) else {
+            throw DriveAuthError.badTokenJSON
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -190,7 +192,10 @@ final class DriveAuthService: NSObject {
         var add = query
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        let status = SecItemAdd(add as CFDictionary, nil)
+        guard status == errSecSuccess || status == errSecDuplicateItem else {
+            throw DriveAuthError.tokenHTTP(Int(status), "Keychain save failed")
+        }
     }
 
     private func loadTokens() -> Tokens? {

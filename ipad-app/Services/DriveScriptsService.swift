@@ -18,17 +18,27 @@ enum DriveScriptsService {
         return fresh
     }()
 
+    struct SyncResult {
+        var changed: Bool
+        var message: String
+    }
+
     // MARK: - Sync
 
     /// Pull when Drive is ahead, otherwise push iPad edits back as a patch.
-    /// Returns true when SwiftData changed and the caller must reload its cues.
+    /// Always returns a Vietnamese status line (found / missing / error / up-to-date).
     @discardableResult
-    static func sync(videoId: String, context: ModelContext) async -> Bool {
-        guard !videoId.isEmpty, DriveAuthService.shared.hasToken else { return false }
+    static func sync(videoId: String, context: ModelContext) async -> SyncResult {
+        guard !videoId.isEmpty else {
+            return SyncResult(changed: false, message: "Drive: chưa có videoId")
+        }
+        guard DriveAuthService.shared.hasToken else {
+            return SyncResult(changed: false, message: "Chưa Connect Drive")
+        }
         do {
             return try await syncThrowing(videoId: videoId, context: context)
         } catch {
-            return false
+            return SyncResult(changed: false, message: "Drive: \(error.localizedDescription)")
         }
     }
 
@@ -39,7 +49,7 @@ enum DriveScriptsService {
             let folders = try await DriveAPIClient.listVideoFolders()
             var pulled = 0
             for folder in folders {
-                if try await syncThrowing(videoId: folder.name, context: context) { pulled += 1 }
+                if try await syncThrowing(videoId: folder.name, context: context).changed { pulled += 1 }
             }
             return folders.isEmpty
                 ? "Drive: chưa thấy folder video nào"
@@ -49,15 +59,22 @@ enum DriveScriptsService {
         }
     }
 
-    private static func syncThrowing(videoId: String, context: ModelContext) async throws -> Bool {
-        let folderId = try await DriveAPIClient.ensureVideoFolder(videoId: videoId)
+    private static func syncThrowing(videoId: String, context: ModelContext) async throws -> SyncResult {
+        // Pull path: find only — never mkdir empty folders that mask a missing match.
+        guard let folderId = try await DriveAPIClient.findVideoFolder(videoId: videoId) else {
+            return SyncResult(changed: false, message: "Drive: không thấy folder \(videoId)")
+        }
         let children = try await DriveAPIClient.children(folderId: folderId)
-        guard let cuesFileId = children["cues.json"] else { return false }
+        guard let cuesFileId = children["cues.json"] else {
+            return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu cues.json")
+        }
 
         let cuesText = try await DriveAPIClient.getText(fileId: cuesFileId)
         guard let cuesData = cuesText.data(using: .utf8),
               let cuesRoot = (try? JSONSerialization.jsonObject(with: cuesData)) as? [String: Any]
-        else { return false }
+        else {
+            return SyncResult(changed: false, message: "Drive: cues.json lỗi (\(videoId))")
+        }
 
         var meta: [String: Any]
         if let metaId = children["meta.json"],
@@ -72,13 +89,23 @@ enum DriveScriptsService {
 
         let script = fetchScript(videoId: videoId, context: context)
         if script == nil || driveRev > (script?.rev ?? 0) {
-            return pull(videoId: videoId, cuesData: cuesData, meta: meta, rev: driveRev, context: context)
+            let count = pull(videoId: videoId, cuesData: cuesData, meta: meta, rev: driveRev, context: context)
+            guard count > 0 else {
+                return SyncResult(changed: false, message: "Drive: cues.json trống (\(videoId))")
+            }
+            return SyncResult(changed: true, message: "Drive: đã nạp \(videoId) (\(count) cue · rev \(driveRev))")
         }
 
+        let liveCount = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }.count
         guard let script,
               let live = liveCues(videoId: videoId, context: context),
               var patched = patchedCues(original: cuesRoot, cues: live)
-        else { return false }
+        else {
+            return SyncResult(
+                changed: false,
+                message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script?.rev ?? driveRev))"
+            )
+        }
 
         let rev = max(driveRev, script.rev) + 1
         meta["video_id"] = videoId
@@ -91,7 +118,9 @@ enum DriveScriptsService {
         guard let cuesOut = encode(patched), let metaOut = encode(meta),
               let cuesStr = String(data: cuesOut, encoding: .utf8),
               let metaStr = String(data: metaOut, encoding: .utf8)
-        else { return false }
+        else {
+            return SyncResult(changed: false, message: "Drive: không encode được patch (\(videoId))")
+        }
 
         _ = try await DriveAPIClient.putText(
             folderId: folderId, name: "cues.json", text: cuesStr, fileId: cuesFileId
@@ -99,11 +128,10 @@ enum DriveScriptsService {
         _ = try await DriveAPIClient.putText(
             folderId: folderId, name: "meta.json", text: metaStr, fileId: children["meta.json"]
         )
-        // script.txt is regenerated by the bridge on mirror — no iPad renderer for its header.
         script.rev = rev
         script.deviceId = deviceId
         try? context.save()
-        return false
+        return SyncResult(changed: false, message: "Drive: đã đẩy \(videoId) (rev \(rev))")
     }
 
     private static func pull(
@@ -112,18 +140,18 @@ enum DriveScriptsService {
         meta: [String: Any],
         rev: Int,
         context: ModelContext
-    ) -> Bool {
-        guard let text = String(data: cuesData, encoding: .utf8) else { return false }
+    ) -> Int {
+        guard let text = String(data: cuesData, encoding: .utf8) else { return 0 }
         let rows = ScriptCue.parseImportRows(text)
-        guard !rows.isEmpty else { return false }
-        _ = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
+        guard !rows.isEmpty else { return 0 }
+        let result = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
         if let script = fetchScript(videoId: videoId, context: context) {
             script.rev = rev
             script.deviceId = meta["deviceId"] as? String ?? ""
             if let title = meta["title"] as? String, !title.isEmpty { script.title = title }
             try? context.save()
         }
-        return true
+        return result.replaced
     }
 
     // MARK: - Patch merge
@@ -268,6 +296,10 @@ enum DriveScriptsSmoke {
         assert((cues?[1]["tokens"] as? [Any])?.isEmpty == true, "new cue gets empty tokens")
         assert(abs(DriveScriptsService.double(cues?[1]["start_media_time"]) - 5.0) < 1e-9, "ms → sec on write")
         assert((patched?["meta"] as? [String: Any])?["rev"] as? Int == 5, "untouched keys ride along")
+
+        // Status copy must name the videoId so Connect UI can show found/missing clearly.
+        let missing = DriveScriptsService.SyncResult(changed: false, message: "Drive: không thấy folder EiISOvl2_tQ")
+        assert(missing.message.contains("EiISOvl2_tQ"), "missing status includes videoId")
 
         print("[DriveScriptsSmoke] ok")
     }

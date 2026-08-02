@@ -9,15 +9,19 @@ enum DriveAPIClient {
 
     // MARK: - URL builders (offline-testable)
 
-    static func listURL(q: String, pageSize: Int = 200) -> URL {
+    static func listURL(q: String, pageSize: Int = 200, pageToken: String? = nil) -> URL {
         var comps = URLComponents(string: "\(apiBase)/files")!
-        comps.queryItems = [
+        var items = [
             URLQueryItem(name: "q", value: q),
-            URLQueryItem(name: "fields", value: "files(id,name)"),
+            URLQueryItem(name: "fields", value: "nextPageToken,files(id,name)"),
             URLQueryItem(name: "pageSize", value: String(pageSize)),
             URLQueryItem(name: "supportsAllDrives", value: "true"),
             URLQueryItem(name: "includeItemsFromAllDrives", value: "true"),
         ]
+        if let pageToken, !pageToken.isEmpty {
+            items.append(URLQueryItem(name: "pageToken", value: pageToken))
+        }
+        comps.queryItems = items
         return comps.url!
     }
 
@@ -82,9 +86,14 @@ enum DriveAPIClient {
         return map
     }
 
-    static func ensureVideoFolder(videoId: String) async throws -> String {
+    /// Look up `<videoId>/` under the fixed parent. Does not create.
+    static func findVideoFolder(videoId: String) async throws -> String? {
         let found = try await list(q: videoFolderQuery(videoId: videoId))
-        if let id = found.first?["id"] as? String { return id }
+        return found.first?["id"] as? String
+    }
+
+    static func ensureVideoFolder(videoId: String) async throws -> String {
+        if let id = try await findVideoFolder(videoId: videoId) { return id }
 
         var req = try await authorized(createMetaURL())
         req.httpMethod = "POST"
@@ -146,9 +155,14 @@ enum DriveAPIClient {
     // MARK: - Internals
 
     private static func list(q: String) async throws -> [[String: Any]] {
-        let req = try await authorized(listURL(q: q))
-        let json = try await jsonObject(req)
-        return json["files"] as? [[String: Any]] ?? []
+        var out: [[String: Any]] = []
+        var pageToken: String?
+        repeat {
+            let json = try await jsonObject(try await authorized(listURL(q: q, pageToken: pageToken)))
+            if let files = json["files"] as? [[String: Any]] { out.append(contentsOf: files) }
+            pageToken = json["nextPageToken"] as? String
+        } while pageToken?.isEmpty == false
+        return out
     }
 
     private static func authorized(_ url: URL) async throws -> URLRequest {
@@ -200,6 +214,10 @@ enum DriveAPISmoke {
         let vq = DriveAPIClient.videoFolderQuery(videoId: "abc123")
         assert(vq.contains("name='abc123'"), "video name")
         assert(vq.contains(DriveOAuthConfig.folderId), "parent folder id")
+        // Case-sensitive exact match — typo Eil vs EiI must not fuzzy-match.
+        let typo = DriveAPIClient.videoFolderQuery(videoId: "EilSOvl2_tQ")
+        assert(typo.contains("name='EilSOvl2_tQ'"), "literal videoId in q")
+        assert(!typo.contains("EiISOvl2_tQ"), "no fuzzy / wrong id")
 
         assert(DriveAPIClient.parseRev(["rev": 7]) == 7, "int rev")
         assert(DriveAPIClient.parseRev(["rev": NSNumber(value: 3)]) == 3, "NSNumber rev")
