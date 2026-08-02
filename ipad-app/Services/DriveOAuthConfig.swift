@@ -5,7 +5,7 @@ import Foundation
 enum DriveOAuthConfig {
     /// Paste iOS client id (`….apps.googleusercontent.com`). Bundle: `com.example.YouTubeJPCaptionStudio`.
     /// Then update `Info.plist` / `project.yml` URL scheme to `com.googleusercontent.apps.<prefix>`.
-    static let clientId = ""
+    static let clientId = "886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns.apps.googleusercontent.com"
     static let folderId = "1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA"
     static let scope = "https://www.googleapis.com/auth/drive"
     static let authURL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
