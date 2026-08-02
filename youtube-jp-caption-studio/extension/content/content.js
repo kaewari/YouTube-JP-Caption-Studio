@@ -77,6 +77,8 @@
   /** @type {Cue[]} */
   let cues = [];
   let currentVideoId = "";
+  /** Bumps on each yt-navigate; stale onNavigate/loadAllCaptions bail out. */
+  let navigateGen = 0;
   let bridgeReady = false;
   let captionsStatus = "idle";
   let captionsInfo = "";
@@ -354,6 +356,8 @@
   }
 
   async function applyLoadedCues(rawCues, info, opts = {}) {
+    const gen = navigateGen;
+    const vid = currentVideoId;
     captionsStatus = "ok";
     captionsInfo = info;
     const normalized = CueTiming.clampCueEndsToNextStart(
@@ -361,6 +365,7 @@
     );
     // Fresh YT only — skip chrome.storage + disk merge (after wipe / hard reset).
     if (opts.skipCache) {
+      if (gen !== navigateGen || currentVideoId !== vid) return;
       transcriptMeta = { owned: false, tombstones: [] };
       cues = mergeCache(normalized, [], transcriptMeta);
       listDirty = true;
@@ -370,7 +375,9 @@
       return;
     }
     const cached = await loadCachedCues(currentVideoId);
+    if (gen !== navigateGen || currentVideoId !== vid) return;
     const meta = await loadTranscriptMeta(currentVideoId);
+    if (gen !== navigateGen || currentVideoId !== vid) return;
     transcriptMeta = meta;
     const merged = mergeCache(normalized, cached, meta);
     // Owned/import script wins: mergeCache keeps file timeline and does not
@@ -385,6 +392,7 @@
     listDirty = true;
     // Align list/overlay to current playhead before first publish (mid-video open).
     await syncToPlayhead();
+    if (gen !== navigateGen || currentVideoId !== vid) return;
     // Status first so the publish includes real cached N/M (not stale 0/0).
     updateCaptionStatusLine();
     // Never auto-save a YT merge that would clobber a richer owned script.
@@ -737,9 +745,9 @@
           byKey.set(key, c);
           continue;
         }
-        // Same stable id: earlier list wins (chrome.storage before disk) so a
-        // deliberate "Xóa dịch" / draft cue is not resurrected by richer disk MT.
-        if (c.id && prev.id && String(c.id) === String(prev.id)) continue;
+        // Same stable id: richer wins. A poor YT auto-save in chrome.storage
+        // must not permanently shadow an owned/translated disk script (same ids).
+        // "Xóa dịch" awaits disk, so cleared chrome is not resurrected from stale disk.
         if (cacheCueScore(c) > cacheCueScore(prev)) byKey.set(key, c);
       }
     }
@@ -765,6 +773,10 @@
     const data = await chrome.storage.local.get([key]);
     const local = flattenCached(data[key] || []);
     const disk = await loadDiskScript(videoId);
+    // Richer list first so same-id ties keep the better copy when scores equal.
+    if (scriptListScore(disk) > scriptListScore(local)) {
+      return mergeCacheLists(disk, local);
+    }
     return mergeCacheLists(local, disk);
   }
 
@@ -847,6 +859,18 @@
     } catch (_) {}
     await chrome.storage.local.set({ [key]: payload });
     await saveTranscriptMeta();
+    // Never clobber a richer owned disk script with a poorer in-memory rebuild.
+    if (!force) {
+      try {
+        const disk = await loadDiskScript(currentVideoId);
+        if (
+          disk.some(isOwnedCue) &&
+          scriptListScore(disk) > scriptListScore(payload) + 0.5
+        ) {
+          return;
+        }
+      } catch (_) {}
+    }
     // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
     if (opts.awaitDisk) {
       await saveTranscriptToDisk(payload);
@@ -987,9 +1011,13 @@
       .sort((a, b) => a.start_media_time - b.start_media_time);
   }
 
-  async function tryApplySavedScript(reason = "disk") {
+  async function tryApplySavedScript(reason = "disk", opts = {}) {
+    const gen = navigateGen;
+    const vid = currentVideoId;
     const cached = await loadCachedCues(currentVideoId);
+    if (gen !== navigateGen || currentVideoId !== vid) return false;
     const meta = await loadTranscriptMeta(currentVideoId);
+    if (gen !== navigateGen || currentVideoId !== vid) return false;
     transcriptMeta = meta;
     if (cached.some(isOwnedCue)) transcriptMeta.owned = true;
     let fromScript = cuesFromSavedScript(cached);
@@ -1003,9 +1031,10 @@
     cues = fromScript;
     listDirty = true;
     await syncToPlayhead();
+    if (gen !== navigateGen || currentVideoId !== vid) return false;
     updateCaptionStatusLine();
     scheduleSaveTranscript();
-    toast(`Đã tải script đã lưu (${fromScript.length} câu)`);
+    if (!opts.quiet) toast(`Đã tải script đã lưu (${fromScript.length} câu)`);
     return true;
   }
 
@@ -1711,6 +1740,7 @@
   let lastStatusText = "";
   let contentTabId = null;
   let spPublishSeq = 0;
+  const spSessionId = `${Date.now()}-${Math.random()}`;
 
   async function ensureContentTabId() {
     if (contentTabId != null) return contentTabId;
@@ -1746,6 +1776,7 @@
       userVocab,
       ...extra,
       _seq: seq,
+      _session: spSessionId,
     };
     if (forceCues) {
       payload.cues = cues.map((c) => ({
@@ -2092,6 +2123,10 @@
   }
 
   async function loadAllCaptions(force = false, opts = {}) {
+    const gen = navigateGen;
+    const vid = currentVideoId;
+    const stale = () => gen !== navigateGen || currentVideoId !== vid;
+
     if (!currentVideoId) {
       captionsStatus = "none";
       captionsInfo = "no_video_id";
@@ -2130,6 +2165,7 @@
         : opts.bridgeReady === false
           ? false
           : await waitForPageBridge(2500);
+    if (stale()) return;
 
     if (ready) {
       // Instant use if player already intercepted timedtext body.
@@ -2138,6 +2174,7 @@
         { videoId: currentVideoId, lang: settings.sourceLang },
         800
       );
+      if (stale()) return;
       if (pageLink?.cues?.length) {
         await applyLoadedCues(
           pageLink.cues,
@@ -2154,6 +2191,7 @@
       });
       const raceDeadline = Date.now() + 700;
       while (Date.now() < raceDeadline) {
+        if (stale()) return;
         if (swOk(swEarly)) {
           await applyLoadedCues(
             swEarly.cues,
@@ -2168,6 +2206,7 @@
           { videoId: currentVideoId, lang: settings.sourceLang },
           400
         );
+        if (stale()) return;
         if (pageLink?.cues?.length) {
           await applyLoadedCues(
             pageLink.cues,
@@ -2180,12 +2219,14 @@
     }
 
     let sw = await swPromise;
+    if (stale()) return;
     if (!swOk(sw) && pageLink?.baseUrl) {
       sw = await loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
         baseUrl: pageLink.baseUrl,
         asr: !!pageLink.asr,
         lang: pageLink.lang || settings.sourceLang,
       });
+      if (stale()) return;
     }
     if (swOk(sw)) {
       await applyLoadedCues(
@@ -2202,6 +2243,7 @@
         { videoId: currentVideoId, lang: settings.sourceLang, force: !!force },
         45000
       );
+      if (stale()) return;
       if (r?.ok && r.status === "ok" && Array.isArray(r.cues) && r.cues.length) {
         await applyLoadedCues(
           r.cues,
@@ -2212,6 +2254,7 @@
       }
       if (r?.baseUrl) {
         const rescued = await fetchTimedtextInContent(r.baseUrl);
+        if (stale()) return;
         if (rescued?.length) {
           await applyLoadedCues(
             rescued,
@@ -2231,6 +2274,7 @@
     // Prefer previously saved script over empty session (reload / bridge race).
     // Hard wipe must not resurrect disk/chrome script.
     if (!skipCache && (await tryApplySavedScript("script"))) return;
+    if (stale()) return;
 
     cues = [];
     listDirty = true;
@@ -3202,6 +3246,7 @@
   }
 
   async function onNavigate() {
+    const gen = ++navigateGen;
     currentVideoId = videoIdFromUrl();
     cues = [];
     activeCueId = "";
@@ -3210,19 +3255,42 @@
     if (currentVideoId) {
       transcriptMeta = await loadTranscriptMeta(currentVideoId);
     }
+    if (gen !== navigateGen) return;
+
+    // iPad parity: restore saved script immediately; owned import skips YT replace.
     listDirty = true;
-    renderList(true);
+    const restored =
+      !!currentVideoId &&
+      (await tryApplySavedScript("navigate", { quiet: true }));
+    if (gen !== navigateGen) return;
+    if (!restored) renderList(true);
+
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     void maybeAutoOpenOnNavigate();
+
+    if (restored && transcriptMeta.owned) {
+      // Heal chrome.storage if a poor YT auto-save was shadowing disk.
+      void saveTranscript({ force: true });
+      if (cues.length) await syncToPlayhead();
+      else updateBar(null);
+      syncHealth();
+      return;
+    }
+
     const ready = await waitForPageBridge(2500);
+    if (gen !== navigateGen) return;
     if (ready) await pageCall("BIND", {}, 400);
+    if (gen !== navigateGen) return;
     // Pass bridgeReady so loadAllCaptions does not wait again; SW starts ASAP inside.
     await loadAllCaptions(true, { bridgeReady: ready });
+    if (gen !== navigateGen) return;
     if (!cues.length && currentVideoId) {
       await sleep(800);
+      if (gen !== navigateGen) return;
       await loadAllCaptions(true, { bridgeReady: ready });
     }
+    if (gen !== navigateGen) return;
     if (cues.length) await syncToPlayhead();
     else updateBar(null);
     syncHealth();

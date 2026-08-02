@@ -51,6 +51,7 @@
   let listDirty = true;
   /** Last accepted SP_STATE cue-list sequence (drop stale full payloads). */
   let lastCueSeq = 0;
+  let lastCueSession = "";
 
   /**
    * Edit session for JA / EN / VI / timeline. While set, skip full renderList.
@@ -1025,6 +1026,15 @@
   function applyState(next, _opts = {}) {
     let incoming = next && typeof next === "object" ? { ...next } : {};
 
+    // Sequence numbers restart when content reloads and are scoped per video.
+    if (
+      (incoming._session != null && incoming._session !== lastCueSession) ||
+      (incoming.videoId != null && incoming.videoId !== state.videoId)
+    ) {
+      if (incoming._session != null) lastCueSession = incoming._session;
+      lastCueSeq = 0;
+    }
+
     // Drop stale full cue payloads (async publish race). Partial updates omit cues.
     if (Array.isArray(incoming.cues) && typeof incoming._seq === "number") {
       if (incoming._seq < lastCueSeq) {
@@ -1034,6 +1044,16 @@
       }
     }
     delete incoming._seq;
+    delete incoming._session;
+
+    // Video switch without cue list → clear stale rows from previous video.
+    if (
+      incoming.videoId != null &&
+      incoming.videoId !== state.videoId &&
+      !Array.isArray(incoming.cues)
+    ) {
+      incoming.cues = [];
+    }
 
     const prevActive = state.activeCueId;
     state = { ...state, ...incoming };
