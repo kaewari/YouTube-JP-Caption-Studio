@@ -37,9 +37,9 @@ struct Token: Identifiable, Hashable {
 
 enum NLPTagger {
     private static let kanji = try! NSRegularExpression(pattern: "[\\u3400-\\u9fff]")
-    // ponytail: small string→tokens map; wipe when full — LRU if thrash grows
+    // ponytail: string→tokens map sized for a typical script; wipe when full — LRU if thrash grows
     private static var tokenizeCache: [String: [Token]] = [:]
-    private static let tokenizeCacheLimit = 48
+    private static let tokenizeCacheLimit = 256
 
     static func tokenize(_ text: String) -> [Token] {
         guard !text.isEmpty else { return [] }

@@ -58,6 +58,77 @@ body {
   flex: 1;
 }
 
+.sp-drive-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.sp-drive-row button {
+  background: #2a2a3a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.sp-drive-row button:hover {
+  background: #3a3a50;
+}
+
+.sp-drive-status {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-drive-status.is-error {
+  color: #f0a0a0;
+}
+
+.sp-drive-status.is-ok {
+  color: #9dcea8;
+}
+
+.sp-source-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 10px;
+}
+
+.sp-source {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.sp-source-refresh {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.sp-source-refresh:hover {
+  color: #fff;
+}
+
 .sp-actions {
   display: flex;
   flex-wrap: wrap;

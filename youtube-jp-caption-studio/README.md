@@ -28,6 +28,7 @@
 6. **Local Data Ownership**: Manual translations and edits are prioritized and saved locally (file/SQLite via Bridge on Desktop; SwiftData on iPad). YouTube never overwrites your work.
 7. **Auto IME Switching (macOS Desktop only)**: Automatically switches to the Japanese keyboard when editing Japanese subtitles.
 8. **Native iPad Experience**: Standalone SwiftUI app — hardsub, side panel, tokenize, dict popup, import/export — no local server. Not full Desktop parity (no Auto IME; vocab status marks deferred).
+9. **Drive sync (PC ↔ iPad)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder. Extension uses `chrome.identity` + bridge `/backup/snapshot`; iPad uses Files bookmark + auto-pull on foreground. Setup: replace OAuth `client_id` in `extension/manifest.json`, Connect Drive, pick the same Drive folder on iPad (see `walkthrough.md` §3.5).
 
 ## 🏗 System Architecture
 The project supports two completely different stacks to cover both Desktop and Mobile (iPad) experiences:
@@ -100,6 +101,7 @@ OCR **不使用**。機械翻訳 **不使用**。すべての翻訳は手動ま�
 6. **ローカルデータ保存**: 手動翻訳・編集を優先してローカル保存。YouTube データで上書きされない。
 7. **自動 IME 切り替え (macOS デスクトップのみ)**: 日本語編集時に日本語キーボードへ自動切替。
 8. **ネイティブiPad体験**: サーバー不要の SwiftUI アプリ（hardsub・辞書・インポート等）。Auto IME や状態マークは未対応。
+9. **Drive同期 (PC ↔ iPad)**: 共有 `caption-studio-backup.json`。拡張は OAuth + bridge；iPad は Files。詳細は `walkthrough.md` §3.5。
 
 ## 🏗 システム構成
 本プロジェクトは、デスクトップとモバイル（iPad）の両方をカバーするため、2つの異なるアーキテクチャをサポートしています。
@@ -169,6 +171,7 @@ curl -s http://127.0.0.1:8765/health
 6. **Lưu trữ Local (Data Ownership)**: Bản dịch/sửa ưu tiên lưu local; YouTube không đè lên.
 7. **Auto IME (chỉ macOS Desktop)**: Tự chuyển bàn phím Nhật khi sửa JA.
 8. **App iPad Native**: SwiftUI độc lập — hardsub, dict popup, import/export — không cần server. Chưa đủ parity tuyệt đối (không Auto IME; chưa mark Known/Learning trên popup).
+9. **Đồng bộ Drive (PC ↔ iPad)**: Cùng file `caption-studio-backup.json` trong folder Drive cố định. Extension: OAuth + bridge `/backup/snapshot`; iPad: Files + auto-pull khi foreground. Setup: thay `client_id` trong `manifest.json`, Connect Drive, chọn cùng folder trên iPad (xem `walkthrough.md` §3.5).
 
 ## 🏗 Kiến trúc Hệ thống
 Dự án được xây dựng với hai kiến trúc hoàn toàn khác nhau để tối ưu cho cả Desktop và Mobile:

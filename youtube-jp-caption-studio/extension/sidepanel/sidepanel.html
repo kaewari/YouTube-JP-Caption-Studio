@@ -12,6 +12,22 @@
         <strong>YT Caption</strong>
         <span id="sp-status" class="sp-status">…</span>
       </div>
+      <!-- Drive: replace oauth2.client_id in ../manifest.json (Google Cloud → OAuth Chrome Extension client + this extension ID). Folder fixed; no Picker. -->
+      <div class="sp-drive-row">
+        <button type="button" id="sp-drive-connect" title="OAuth + tìm/tạo caption-studio-backup.json trong folder Drive cố định">
+          Connect Drive
+        </button>
+        <button type="button" id="sp-drive-upload" title="Mirror mọi script lên Drive theo folder <videoId>/ (cues.json, meta.json, script.txt) + vocab">
+          Upload Drive
+        </button>
+        <span id="sp-drive-status" class="sp-drive-status" title="PC ↔ Drive ↔ iPad: vocab qua caption-studio-backup.json, script qua folder <videoId>/"></span>
+      </div>
+      <div class="sp-source-row">
+        <span id="sp-source" class="sp-source" title="Bản đang hiển thị: nguồn · rev (Lamport) · lần lưu gần nhất"></span>
+        <button type="button" id="sp-source-refresh" class="sp-source-refresh" title="Kiểm tra Drive rồi nạp lại bản mới nhất">
+          ⟳
+        </button>
+      </div>
       <div class="sp-actions">
         <button type="button" id="sp-reload" title="Tải lại caption">Reload</button>
         <button type="button" id="sp-add-cue" title="Thêm cue tại playhead">+ Cue</button>

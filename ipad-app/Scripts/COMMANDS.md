@@ -94,15 +94,15 @@ Scope: `https://www.googleapis.com/auth/drive`. Folder cố định: `1K8LPtKici
 
 ## Backup / Restore Google Drive (trong app)
 
-File vocab snapshot: `caption-studio-backup.json` (vẫn qua Files bookmark nếu đã chọn trước). Script sync: Drive REST + OAuth.
+**Primary vocab sync = OAuth Connect** → cùng file `caption-studio-backup.json` (Drive REST, LWW; push luôn `scripts: []`, chỉ áp Vocabulary). Files bookmark Backup/Restore vẫn là fallback offline/reinstall. Script sync: Drive REST per-video folder. Settings: `caption-studio-settings.json` (auto pull/push sau Connect).
 
 **Folder dùng chung với Desktop extension:** [Drive folder](https://drive.google.com/drive/folders/1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA) (`1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`).
 
 | Nút toolbar | Việc làm |
 |-------------|----------|
-| **Thư mục** | Connect Drive (OAuth) nếu chưa token; có token thì sync video đang xem |
-| **Backup** | Ghi snapshot vocab ngay (nếu đã có folder bookmark) |
-| **Restore** | Đọc JSON → ghi đè SwiftData |
+| **Thư mục** | Connect Drive (OAuth) nếu chưa token; có token thì sync video đang xem + settings + vocab LWW |
+| **Backup** | Ghi snapshot qua Files bookmark (fallback; nếu đã chọn folder) |
+| **Restore** | Đọc JSON Files → ghi đè SwiftData (scripts + vocab) |
 
 ### Script theo folder từng video (`<videoId>/cues.json` + `meta.json`)
 

@@ -116,13 +116,14 @@ class BootstrapProgress(BaseModel):
 
 
 class ScriptCue(BaseModel):
+    """Wire cue — no tokens; those live in tokens.json / GET /scripts/{id}/tokens."""
+
     id: str = ""
     start_media_time: float = 0.0
     end_media_time: float = 0.0
     source: str = ""
     en: str = ""
     vi: str = ""
-    tokens: list[Any] = Field(default_factory=list)
     translated: bool = False
     text_source: str = "yt"
     # User/import owns EN/VI (token enrich OK).
@@ -130,11 +131,19 @@ class ScriptCue(BaseModel):
     translation_source: str = ""  # "" | "user" | "import"
 
 
+class ScriptCueIn(ScriptCue):
+    """Save side still accepts inline tokens; the store splits them out."""
+
+    tokens: list[Any] = Field(default_factory=list)
+
+
 class ScriptSaveRequest(BaseModel):
     video_id: str
-    cues: list[ScriptCue] = Field(default_factory=list)
+    cues: list[ScriptCueIn] = Field(default_factory=list)
     url: str = ""
     title: str = ""
+    owned: Optional[bool] = None
+    rev: Optional[int] = None
 
 
 class ScriptSaveResponse(BaseModel):
@@ -144,7 +153,14 @@ class ScriptSaveResponse(BaseModel):
     txt_path: str = ""
     cue_count: int = 0
     translated_count: int = 0
+    rev: int = 0
     message: str = ""
+
+
+class ScriptFilesRequest(BaseModel):
+    """Drive → disk mirror: {"files": {"cues.json": "...", ...}}."""
+
+    files: dict[str, str] = Field(default_factory=dict)
 
 
 class ScriptLoadResponse(BaseModel):

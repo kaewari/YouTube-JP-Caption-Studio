@@ -51,7 +51,11 @@
     };
   };
 
-  function postTime() {
+  // ponytail: bridge storms heat the device — ~8Hz + skip unchanged pause/time
+  var __csLastPostT = -1;
+  var __csLastPostPaused = null;
+  var __csLastPostAt = 0;
+  function postTime(force) {
     if (window !== window.top) return;
     if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.timeHandler)) return;
     var video = mainVideo();
@@ -67,8 +71,17 @@
     }
     var d = Number(video.duration);
     if (!isFinite(d)) d = 0;
+    var paused = !!video.paused;
+    var now = Date.now();
+    if (!force) {
+      if (paused === __csLastPostPaused && Math.abs(t - __csLastPostT) < 0.05 && now - __csLastPostAt < 120) return;
+      if (now - __csLastPostAt < 100) return;
+    }
+    __csLastPostT = t;
+    __csLastPostPaused = paused;
+    __csLastPostAt = now;
     window.webkit.messageHandlers.timeHandler.postMessage({
-      type: "TIME_UPDATE", currentTime: t, duration: d, paused: !!video.paused
+      type: "TIME_UPDATE", currentTime: t, duration: d, paused: paused
     });
   }
 
@@ -97,11 +110,14 @@
       if (document.visibilityState !== "hidden") __csWantPlay = false;
     });
     ["timeupdate", "play", "pause", "seeking", "seeked"].forEach(function (ev) {
-      video.addEventListener(ev, postTime);
+      video.addEventListener(ev, function () {
+        postTime(ev === "play" || ev === "pause" || ev === "seeked" || ev === "seeking");
+      });
     });
-    postTime();
+    postTime(true);
   }
 
+  var __csLastRect = "";
   function postVideoRect() {
     if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.rectHandler)) return;
     if (window !== window.top) return;
@@ -109,6 +125,10 @@
     if (!el) return;
     var r = el.getBoundingClientRect();
     if (r.width < 80 || r.height < 60) return;
+    // Integer CSS px — skip bridge when layout hasn't moved.
+    var key = [r.left|0, r.top|0, r.width|0, r.height|0, window.innerWidth|0, window.innerHeight|0].join(",");
+    if (key === __csLastRect) return;
+    __csLastRect = key;
     window.webkit.messageHandlers.rectHandler.postMessage({
       type: "VIDEO_RECT",
       x: r.left, y: r.top, w: r.width, h: r.height,
@@ -154,9 +174,10 @@
     if (window !== window.top) return;
     var v = mainVideo();
     if (v) bindVideo(v);
-    postTime();
+    // Fallback only — timeupdate already posts while playing.
+    postTime(false);
     postVideoRect();
-  }, 250);
+  }, 500);
 
   setInterval(postLayout, 5000);
 })();

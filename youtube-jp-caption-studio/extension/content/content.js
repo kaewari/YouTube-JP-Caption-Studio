@@ -84,8 +84,11 @@
   let captionsInfo = "";
   let activeCueId = "";
   let listDirty = true;
-  /** @type {{ owned: boolean, tombstones: string[] }} */
-  let transcriptMeta = { owned: false, tombstones: [] };
+  /** @returns {{ owned: boolean, tombstones: string[], rev: number, deviceId: string }} */
+  const emptyMeta = () => ({ owned: false, tombstones: [], rev: 0, deviceId: "" });
+  let transcriptMeta = emptyMeta();
+  /** Which copy loadCachedCues last picked — shown in the side panel status line. */
+  let scriptSource = { origin: "", rev: 0, updatedAt: "" };
   /** Session: side panel auto-open attempted once per tab (not per navigate). */
   let autoOpenPanelTried = false;
   /** Chrome blocked sidePanel.open — retry on next player gesture. */
@@ -366,7 +369,7 @@
     // Fresh YT only — skip chrome.storage + disk merge (after wipe / hard reset).
     if (opts.skipCache) {
       if (gen !== navigateGen || currentVideoId !== vid) return;
-      transcriptMeta = { owned: false, tombstones: [] };
+      transcriptMeta = emptyMeta();
       cues = mergeCache(normalized, [], transcriptMeta);
       listDirty = true;
       await syncToPlayhead();
@@ -412,6 +415,31 @@
   });
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "DRIVE_RESTORED") {
+      const only = Array.isArray(msg.videoIds) ? msg.videoIds : null;
+      if (only && currentVideoId && !only.includes(currentVideoId)) {
+        sendResponse({ ok: true, skipped: "other_video" });
+        return true;
+      }
+      // Bridge disk updated from Drive — drop the stale cue cache only. Keeping
+      // transcriptMeta keeps `owned` alive, which is what made restores fall back to YT.
+      void (async () => {
+        try {
+          if (currentVideoId) {
+            await chrome.storage.local.remove([`transcript:${currentVideoId}`]);
+          }
+          const restored = await tryApplySavedScript("drive", { quiet: true });
+          if (!restored) {
+            await loadAllCaptions(true, { skipCache: false });
+          } else if (cues.some(isOwnedCue)) {
+            transcriptMeta.owned = true;
+            await saveTranscriptMeta();
+          }
+        } catch (_) {}
+      })();
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg?.type !== "SP_CMD") return;
     handleSidePanelCmd(msg)
       .then((r) => sendResponse(r || { ok: true }))
@@ -438,6 +466,12 @@
       }
       if (cues.length) toast(`Đã tải ${cues.length} câu`);
       else toast(`Không có caption (${captionsInfo || captionsStatus})`);
+      return { ok: true, count: cues.length };
+    }
+    if (cmd === "refresh_script") {
+      await checkDriveFresh(currentVideoId, { force: true });
+      const ok = await tryApplySavedScript("refresh", { quiet: true });
+      toast(ok ? `Đã làm mới (${cues.length} câu)` : "Không có bản lưu nào mới");
       return { ok: true, count: cues.length };
     }
     if (cmd === "wipe_saved_and_reload") {
@@ -703,13 +737,38 @@
     return `transcriptMeta:${videoId}`;
   }
 
+  /** Cheap freshness probe (~113 B) — compare rev before pulling a 144 KB body. */
+  async function loadDiskMeta(videoId) {
+    if (!videoId) return null;
+    try {
+      const res = await bridgeFetch(`/scripts/${encodeURIComponent(videoId)}/meta`, {
+        method: "GET",
+      });
+      if (!res?.ok || !res.data?.video_id) return null;
+      return res.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * chrome.storage may be wiped (Drive restore, profile reset) while disk keeps the
+   * truth, so `owned` / `rev` / `deviceId` come from whichever side has the higher rev.
+   * Tombstones only ever live in chrome.storage.
+   */
   async function loadTranscriptMeta(videoId) {
-    if (!videoId) return { owned: false, tombstones: [] };
+    if (!videoId) return emptyMeta();
     const key = metaStorageKey(videoId);
     const data = await chrome.storage.local.get([key]);
     const raw = data[key] || {};
+    const disk = (await loadDiskMeta(videoId)) || {};
+    const localRev = Number(raw.rev) || 0;
+    const diskRev = Number(disk.rev) || 0;
+    const owner = diskRev > localRev || !data[key] ? disk : raw;
     return {
-      owned: !!raw.owned,
+      owned: !!owner.owned,
+      rev: Math.max(localRev, diskRev),
+      deviceId: String(raw.deviceId || disk.deviceId || ""),
       tombstones: Array.isArray(raw.tombstones)
         ? raw.tombstones.map(String).filter(Boolean)
         : [],
@@ -722,6 +781,9 @@
     await chrome.storage.local.set({
       [key]: {
         owned: !!transcriptMeta.owned,
+        rev: Number(transcriptMeta.rev) || 0,
+        deviceId: String(transcriptMeta.deviceId || ""),
+        updatedAt: new Date().toISOString(),
         tombstones: Array.from(new Set(transcriptMeta.tombstones || [])),
       },
     });
@@ -767,17 +829,82 @@
     }
   }
 
+  /**
+   * Lamport rev decides, so deletes survive; equal revs fall back to richness and
+   * finally deviceId so two machines at the same rev still agree on a winner.
+   * @returns {"local"|"disk"}
+   */
+  function pickCacheSide(local, disk) {
+    const lRev = Number(local?.rev) || 0;
+    const dRev = Number(disk?.rev) || 0;
+    if (lRev !== dRev) return lRev > dRev ? "local" : "disk";
+    const lScore = Number(local?.score) || 0;
+    const dScore = Number(disk?.score) || 0;
+    if (lScore !== dScore) return lScore > dScore ? "local" : "disk";
+    return String(local?.deviceId || "") >= String(disk?.deviceId || "") ? "local" : "disk";
+  }
+
+  /** Sole gate every load path goes through (navigate / restore / YT merge). */
   async function loadCachedCues(videoId) {
     if (!videoId) return [];
     const key = `transcript:${videoId}`;
-    const data = await chrome.storage.local.get([key]);
+    const mKey = metaStorageKey(videoId);
+    const data = await chrome.storage.local.get([key, mKey]);
     const local = flattenCached(data[key] || []);
-    const disk = await loadDiskScript(videoId);
-    // Richer list first so same-id ties keep the better copy when scores equal.
-    if (scriptListScore(disk) > scriptListScore(local)) {
-      return mergeCacheLists(disk, local);
+    const localMeta = data[mKey] || {};
+    const diskMeta = (await loadDiskMeta(videoId)) || {};
+    const noteSide = (side) => {
+      const m = side === "local" ? localMeta : diskMeta;
+      scriptSource = {
+        origin: side === "local" ? "chrome" : "disk",
+        rev: Math.max(Number(localMeta.rev) || 0, Number(diskMeta.rev) || 0),
+        updatedAt: String(m.updatedAt || m.updated_at || ""),
+      };
+      return side;
+    };
+    const sameRev = (Number(localMeta.rev) || 0) === (Number(diskMeta.rev) || 0);
+    // Same rev from the same writer is the same save — the copy in hand will do.
+    if (sameRev && local.length && localMeta.deviceId && localMeta.deviceId === diskMeta.deviceId) {
+      noteSide("local");
+      return hydrateTokens(videoId, local);
     }
-    return mergeCacheLists(local, disk);
+    // A real tie (two writers at one rev) is the only case needing both bodies.
+    if (sameRev) {
+      const disk = await loadDiskScript(videoId);
+      const side = noteSide(
+        pickCacheSide(
+          { rev: localMeta.rev, score: scriptListScore(local), deviceId: localMeta.deviceId },
+          { rev: diskMeta.rev, score: scriptListScore(disk), deviceId: diskMeta.deviceId }
+        )
+      );
+      return hydrateTokens(
+        videoId,
+        side === "local" ? mergeCacheLists(local, disk) : mergeCacheLists(disk, local)
+      );
+    }
+    if (noteSide(pickCacheSide(localMeta, diskMeta)) === "local" && local.length) {
+      return hydrateTokens(videoId, local);
+    }
+    const disk = await loadDiskScript(videoId);
+    noteSide(disk.length ? "disk" : "local");
+    return hydrateTokens(videoId, disk.length ? disk : local);
+  }
+
+  /** cues.json / chrome.storage carry no tokens — refill from tokens.json for furigana. */
+  async function hydrateTokens(videoId, list) {
+    if (!list.length || list.some((c) => c.tokens?.length)) return list;
+    try {
+      const res = await bridgeFetch(`/scripts/${encodeURIComponent(videoId)}/tokens`, {
+        method: "GET",
+      });
+      const map = res?.ok && res.data && typeof res.data === "object" ? res.data : null;
+      if (!map) return list;
+      for (const c of list) {
+        const t = map[c.id];
+        if (Array.isArray(t) && t.length) c.tokens = t;
+      }
+    } catch (_) {}
+    return list;
   }
 
   function scheduleSaveTranscript() {
@@ -805,16 +932,31 @@
 
   async function saveTranscriptToDisk(payload) {
     if (!currentVideoId || !payload?.length) return;
+    const videoId = currentVideoId;
     try {
-      await bridgeFetch("/scripts/save", {
+      const res = await bridgeFetch("/scripts/save", {
         method: "POST",
         body: {
-          video_id: currentVideoId,
+          video_id: videoId,
           url: location.href || "",
           title: pageTitle(),
           cues: payload,
+          owned: !!transcriptMeta.owned,
+          rev: Number(transcriptMeta.rev) || 0,
         },
       });
+      // Bridge answers with the Lamport rev it just wrote — adopt it, never guess.
+      const rev = Number(res?.data?.rev) || 0;
+      if (rev && videoId === currentVideoId && rev > (Number(transcriptMeta.rev) || 0)) {
+        transcriptMeta.rev = rev;
+        await saveTranscriptMeta();
+      }
+      // Idle-debounced Drive mirror of this one video's folder.
+      try {
+        chrome.runtime
+          .sendMessage({ type: "DRIVE_UPLOAD_SCHEDULE", videoId })
+          .catch(() => {});
+      } catch (_) {}
     } catch (_) {
       /* bridge offline — chrome.storage still holds a copy */
     }
@@ -837,38 +979,25 @@
       mt_locked: !!c.mt_locked,
       translation_source: c.translation_source || "",
     }));
-    // Guard: never overwrite a richer owned script with a poorer YT-only rebuild.
-    // force=true for intentional clears / replace so MT wipe is not blocked by score.
+    // Guard: an in-memory list older than what is cached must not roll it back.
+    // force=true for intentional clears / replace so a wipe is never blocked.
+    const rev = Number(transcriptMeta.rev) || 0;
     try {
       if (!force) {
-        const existingData = await chrome.storage.local.get([key]);
-        const existing = flattenCached(existingData[key] || []);
-        const meta = await loadTranscriptMeta(currentVideoId);
-        const allYt =
-          cues.length > 0 &&
-          cues.every((c) => (c.text_source || "yt") === "yt");
-        if (
-          meta.owned &&
-          existing.some(isOwnedCue) &&
-          allYt &&
-          scriptListScore(existing) > scriptListScore(payload) + 0.5
-        ) {
-          return;
-        }
+        const mKey = metaStorageKey(currentVideoId);
+        const existingMeta = (await chrome.storage.local.get([mKey]))[mKey];
+        if (rev < (Number(existingMeta?.rev) || 0)) return;
       }
     } catch (_) {}
-    await chrome.storage.local.set({ [key]: payload });
+    // chrome.storage copy stays slim: tokens live in tokens.json (hydrateTokens refills).
+    await chrome.storage.local.set({
+      [key]: payload.map(({ tokens, ...rest }) => rest),
+    });
     await saveTranscriptMeta();
-    // Never clobber a richer owned disk script with a poorer in-memory rebuild.
     if (!force) {
       try {
-        const disk = await loadDiskScript(currentVideoId);
-        if (
-          disk.some(isOwnedCue) &&
-          scriptListScore(disk) > scriptListScore(payload) + 0.5
-        ) {
-          return;
-        }
+        const diskMeta = await loadDiskMeta(currentVideoId);
+        if (rev < (Number(diskMeta?.rev) || 0)) return;
       } catch (_) {}
     }
     // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
@@ -1009,6 +1138,18 @@
         };
       })
       .sort((a, b) => a.start_media_time - b.start_media_time);
+  }
+
+  /** Ask the SW whether Drive holds a newer rev for this video (SW caches the probe). */
+  function checkDriveFresh(videoId, opts = {}) {
+    if (!videoId) return Promise.resolve(null);
+    return chrome.runtime
+      .sendMessage({
+        type: "DRIVE_MIRROR_DOWN",
+        videoIds: [videoId],
+        maxAgeMs: opts.force ? 0 : 10000,
+      })
+      .catch(() => null);
   }
 
   async function tryApplySavedScript(reason = "disk", opts = {}) {
@@ -1774,6 +1915,7 @@
       levelHighlightEnabled: settings.levelHighlightEnabled !== false,
       levelColors: settings.levelColors,
       userVocab,
+      scriptSource,
       ...extra,
       _seq: seq,
       _session: spSessionId,
@@ -2822,7 +2964,7 @@
     try {
       await chrome.storage.local.remove([key, metaKey]);
     } catch (_) {}
-    transcriptMeta = { owned: false, tombstones: [] };
+    transcriptMeta = emptyMeta();
     try {
       await bridgeFetch(`/scripts/${encodeURIComponent(currentVideoId)}`, {
         method: "DELETE",
@@ -3251,7 +3393,7 @@
     cues = [];
     activeCueId = "";
     translatingIds.clear();
-    transcriptMeta = { owned: false, tombstones: [] };
+    transcriptMeta = emptyMeta();
     if (currentVideoId) {
       transcriptMeta = await loadTranscriptMeta(currentVideoId);
     }
@@ -3268,6 +3410,8 @@
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     void maybeAutoOpenOnNavigate();
+    // Disk is already on screen; Drive check runs behind it and re-applies via DRIVE_RESTORED.
+    void checkDriveFresh(currentVideoId);
 
     if (restored && transcriptMeta.owned) {
       // Heal chrome.storage if a poor YT auto-save was shadowing disk.

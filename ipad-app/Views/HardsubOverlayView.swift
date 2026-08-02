@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Hardsub caption bar: tracks YouTube video rect, drag + corner resize (desktop parity).
 struct HardsubOverlayView: View {
-    let cues: [ScriptCue]
-    let currentTimeMs: Double
+    /// Current line only — parent owns playhead; avoids rescanning cues on every clock tick.
+    let activeCue: ScriptCue?
     /// Video bounds in the player pane (points), from WKWebView VIDEO_RECT.
     var videoFrame: CGRect?
     var showJA: Bool = true
@@ -18,21 +18,15 @@ struct HardsubOverlayView: View {
     @AppStorage("hardsubBarScaleH") private var scaleH = 1.0
     /// User multiplier on overlay caption font (desktop `barScale`).
     @AppStorage("hardsubBarScale") private var barScale = 1.0
+    @AppStorage("hardsubBarBgOpacity") private var barBgOpacity = 0.82
 
     @State private var dragOrigin: CGPoint?
     @State private var resizeStart: (scaleW: Double, scaleH: Double, origin: CGPoint, box: CGSize)?
     @State private var selectedToken: Token?
-    /// Freeze caption while dict popup open so 30Hz time ticks don't rebuild tokens.
-    @State private var frozenCues: [ScriptCue]?
+    /// Freeze caption while dict popup open so playhead ticks don't rebuild tokens.
+    @State private var frozenCue: ScriptCue?
 
-    private var liveActiveCues: [ScriptCue] {
-        if let c = ScriptCue.active(in: cues, atMs: currentTimeMs) { return [c] }
-        return []
-    }
-
-    private var activeCues: [ScriptCue] { frozenCues ?? liveActiveCues }
-
-    private var activeCue: ScriptCue? { activeCues.first }
+    private var displayCue: ScriptCue? { frozenCue ?? activeCue }
 
     var body: some View {
         GeometryReader { geo in
@@ -44,30 +38,32 @@ struct HardsubOverlayView: View {
             ZStack(alignment: .topLeading) {
                 Color.clear.allowsHitTesting(false)
 
-                if !activeCues.isEmpty {
-                    captionBar(fontScale: fontScale)
+                if let cue = displayCue {
+                    captionBar(cue: cue, fontScale: fontScale)
                         .frame(width: box.width, height: box.height)
-                        .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 14 * fontScale, style: .continuous))
+                        .background(Color.black.opacity(max(0, min(1, barBgOpacity))), in: RoundedRectangle(cornerRadius: 14 * fontScale, style: .continuous))
                         .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
                         .overlay { cornerHandles(video: vr, box: box, origin: origin) }
                         .contentShape(Rectangle())
                         .position(x: origin.x + box.width / 2, y: origin.y + box.height / 2)
                         .simultaneousGesture(moveGesture(video: vr, box: box))
                         .onTapGesture(count: 2) { resetBar() }
+                        // Stable identity — same cue must not re-tokenize / reflow every parent tick.
+                        .id(cue.id)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .dictPopup(
                 token: $selectedToken,
-                sentenceJA: activeCue?.textJA ?? "",
-                sentenceEN: activeCue?.textEN,
-                sentenceVI: activeCue?.textVI
+                sentenceJA: displayCue?.textJA ?? "",
+                sentenceEN: displayCue?.textEN,
+                sentenceVI: displayCue?.textVI
             )
             .onChange(of: selectedToken) { _, tok in
                 if tok != nil {
-                    if frozenCues == nil { frozenCues = liveActiveCues }
+                    if frozenCue == nil { frozenCue = activeCue }
                 } else {
-                    frozenCues = nil
+                    frozenCue = nil
                 }
             }
         }
@@ -206,36 +202,34 @@ struct HardsubOverlayView: View {
     }
 
     @ViewBuilder
-    private func captionBar(fontScale: CGFloat) -> some View {
+    private func captionBar(cue: ScriptCue, fontScale: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 4 * fontScale) {
-                ForEach(activeCues, id: \.id) { cue in
-                    VStack(spacing: 2 * fontScale) {
-                        if showJA, !cue.textJA.isEmpty {
-                            TokenizedJAView(
-                                text: cue.textJA,
-                                fontSize: 24 * fontScale,
-                                weight: .bold,
-                                showFurigana: showFurigana,
-                                centered: true,
-                                shadowed: true
-                            ) { tok in
-                                guard tok.isContentWord else { return }
-                                selectedToken = tok
-                            }
+                VStack(spacing: 2 * fontScale) {
+                    if showJA, !cue.textJA.isEmpty {
+                        TokenizedJAView(
+                            text: cue.textJA,
+                            fontSize: 24 * fontScale,
+                            weight: .bold,
+                            showFurigana: showFurigana,
+                            centered: true,
+                            shadowed: true
+                        ) { tok in
+                            guard tok.isContentWord else { return }
+                            selectedToken = tok
                         }
-                        if showEN, let en = cue.textEN, !en.isEmpty {
-                            Text(en)
-                                .font(.system(size: 17 * fontScale, weight: .medium))
-                                .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.82))
-                                .multilineTextAlignment(.center)
-                        }
-                        if showVI, let vi = cue.textVI, !vi.isEmpty {
-                            Text(vi)
-                                .font(.system(size: 17 * fontScale, weight: .semibold))
-                                .foregroundStyle(Color(red: 0.91, green: 0.91, blue: 0.94))
-                                .multilineTextAlignment(.center)
-                        }
+                    }
+                    if showEN, let en = cue.textEN, !en.isEmpty {
+                        Text(en)
+                            .font(.system(size: 17 * fontScale, weight: .medium))
+                            .foregroundStyle(Color(red: 0.72, green: 0.74, blue: 0.82))
+                            .multilineTextAlignment(.center)
+                    }
+                    if showVI, let vi = cue.textVI, !vi.isEmpty {
+                        Text(vi)
+                            .font(.system(size: 17 * fontScale, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.91, green: 0.91, blue: 0.94))
+                            .multilineTextAlignment(.center)
                     }
                 }
             }

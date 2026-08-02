@@ -14,6 +14,11 @@
   };
 
   const statusEl = document.getElementById("sp-status");
+  const driveStatusEl = document.getElementById("sp-drive-status");
+  const driveConnectBtn = document.getElementById("sp-drive-connect");
+  const driveUploadBtn = document.getElementById("sp-drive-upload");
+  const sourceEl = document.getElementById("sp-source");
+  const sourceRefreshBtn = document.getElementById("sp-source-refresh");
   const listEl = document.getElementById("sp-list");
   const emptyEl = document.getElementById("sp-empty");
   const toastEl = document.getElementById("sp-toast");
@@ -90,6 +95,59 @@
 
   function setStatus(text) {
     statusEl.textContent = text || "…";
+  }
+
+  function setDriveStatus(text) {
+    if (!driveStatusEl) return;
+    const t = String(text || "");
+    driveStatusEl.textContent = t;
+    driveStatusEl.classList.toggle("is-error", /^error/i.test(t));
+    driveStatusEl.classList.toggle(
+      "is-ok",
+      /^(Connected|Uploaded|Restored)/i.test(t)
+    );
+  }
+
+  function agoText(iso) {
+    const t = Date.parse(String(iso || ""));
+    if (!Number.isFinite(t)) return "";
+    const min = Math.round((Date.now() - t) / 60000);
+    if (min < 1) return "vừa xong";
+    if (min < 60) return `${min} phút trước`;
+    if (min < 1440) return `${Math.round(min / 60)} giờ trước`;
+    return `${Math.round(min / 1440)} ngày trước`;
+  }
+
+  /** "disk · rev 12 · 2 phút trước" — so a stale copy never sits there silently. */
+  function setScriptSource(src) {
+    if (!sourceEl) return;
+    const parts = [];
+    if (src?.origin) parts.push(src.origin);
+    if (src?.rev) parts.push(`rev ${src.rev}`);
+    const ago = agoText(src?.updatedAt);
+    if (ago) parts.push(ago);
+    sourceEl.textContent = parts.join(" · ");
+  }
+
+  async function refreshDriveStatus() {
+    try {
+      const r = await chrome.runtime.sendMessage({ type: "DRIVE_STATUS" });
+      if (r?.status) setDriveStatus(r.status);
+      else if (r?.connected) setDriveStatus("Connected");
+    } catch (_) {}
+  }
+
+  async function pullDriveOnOpen() {
+    try {
+      const r = await chrome.runtime.sendMessage({ type: "DRIVE_PULL" });
+      if (r?.status) setDriveStatus(r.status);
+      else if (r?.restored) setDriveStatus("Restored");
+      else if (r?.ok && r?.skipped === "not_connected") setDriveStatus("");
+      else await refreshDriveStatus();
+      if (r?.restored) {
+        toast(`Drive mới hơn — đã nạp ${r.pulled?.length || 0} video`, 2800);
+      }
+    } catch (_) {}
   }
 
   function syncFollowBtn() {
@@ -403,14 +461,27 @@
     if (!active || listEl.hidden) return;
     const r = active.getBoundingClientRect();
     const lr = listEl.getBoundingClientRect();
-    if (force || r.top < lr.top || r.bottom > lr.bottom) {
-      ignoreScrollEvent = true;
-      active.scrollIntoView({ block: force ? "center" : "nearest" });
+    // Skip when already ~at list top — matches iPad follow (flush under tabs).
+    if (!force && lr.height > 0) {
+      const threshold = lr.height * 0.12;
+      if (Math.abs(r.top - lr.top) <= threshold) return;
+    }
+    ignoreScrollEvent = true;
+    active.scrollIntoView({
+      block: "start",
+      behavior: force ? "instant" : "smooth",
+    });
+    // Smooth needs longer than double-rAF or scroll events pause follow.
+    if (force) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           ignoreScrollEvent = false;
         });
       });
+    } else {
+      setTimeout(() => {
+        ignoreScrollEvent = false;
+      }, 400);
     }
   }
 
@@ -1059,6 +1130,7 @@
     state = { ...state, ...incoming };
 
     if (typeof incoming.status === "string") setStatus(incoming.status);
+    if (incoming.scriptSource) setScriptSource(incoming.scriptSource);
     if (incoming.toast) {
       const long = /Import:|cập nhật/.test(String(incoming.toast));
       toast(incoming.toast, long ? 3200 : 1600);
@@ -1169,6 +1241,50 @@
     });
   }
 
+  driveConnectBtn?.addEventListener("click", async () => {
+    setDriveStatus("Connecting…");
+    try {
+      const r = await chrome.runtime.sendMessage({ type: "DRIVE_CONNECT" });
+      if (r?.ok) {
+        setDriveStatus(r.status || "Connected");
+        toast("Drive Connected", 1600);
+      } else {
+        setDriveStatus(`error: ${r?.error || "OAuth failed"}`);
+        toast("Drive connect lỗi — check oauth2.client_id", 2800);
+      }
+    } catch (err) {
+      setDriveStatus(`error: ${String(err?.message || err).slice(0, 80)}`);
+    }
+  });
+
+  driveUploadBtn?.addEventListener("click", async () => {
+    setDriveStatus("Uploading…");
+    try {
+      const r = await chrome.runtime.sendMessage({ type: "DRIVE_UPLOAD_NOW" });
+      if (r?.ok && r?.uploaded) {
+        setDriveStatus(r.status || "Uploaded");
+        toast("Uploaded lên Drive", 1600);
+      } else if (r?.ok && r?.deferred) {
+        setDriveStatus("Uploading…");
+      } else if (r?.ok) {
+        setDriveStatus(r.status || "Connected");
+      } else {
+        setDriveStatus(`error: ${r?.error || "Upload failed"}`);
+        toast("Upload Drive lỗi", 2800);
+      }
+    } catch (err) {
+      setDriveStatus(`error: ${String(err?.message || err).slice(0, 80)}`);
+    }
+  });
+
+  sourceRefreshBtn?.addEventListener("click", async () => {
+    sourceRefreshBtn.disabled = true;
+    try {
+      await sendCmd("refresh_script");
+    } finally {
+      sourceRefreshBtn.disabled = false;
+    }
+  });
   document.getElementById("sp-reload").addEventListener("click", async () => {
     toast("Đang tải caption…");
     await sendCmd("reload");
@@ -1370,9 +1486,15 @@
         window.close();
       } catch (_) {}
     }
+    if (msg?.type === "DRIVE_STATUS_CHANGED") {
+      setDriveStatus(msg.status || "");
+    }
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.driveSyncStatus) {
+      setDriveStatus(changes.driveSyncStatus.newValue || "");
+    }
     if (area !== "local" || !changes.hardsubSettings) return;
     const s = changes.hardsubSettings.newValue || {};
     const nextColors = Vocab.normalizeLevelColors(
@@ -1410,9 +1532,11 @@
   syncFollowBtn();
   buildLevelRows();
 
-  // Ask content for current state on open
+  // Ask content for current state on open; pull Drive → bridge if newer.
   (async () => {
     await loadLevelSettings();
+    void refreshDriveStatus();
+    void pullDriveOnOpen();
     setStatus("Đang kết nối…");
     const id = await resolveTabId();
     if (id == null) {

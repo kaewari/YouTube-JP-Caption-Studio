@@ -20,6 +20,8 @@
 		49D25F1C933A12A70F36DCCE /* FreqService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08484CEA80A422900B3C8E28 /* FreqService.swift */; };
 		4D9481325360B151247A1C28 /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D432B8937CDA3A464899F06 /* DictPopupView.swift */; };
 		54BBF3439AF9E2953F47D3A6 /* VocabStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25C50EE31E03D570B2D49120 /* VocabStyle.swift */; };
+		C44D04C44D04C44D04C44D04 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44F04C44F04C44F04C44F04 /* SettingsSync.swift */; };
+		V44D04C44D04C44D04C44D04 /* VocabSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = V44F04C44F04C44F04C44F04 /* VocabSync.swift */; };
 		5757E0EDD4928D9CF5017D57 /* CaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F574C181FD17FD9F058C61F7 /* CaptionService.swift */; };
 		5998796F7B90F735CF857B56 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD682D6A102403BBFC5FDA7E /* CueEditorRow.swift */; };
 		5DA170D328D6C7C289931CEE /* freq_ja.json in Resources */ = {isa = PBXBuildFile; fileRef = 139AC6F51301ACA394E77963 /* freq_ja.json */; };
@@ -67,6 +69,8 @@
 		B32DB15C0FDA3CAC2F21770F /* com.youtubejpcaptionstudio.renew.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = com.youtubejpcaptionstudio.renew.plist; sourceTree = "<group>"; };
 		B56ABD8897AE0C10EDDCEC4D /* deploy-ipad.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "deploy-ipad.sh"; sourceTree = "<group>"; };
 		BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScriptsService.swift; sourceTree = "<group>"; };
+		C44F04C44F04C44F04C44F04 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSync.swift; sourceTree = "<group>"; };
+		V44F04C44F04C44F04C44F04 /* VocabSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabSync.swift; sourceTree = "<group>"; };
 		A11F01A11F01A11F01A11F01 /* DriveOAuthConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveOAuthConfig.swift; sourceTree = "<group>"; };
 		A22F02A22F02A22F02A22F02 /* DriveAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAuthService.swift; sourceTree = "<group>"; };
 		A33F03A33F03A33F03A33F03 /* DriveAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAPIClient.swift; sourceTree = "<group>"; };
@@ -93,6 +97,8 @@
 				08484CEA80A422900B3C8E28 /* FreqService.swift */,
 				2BD266EBFF07B4E913FB60E0 /* LayoutSmoke.swift */,
 				B19A515A7A2B3E46AC8A08CB /* NLPTagger.swift */,
+				C44F04C44F04C44F04C44F04 /* SettingsSync.swift */,
+				V44F04C44F04C44F04C44F04 /* VocabSync.swift */,
 				E9F05870AE09C2B30732B220 /* SubtitleParser.swift */,
 				8498416AED5ABE0573A2FF08 /* SubtitleParserSmoke.swift */,
 				25C50EE31E03D570B2D49120 /* VocabStyle.swift */,
@@ -263,6 +269,8 @@
 				32DC632DEA3CC943327197AE /* LayoutSmoke.swift in Sources */,
 				3AB4D163FF0C14BC2F1A66FA /* NLPTagger.swift in Sources */,
 				B69DC12DB15E175BC49A789B /* ScriptStore.swift in Sources */,
+				C44D04C44D04C44D04C44D04 /* SettingsSync.swift in Sources */,
+				V44D04C44D04C44D04C44D04 /* VocabSync.swift in Sources */,
 				7591A5CC949393153148BC50 /* SidePanelToolbar.swift in Sources */,
 				27BA98860F8A681C1C2A6E01 /* SubtitleParser.swift in Sources */,
 				06669CD148D61ED5624E6A54 /* SubtitleParserSmoke.swift in Sources */,

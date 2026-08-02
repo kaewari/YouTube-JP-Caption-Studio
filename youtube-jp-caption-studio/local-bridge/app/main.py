@@ -27,6 +27,7 @@ from app.schemas.models import (
     HealthResponse,
     ImeSwitchRequest,
     ScriptCue,
+    ScriptFilesRequest,
     ScriptLoadResponse,
     ScriptSaveRequest,
     ScriptSaveResponse,
@@ -39,12 +40,33 @@ from app.schemas.models import (
     VocabBandsResponse,
     VocabWord,
 )
-from app.services.script_store import delete_script, load_script, save_script, scripts_root
+from app.services.script_store import (
+    delete_script,
+    list_scripts,
+    load_meta,
+    load_script,
+    load_tokens,
+    read_files,
+    save_script,
+    scripts_root,
+    write_files,
+)
+from app.services.snapshot import apply_snapshot, encode_snapshot
 from app.services.tokenize_ja import is_loaded as sudachi_loaded
 from app.services.tokenize_ja import load_tokenizer, tokenize
 from app.services.vocab_freq import assessment_bands, load_freq
 from app.services.vocab_freq import is_loaded as freq_loaded
 from app.services.vocab_freq import sample_preview_text
+
+_ERRORS_LOG = Path(__file__).resolve().parent.parent / "errors.log"
+
+
+def _append_errors_log(level: str, message: str) -> None:
+    try:
+        with _ERRORS_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"{level}:bridge:{message}\n")
+    except Exception:
+        pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bridge")
@@ -207,12 +229,87 @@ def scripts_save(body: ScriptSaveRequest) -> ScriptSaveResponse:
             [c.model_dump() for c in body.cues],
             url=body.url or "",
             title=body.title or "",
+            owned=body.owned,
+            rev=body.rev,
         )
         return ScriptSaveResponse(**result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("scripts/save failed")
+        _append_errors_log("ERROR", f"scripts/save failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/scripts")
+def scripts_list() -> list[dict[str, Any]]:
+    """Library index for the Drive mirror: [{video_id, title, updated_at, rev, cue_count, owned}]."""
+    try:
+        return [
+            {
+                "video_id": m["video_id"],
+                "title": m["title"],
+                "updated_at": m["updated_at"],
+                "rev": m["rev"],
+                "cue_count": m["cue_count"],
+                "owned": m["owned"],
+            }
+            for m in list_scripts()
+        ]
+    except Exception as exc:
+        logger.exception("scripts list failed")
+        _append_errors_log("ERROR", f"scripts list failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/scripts/{video_id}/meta")
+def scripts_meta(video_id: str) -> dict[str, Any]:
+    """Few-hundred-byte freshness probe — compare rev before fetching a body."""
+    try:
+        meta = load_meta(video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not meta:
+        raise HTTPException(status_code=404, detail="not found")
+    return {
+        k: meta[k]
+        for k in ("video_id", "rev", "deviceId", "updated_at", "cue_count", "owned")
+    }
+
+
+@app.get("/scripts/{video_id}/tokens")
+def scripts_tokens(video_id: str) -> dict[str, Any]:
+    """{cueId: [token, ...]} — Sudachi output, loaded after cues render."""
+    return load_tokens(video_id)
+
+
+@app.get("/scripts/{video_id}/files")
+def scripts_files_get(video_id: str) -> dict[str, Any]:
+    """The 3 mirrorable files as text (script.txt rendered here, not on save)."""
+    try:
+        files = read_files(video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("scripts/files GET failed")
+        _append_errors_log("ERROR", f"scripts/files GET failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if files is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"video_id": video_id, "files": files}
+
+
+@app.post("/scripts/{video_id}/files")
+def scripts_files_post(video_id: str, body: ScriptFilesRequest) -> dict[str, Any]:
+    """Drive → disk, straight file write (no lossy snapshot path)."""
+    try:
+        return write_files(video_id, body.files or {})
+    except ValueError as exc:
+        _append_errors_log("WARNING", f"scripts/files POST bad request: {exc}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("scripts/files POST failed")
+        _append_errors_log("ERROR", f"scripts/files POST failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -331,6 +428,43 @@ def post_extension_state(body: ExtensionStateRequest) -> ExtensionStateResponse:
             _ext_state["source"] = "api"
         _save_ext_state_disk()
     return _ext_state_response()
+
+
+@app.get("/backup/snapshot")
+def backup_snapshot_get() -> dict[str, Any]:
+    """Export Snapshot v1 from data/subtitles/* + extension_state vocab (start+text only)."""
+    try:
+        with _ext_state_lock:
+            user_vocab = dict(_ext_state.get("userVocab") or {})
+        return encode_snapshot(user_vocab=user_vocab)
+    except Exception as exc:
+        logger.exception("backup/snapshot GET failed")
+        _append_errors_log("ERROR", f"backup/snapshot GET failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/backup/snapshot")
+def backup_snapshot_post(body: dict[str, Any]) -> dict[str, Any]:
+    """Import Snapshot v1 → disk (derive end from next start; vocab → extension_state)."""
+    global _ext_state
+    try:
+        result = apply_snapshot(body if isinstance(body, dict) else {})
+        user_vocab = result.pop("userVocab", None)
+        if isinstance(user_vocab, dict):
+            with _ext_state_lock:
+                _ext_state["userVocab"] = user_vocab
+                _ext_state["updatedAt"] = time.time()
+                if not _ext_state.get("source"):
+                    _ext_state["source"] = "snapshot"
+                _save_ext_state_disk()
+        return result
+    except ValueError as exc:
+        _append_errors_log("WARNING", f"backup/snapshot POST bad request: {exc}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("backup/snapshot POST failed")
+        _append_errors_log("ERROR", f"backup/snapshot POST failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/")

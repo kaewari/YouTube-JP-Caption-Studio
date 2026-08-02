@@ -88,19 +88,35 @@ enum DriveScriptsService {
             meta = cuesRoot["meta"] as? [String: Any] ?? [:]
         }
         let driveRev = DriveAPIClient.parseRev(meta)
-        let driveCueCount = (cuesRoot["cues"] as? [[String: Any]])?.count ?? 0
+        let driveArr = (cuesRoot["cues"] as? [[String: Any]]) ?? []
+        let driveCueCount = driveArr.count
+        let driveTranslated = driveArr.filter { hasMT($0["en"] as? String, $0["vi"] as? String) }.count
         let script = fetchScript(videoId: videoId, context: context)
-        let liveCount = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }.count
-        // Rev gate alone is not enough: a stale/empty local script with matching rev
-        // must still pull when Drive actually has cues (else "đã đồng bộ" is a false success).
-        if needsPull(driveRev: driveRev, localRev: script?.rev ?? 0, localLiveCount: liveCount, driveCueCount: driveCueCount) {
-            guard let scriptFileId = children["script.txt"] else {
-                return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu script.txt")
+        let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
+        let liveCount = live.count
+        let localTranslated = live.filter { hasMT($0.textEN, $0.textVI) }.count
+        // Rev alone is not enough: YouTube JA cache (unowned) / stuck owned JA-only
+        // must not block Drive EN/VI — else "đã đồng bộ" shows 338 cue with empty MT.
+        if needsPull(
+            driveRev: driveRev,
+            localRev: script?.rev ?? 0,
+            localLiveCount: liveCount,
+            driveCueCount: driveCueCount,
+            localOwned: script?.owned == true,
+            localTranslated: localTranslated,
+            driveTranslated: driveTranslated
+        ) {
+            var rows = ScriptCue.parseImportRows(cuesText)
+            if rows.isEmpty || rows.filter({ hasMT($0.en, $0.vi) }).isEmpty {
+                guard let scriptFileId = children["script.txt"] else {
+                    return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu script.txt")
+                }
+                let scriptText = try await DriveAPIClient.getText(fileId: scriptFileId)
+                rows = ScriptCue.parseImportRows(scriptText)
             }
-            let scriptText = try await DriveAPIClient.getText(fileId: scriptFileId)
-            let pulled = pull(videoId: videoId, scriptText: scriptText, meta: meta, rev: driveRev, context: context)
+            let pulled = pull(videoId: videoId, rows: rows, meta: meta, rev: driveRev, context: context)
             guard !pulled.isEmpty else {
-                return SyncResult(changed: false, message: "Drive: script.txt trống (\(videoId))")
+                return SyncResult(changed: false, message: "Drive: cues/script trống (\(videoId))")
             }
             return SyncResult(
                 changed: true,
@@ -109,7 +125,8 @@ enum DriveScriptsService {
             )
         }
 
-        guard let script,
+        // Unowned YouTube cache must never patch/push over Drive.
+        guard let script, script.owned,
               let live = liveCues(videoId: videoId, context: context),
               var patched = patchedCues(original: cuesRoot, cues: live)
         else {
@@ -150,12 +167,11 @@ enum DriveScriptsService {
 
     private static func pull(
         videoId: String,
-        scriptText: String,
+        rows: [ScriptCue.ImportRow],
         meta: [String: Any],
         rev: Int,
         context: ModelContext
     ) -> [ScriptCue] {
-        let rows = ScriptCue.parseImportRows(scriptText)
         guard !rows.isEmpty else { return [] }
         let result = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
         if let script = fetchScript(videoId: videoId, context: context) {
@@ -240,9 +256,28 @@ enum DriveScriptsService {
 
     // MARK: - Helpers
 
-    /// Pull when Drive rev is ahead, or local panel would stay empty while Drive has cues.
-    static func needsPull(driveRev: Int, localRev: Int, localLiveCount: Int, driveCueCount: Int) -> Bool {
-        driveRev > localRev || (localLiveCount == 0 && driveCueCount > 0)
+    /// Pull when Drive is ahead, local is empty, unowned YouTube, or owned-but-0-MT while Drive has MT.
+    static func needsPull(
+        driveRev: Int,
+        localRev: Int,
+        localLiveCount: Int,
+        driveCueCount: Int,
+        localOwned: Bool = true,
+        localTranslated: Int = 0,
+        driveTranslated: Int = 0
+    ) -> Bool {
+        if driveRev > localRev { return true }
+        if localLiveCount == 0 && driveCueCount > 0 { return true }
+        // Unowned YouTube merge must not fake "đã đồng bộ" over Drive EN/VI.
+        if !localOwned && driveCueCount > 0 { return true }
+        // Stuck owned JA-only (false-owned cache) while Drive cues.json has translations.
+        if localOwned && localTranslated == 0 && driveTranslated > 0 { return true }
+        return false
+    }
+
+    fileprivate static func hasMT(_ en: String?, _ vi: String?) -> Bool {
+        !(en ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !(vi ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private static func encode(_ object: [String: Any]) -> Data? {
@@ -330,8 +365,24 @@ enum DriveScriptsSmoke {
                "matching rev with live cues stays put")
         assert(DriveScriptsService.needsPull(driveRev: 6, localRev: 5, localLiveCount: 2, driveCueCount: 2),
                "higher Drive rev must pull")
+        // YouTube JA cache (unowned) must pull Drive even when cue counts match.
+        assert(DriveScriptsService.needsPull(
+            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338, localOwned: false
+        ), "unowned YouTube must not block Drive script")
+        assert(!DriveScriptsService.needsPull(
+            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338, localOwned: true
+        ), "owned stays put when revs match and no Drive MT signal")
+        // Stuck owned JA-only while Drive has translations → recover.
+        assert(DriveScriptsService.needsPull(
+            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338,
+            localOwned: true, localTranslated: 0, driveTranslated: 337
+        ), "owned JA-only must pull when Drive has MT")
+        assert(!DriveScriptsService.needsPull(
+            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338,
+            localOwned: true, localTranslated: 300, driveTranslated: 337
+        ), "owned+synced with local MT stays put")
 
-        // Pull imports from script.txt (not cues.json); parse → import → load.count == replaced.
+        // Pull imports from script.txt (fallback); parse → import → load.count == replaced.
         let scriptTxt = """
         [001] 0:00 → 0:02
         JA: あ
@@ -378,6 +429,67 @@ enum DriveScriptsSmoke {
         assert(moiRows.count == 2, "MOIbaNe4Pmw-shaped parse (got \(moiRows.count))")
         assert(moiRows[0].ja.contains("ヒカル") && moiRows[0].endMs == 3100, "MOIbaNe4Pmw first cue")
 
-        print("[DriveScriptsSmoke] ok")
+        // Real MOIbaNe4Pmw cues.json → unowned JA seed → pull EN/VI ≥ 300.
+        // Skip on device/sim without repo checkout — try! here crashed app launch.
+        let moiDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // Services
+            .deletingLastPathComponent() // ipad-app
+            .deletingLastPathComponent() // repo root
+            .appendingPathComponent("youtube-jp-caption-studio/data/subtitles/MOIbaNe4Pmw")
+        let moiCuesURL = moiDir.appendingPathComponent("cues.json")
+        guard let moiCuesText = try? String(contentsOf: moiCuesURL, encoding: .utf8) else {
+            fputs("[DriveScriptsSmoke] skip MOI file (missing \(moiCuesURL.path))\n", stderr)
+            fflush(stderr)
+            return
+        }
+        let moiJSONRows = ScriptCue.parseImportRows(moiCuesText)
+        assert(moiJSONRows.count >= 300, "MOIbaNe4Pmw cues.json row count (got \(moiJSONRows.count))")
+        let moiJSONMT = moiJSONRows.filter { DriveScriptsService.hasMT($0.en, $0.vi) }.count
+        assert(moiJSONMT >= 300, "MOIbaNe4Pmw cues.json MT rows (got \(moiJSONMT))")
+
+        let moiContainer = try! ModelContainer(
+            for: VideoScript.self, ScriptCue.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let moiCtx = ModelContext(moiContainer)
+        // Seed JA-only unowned YouTube cache (338 cues, rev 0).
+        let jaOnly = moiJSONRows.map {
+            ScriptCue.ImportRow(id: $0.id, startMs: $0.startMs, endMs: $0.endMs, ja: $0.ja, en: nil, vi: nil)
+        }
+        let seeded = ScriptCue.importRows(
+            videoId: "MOIbaNe4Pmw", rows: jaOnly, mode: .replace, includeJA: true, context: moiCtx
+        )
+        if let s = (try? moiCtx.fetch(FetchDescriptor<VideoScript>(
+            predicate: #Predicate { $0.videoId == "MOIbaNe4Pmw" }
+        )))?.first {
+            s.owned = false
+            s.rev = 0
+            try? moiCtx.save()
+        }
+        assert(seeded.cues.count >= 300, "JA-only seed count")
+        assert(seeded.cues.filter { DriveScriptsService.hasMT($0.textEN, $0.textVI) }.isEmpty,
+               "seed must be JA-only")
+        assert(DriveScriptsService.needsPull(
+            driveRev: 0, localRev: 0, localLiveCount: seeded.cues.count,
+            driveCueCount: moiJSONRows.count, localOwned: false,
+            localTranslated: 0, driveTranslated: moiJSONMT
+        ), "unowned MOI seed must needsPull")
+
+        let pulledMOI = ScriptCue.importRows(
+            videoId: "MOIbaNe4Pmw", rows: moiJSONRows, mode: .replace, includeJA: true, context: moiCtx
+        )
+        let enCount = pulledMOI.cues.filter {
+            !($0.textEN ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
+        let viCount = pulledMOI.cues.filter {
+            !($0.textVI ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
+        assert(enCount >= 300, "MOIbaNe4Pmw pull EN ≥ 300 (got \(enCount))")
+        assert(viCount >= 300, "MOIbaNe4Pmw pull VI ≥ 300 (got \(viCount))")
+
+        let line = "[DriveScriptsSmoke] ok en=\(enCount) vi=\(viCount)\n"
+        fputs(line, stderr); fflush(stderr)
+        try? line.write(toFile: "/tmp/drive_scripts_smoke_ok.txt", atomically: true, encoding: .utf8)
+        print(line, terminator: "")
     }
 }

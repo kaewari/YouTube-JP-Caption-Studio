@@ -3,15 +3,20 @@
   "name": "YouTube JP Caption Studio",
   "version": "0.9.9",
   "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
-  "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms"],
+  "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "http://127.0.0.1:8765/*",
     "http://localhost:8765/*",
     "http://127.0.0.1:3000/*",
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://www.googleapis.com/*"
   ],
+  "oauth2": {
+    "client_id": "886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/drive"]
+  },
   "background": {
     "service_worker": "background/service_worker.js"
   },

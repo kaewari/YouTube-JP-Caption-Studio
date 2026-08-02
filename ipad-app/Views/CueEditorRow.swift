@@ -15,7 +15,7 @@ struct CueEditorRow: View {
     var onEditingChanged: ((Bool) -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
-    @State private var editingJA = false
+    @State private var isEditing = false
     @State private var selectedToken: Token?
     @State private var sheetLookup: DictLookup?
     @State private var saveTask: Task<Void, Never>?
@@ -29,41 +29,77 @@ struct CueEditorRow: View {
     private var metaH: CGFloat { 32 * s }
 
     var body: some View {
+        rowContent
+            .padding(.vertical, 8)
+            .toolbar { keyboardDone }
+            .onAppear { syncTimeFields() }
+            .onChange(of: cue.startTime) { _, _ in syncTimeFields() }
+            .onChange(of: cue.duration) { _, _ in syncTimeFields() }
+            .onChange(of: isEditing) { _, _ in reportEditing() }
+            .onChange(of: focused) { _, _ in reportEditing() }
+            .confirmationDialog("Xóa cue này?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Xóa", role: .destructive) {
+                    cue.softDelete()
+                    onSave()
+                }
+                Button("Hủy", role: .cancel) {}
+            }
+            .overlay(alignment: .topTrailing) { copyToastBanner }
+            .onChange(of: selectedToken) { _, tok in
+                if let tok {
+                    sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
+                } else {
+                    sheetLookup = nil
+                }
+            }
+            .sheet(item: $selectedToken) { _ in dictSheet }
+    }
+
+    private var rowContent: some View {
         VStack(alignment: .leading, spacing: 8 * s) {
             metaBar
-            if isActive {
-                Text("ĐANG PHÁT")
-                    .font(.system(size: 10 * s, weight: .bold))
-                    .foregroundStyle(Color(red: 0.45, green: 0.82, blue: 0.90))
-            }
+            // Always reserve height — toggling this label on active caused list flash on cue advance.
+            Text("ĐANG PHÁT")
+                .font(.system(size: 10 * s, weight: .bold))
+                .foregroundStyle(Color(red: 0.45, green: 0.82, blue: 0.90))
+                .opacity(isActive ? 1 : 0)
+                .accessibilityHidden(!isActive)
+            jaBlock
+            viBlock
+            enBlock
+        }
+    }
 
-            // ponytail: iOS cannot force IME; JA keyboard is user/OS choice
-            if editingJA {
-                TextField("Japanese", text: $cue.textJA, axis: .vertical)
-                    .font(.system(size: 16 * s, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .textFieldStyle(.plain)
-                    .focused($focused, equals: .ja)
-                    .onChange(of: cue.textJA) { _, _ in scheduleSave() }
-            } else if !cue.textJA.isEmpty {
-                TokenizedJAView(
-                    text: cue.textJA,
-                    fontSize: 16 * s,
-                    weight: .semibold,
-                    showFurigana: true,
-                    centered: false
-                ) { tok in
-                    guard tok.isContentWord else { return }
-                    sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
-                    selectedToken = tok
-                }
-            } else {
-                Text("Japanese")
-                    .font(.system(size: 16 * s))
-                    .foregroundStyle(.tertiary)
-                    .onTapGesture { beginJAEdit() }
+    // ponytail: iOS cannot force IME; JA keyboard is user/OS choice
+    @ViewBuilder private var jaBlock: some View {
+        if isEditing {
+            TextField("Japanese", text: $cue.textJA, axis: .vertical)
+                .font(.system(size: 16 * s, weight: .semibold))
+                .foregroundStyle(.primary)
+                .textFieldStyle(.plain)
+                .focused($focused, equals: .ja)
+                .onChange(of: cue.textJA) { _, _ in scheduleSave() }
+        } else if !cue.textJA.isEmpty {
+            TokenizedJAView(
+                text: cue.textJA,
+                fontSize: 16 * s,
+                weight: .semibold,
+                showFurigana: true,
+                centered: false
+            ) { tok in
+                guard tok.isContentWord else { return }
+                sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
+                selectedToken = tok
             }
+        } else {
+            Text("Japanese")
+                .font(.system(size: 16 * s))
+                .foregroundStyle(.tertiary)
+        }
+    }
 
+    @ViewBuilder private var viBlock: some View {
+        if isEditing {
             TextField("Vietnamese (Optional)", text: Binding(
                 get: { cue.textVI ?? "" },
                 set: { cue.textVI = $0.isEmpty ? nil : $0 }
@@ -74,7 +110,21 @@ struct CueEditorRow: View {
                 .focused($focused, equals: .vi)
                 .padding(.leading, 6)
                 .onChange(of: cue.textVI) { _, _ in scheduleSave() }
+        } else if let vi = cue.textVI, !vi.isEmpty {
+            Text(vi)
+                .font(.system(size: 14 * s, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(0.78))
+                .padding(.leading, 6)
+        } else {
+            Text("Vietnamese (Optional)")
+                .font(.system(size: 14 * s, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 6)
+        }
+    }
 
+    @ViewBuilder private var enBlock: some View {
+        if isEditing {
             TextField("English (Optional)", text: Binding(
                 get: { cue.textEN ?? "" },
                 set: { cue.textEN = $0.isEmpty ? nil : $0 }
@@ -85,96 +135,97 @@ struct CueEditorRow: View {
                 .focused($focused, equals: .en)
                 .padding(.leading, 6)
                 .onChange(of: cue.textEN) { _, _ in scheduleSave() }
-        }
-        .padding(.vertical, 8)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Xong") {
-                    commitTimeline()
-                    focused = nil
-                    if editingJA { editingJA = false }
-                }
-            }
-        }
-        .onAppear { syncTimeFields() }
-        .onChange(of: cue.startTime) { _, _ in syncTimeFields() }
-        .onChange(of: cue.duration) { _, _ in syncTimeFields() }
-        .onChange(of: editingJA) { _, _ in reportEditing() }
-        .onChange(of: focused) { _, _ in reportEditing() }
-        .confirmationDialog("Xóa cue này?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Xóa", role: .destructive) {
-                cue.softDelete()
-                onSave()
-            }
-            Button("Hủy", role: .cancel) {}
-        }
-        .overlay(alignment: .topTrailing) {
-            if copyToast {
-                Text("Đã sao chép")
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .transition(.opacity)
-            }
-        }
-        .onChange(of: selectedToken) { _, tok in
-            if let tok {
-                sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
-            } else {
-                sheetLookup = nil
-            }
-        }
-        .sheet(item: $selectedToken) { _ in
-            NavigationStack {
-                DictPopupView(
-                    lookup: sheetLookup ?? DictLookup(
-                        surface: "", matched: "", reading: "", found: false, senses: [], message: ""
-                    ),
-                    sentenceJA: cue.textJA,
-                    sentenceEN: cue.textEN,
-                    sentenceVI: cue.textVI,
-                    onSave: { d in
-                        let word = d.matched.isEmpty ? d.surface : d.matched
-                        let meaning = [d.primaryVI, d.primaryEN].filter { !$0.isEmpty }.joined(separator: " / ")
-                        modelContext.insert(Vocabulary(
-                            word: word,
-                            reading: d.reading,
-                            meaning: meaning.isEmpty ? "—" : meaning
-                        ))
-                        modelContext.saveAndScheduleBackup()
-                        selectedToken = nil
-                    },
-                    onClose: { selectedToken = nil }
-                )
-                .padding()
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Đóng") { selectedToken = nil }
-                    }
-                }
-            }
-            .presentationDetents([.medium])
+        } else if let en = cue.textEN, !en.isEmpty {
+            Text(en)
+                .font(.system(size: 12 * s))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 6)
+        } else {
+            Text("English (Optional)")
+                .font(.system(size: 12 * s))
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 6)
         }
     }
 
-    /// Equal-width cells spanning the row: start · + · × · Copy · Sửa JA
+    @ToolbarContentBuilder private var keyboardDone: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Xong") {
+                commitTimeline()
+                focused = nil
+                isEditing = false
+            }
+        }
+    }
+
+    @ViewBuilder private var copyToastBanner: some View {
+        if copyToast {
+            Text("Đã sao chép")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial, in: Capsule())
+                .transition(.opacity)
+        }
+    }
+
+    private var dictSheet: some View {
+        NavigationStack {
+            DictPopupView(
+                lookup: sheetLookup ?? DictLookup(
+                    surface: "", matched: "", reading: "", found: false, senses: [], message: ""
+                ),
+                sentenceJA: cue.textJA,
+                sentenceEN: cue.textEN,
+                sentenceVI: cue.textVI,
+                onSave: { d in
+                    let word = d.matched.isEmpty ? d.surface : d.matched
+                    let meaning = [d.primaryVI, d.primaryEN].filter { !$0.isEmpty }.joined(separator: " / ")
+                    modelContext.insert(Vocabulary(
+                        word: word,
+                        reading: d.reading,
+                        meaning: meaning.isEmpty ? "—" : meaning
+                    ))
+                    modelContext.saveAndScheduleBackup()
+                    selectedToken = nil
+                },
+                onClose: { selectedToken = nil }
+            )
+            .padding()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Đóng") { selectedToken = nil }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    /// Equal-width cells spanning the row: start · + · × · Copy · Edit
     private var metaBar: some View {
         HStack(spacing: 6 * s) {
             metaCell {
-                TextField("Start", text: $startText)
-                    .textFieldStyle(.plain)
-                    .keyboardType(.decimalPad)
-                    .focused($focused, equals: .start)
-                    .font(.system(size: 12 * s, weight: .semibold).monospacedDigit())
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onSubmit { commitTimeline() }
+                if isEditing {
+                    TextField("Start", text: $startText)
+                        .textFieldStyle(.plain)
+                        .keyboardType(.decimalPad)
+                        .focused($focused, equals: .start)
+                        .font(.system(size: 12 * s, weight: .semibold).monospacedDigit())
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onSubmit { commitTimeline() }
+                } else {
+                    Text(startText)
+                        .font(.system(size: 12 * s, weight: .semibold).monospacedDigit())
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSeek(cue.startTime) }
+                        .accessibilityHint("Chạm để tua")
+                }
             }
-            .simultaneousGesture(TapGesture(count: 2).onEnded { onSeek(cue.startTime) })
-            .accessibilityHint("Chạm đúp để tua")
 
             metaCell {
                 Button(action: addAfter) {
@@ -205,12 +256,14 @@ struct CueEditorRow: View {
             }
 
             metaCell {
-                Button(editingJA ? "Xong" : "Sửa JA") {
-                    if editingJA {
-                        editingJA = false
-                        if focused == .ja { focused = nil }
+                Button(isEditing ? "Xong" : "Edit") {
+                    if isEditing {
+                        commitTimeline()
+                        focused = nil
+                        isEditing = false
                     } else {
-                        beginJAEdit()
+                        isEditing = true
+                        focused = .ja
                     }
                 }
                     .font(.system(size: 12 * s, weight: .semibold))
@@ -228,13 +281,8 @@ struct CueEditorRow: View {
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6 * s))
     }
 
-    private func beginJAEdit() {
-        editingJA = true
-        focused = .ja
-    }
-
     private func reportEditing() {
-        onEditingChanged?(editingJA || focused != nil)
+        onEditingChanged?(isEditing || focused != nil)
     }
 
     private func syncTimeFields() {

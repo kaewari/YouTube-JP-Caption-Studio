@@ -1,6 +1,11 @@
 import SwiftUI
 import WebKit
 
+enum PlayerHistoryAction {
+    case goBack
+    case goForward
+}
+
 struct YouTubePlayerView: UIViewRepresentable {
     let videoID: String
     let onCaptionsReceived: (String, String) -> Void
@@ -9,11 +14,14 @@ struct YouTubePlayerView: UIViewRepresentable {
     var onVideoRect: ((CGRect) -> Void)? = nil
     /// Latest layout smoke from page (`LAYOUT_CHECK`).
     var onLayoutCheck: (([String: Any]) -> Void)? = nil
-    /// Watch-page video id from `?v=` (empty when on YouTube home/search — gate overlay/panel).
-    var onPageVideoID: ((String?) -> Void)? = nil
+    /// Watch-page video id from `?v=` + href (empty id on YouTube home/search — gate overlay/panel).
+    var onPageNav: ((String?, String) -> Void)? = nil
     @Binding var seekRequest: Double?
     /// Bump to force a page reload without changing `videoID`.
     @Binding var reloadNonce: Int
+    @Binding var historyAction: PlayerHistoryAction?
+    @Binding var canGoBack: Bool
+    @Binding var canGoForward: Bool
 
     /// Desktop Safari UA so YouTube serves full header (search / Premium), not mobile chrome.
     private static let desktopUA =
@@ -68,6 +76,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         webView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1)
         webView.scrollView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.07, alpha: 1)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.observeHistory(webView)
         return webView
     }
 
@@ -80,6 +89,16 @@ struct YouTubePlayerView: UIViewRepresentable {
                 "(function(){if(window.__csSeek)return window.__csSeek(\(seconds));var v=document.querySelector('#movie_player video.html5-main-video')||document.querySelector('#movie_player video');if(v)v.currentTime=\(seconds);})();"
             )
             DispatchQueue.main.async { seekRequest = nil }
+        }
+
+        if let action = historyAction {
+            switch action {
+            case .goBack where uiView.canGoBack: uiView.goBack()
+            case .goForward where uiView.canGoForward: uiView.goForward()
+            default: break
+            }
+            DispatchQueue.main.async { historyAction = nil }
+            context.coordinator.publishHistory(uiView)
         }
 
         if reloadNonce != context.coordinator.lastReloadNonce {
@@ -97,14 +116,60 @@ struct YouTubePlayerView: UIViewRepresentable {
         uiView.load(URLRequest(url: url))
     }
 
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        coordinator.stopObserving(uiView)
+    }
+
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         var parent: YouTubePlayerView
         var loadedID: String?
         var lastReloadNonce: Int = 0
+        /// Coalesce bridge storms before they invalidate SwiftUI @State.
+        private var lastTimeSec: Double = -1
+        private var lastPaused: Bool?
+        private var lastTimeEmit: CFAbsoluteTime = 0
+        private var lastVideoRect: CGRect = .null
+        private var observingHistory = false
 
         init(_ parent: YouTubePlayerView) {
             self.parent = parent
             self.lastReloadNonce = parent.reloadNonce
+        }
+
+        func observeHistory(_ webView: WKWebView) {
+            guard !observingHistory else { return }
+            webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack), options: .new, context: nil)
+            webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoForward), options: .new, context: nil)
+            observingHistory = true
+            publishHistory(webView)
+        }
+
+        func stopObserving(_ webView: WKWebView) {
+            guard observingHistory else { return }
+            webView.removeObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack))
+            webView.removeObserver(self, forKeyPath: #keyPath(WKWebView.canGoForward))
+            observingHistory = false
+        }
+
+        func publishHistory(_ webView: WKWebView) {
+            let back = webView.canGoBack
+            let forward = webView.canGoForward
+            DispatchQueue.main.async { [parent] in
+                if parent.canGoBack != back { parent.canGoBack = back }
+                if parent.canGoForward != forward { parent.canGoForward = forward }
+            }
+        }
+
+        override func observeValue(
+            forKeyPath keyPath: String?,
+            of object: Any?,
+            change: [NSKeyValueChangeKey: Any]?,
+            context: UnsafeMutableRawPointer?
+        ) {
+            guard let webView = object as? WKWebView,
+                  keyPath == #keyPath(WKWebView.canGoBack) || keyPath == #keyPath(WKWebView.canGoForward)
+            else { return }
+            publishHistory(webView)
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -120,6 +185,14 @@ struct YouTubePlayerView: UIViewRepresentable {
                 guard let currentTime = Self.double(dict["currentTime"]) else { return }
                 let duration = Self.double(dict["duration"]) ?? 0
                 let paused = Self.bool(dict["paused"]) ?? true
+                let now = CFAbsoluteTimeGetCurrent()
+                let pauseChanged = lastPaused.map { $0 != paused } ?? true
+                let dt = abs(currentTime - lastTimeSec)
+                // ~8Hz while playing; always emit pause/play edges.
+                if !pauseChanged && dt < 0.05 && (now - lastTimeEmit) < 0.12 { return }
+                lastTimeSec = currentTime
+                lastPaused = paused
+                lastTimeEmit = now
                 DispatchQueue.main.async { [parent] in
                     parent.onTimeUpdate(currentTime, duration, paused)
                 }
@@ -134,17 +207,33 @@ struct YouTubePlayerView: UIViewRepresentable {
                     let bounds = webView?.bounds.size ?? CGSize(width: vw, height: vh)
                     let sx = vw > 0 ? bounds.width / vw : 1
                     let sy = vh > 0 ? bounds.height / vh : 1
-                    parent.onVideoRect?(CGRect(x: x * sx, y: y * sy, width: w * sx, height: h * sy))
+                    let rect = CGRect(x: x * sx, y: y * sy, width: w * sx, height: h * sy)
+                    // 2pt slack — subpixel WK layout noise must not rebuild overlay every tick.
+                    if !self.lastVideoRect.isNull,
+                       abs(rect.minX - self.lastVideoRect.minX) < 2,
+                       abs(rect.minY - self.lastVideoRect.minY) < 2,
+                       abs(rect.width - self.lastVideoRect.width) < 2,
+                       abs(rect.height - self.lastVideoRect.height) < 2 {
+                        return
+                    }
+                    self.lastVideoRect = rect
+                    parent.onVideoRect?(rect)
                 }
             } else if type == "LAYOUT_CHECK" {
                 DispatchQueue.main.async { [parent] in parent.onLayoutCheck?(dict) }
             } else if type == "PAGE_NAV" {
                 let raw = (dict["videoId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let id = raw.isEmpty ? nil : YouTubeURL.videoID(from: raw)
+                let url = (dict["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 // SPA already moved — keep updateUIView from reloading the same watch URL.
                 if let id { loadedID = id }
-                DispatchQueue.main.async { [parent] in parent.onPageVideoID?(id) }
+                if let webView = message.webView { publishHistory(webView) }
+                DispatchQueue.main.async { [parent] in parent.onPageNav?(id, url) }
             }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            publishHistory(webView)
         }
 
         private static func double(_ any: Any?) -> Double? {

@@ -31,6 +31,9 @@ struct ContentView: View {
     @State private var isPlaying: Bool = false
     @State private var seekRequest: Double? = nil
     @State private var reloadNonce = 0
+    @State private var historyAction: PlayerHistoryAction? = nil
+    @State private var canGoBack = false
+    @State private var canGoForward = false
     @State private var isLoadingCaptions = false
     @State private var statusMessage: String?
     @State private var toolTab: ToolTab = .subtitles
@@ -55,6 +58,12 @@ struct ContentView: View {
     @State private var followResumeNonce = 0
     /// Ignore drag/scroll that comes from our own `scrollTo` (desktop `ignoreScrollEvent`).
     @State private var ignoreScrollEvent = false
+    /// Animated follow scroll in flight — coalesce rapid activeCue flips (1–2 char cues).
+    @State private var scrollAnimInFlight = false
+    @State private var pendingScrollId: ScriptCue.ID?
+    /// Global frames for follow — skip scrollTo when active row is already ~at list top.
+    @State private var cueListBounds: CGRect = .null
+    @State private var cueRowFrames: [String: CGRect] = [:]
     @FocusState private var urlFocused: Bool
 
     private enum ToolTab: String, CaseIterable {
@@ -139,6 +148,11 @@ struct ContentView: View {
                 currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
             }
             if let s = BackupService.shared.status { statusMessage = s }
+            SettingsSync.shared.startObserving()
+            if DriveAuthService.shared.hasToken {
+                await SettingsSync.shared.pullIfNewer()
+                await VocabSync.shared.pullIfNewer(context: modelContext)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             // Flush only — do not pause YouTube when backgrounding.
@@ -154,6 +168,8 @@ struct ContentView: View {
                 if let s = BackupService.shared.status { statusMessage = s }
                 Task {
                     guard DriveAuthService.shared.hasToken else { return }
+                    await SettingsSync.shared.pullIfNewer()
+                    await VocabSync.shared.pullIfNewer(context: modelContext)
                     let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
                     applyDriveSync(result)
                 }
@@ -289,17 +305,18 @@ struct ContentView: View {
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
                     #endif
                 },
-                onPageVideoID: { id in
+                onPageNav: { id, url in
                     pageNavKnown = true
                     pageWatchID = id
-                    // Keep url chrome in sync on in-page YT nav without remounting via `.id(videoID)`.
-                    if let id, id != videoID {
-                        videoID = id
-                        urlField = "https://www.youtube.com/watch?v=\(id)"
-                    }
+                    if !url.isEmpty { urlField = url }
+                    // Keep chrome in sync on in-page YT nav without remounting via `.id(videoID)`.
+                    if let id, id != videoID { videoID = id }
                 },
                 seekRequest: $seekRequest,
-                reloadNonce: $reloadNonce
+                reloadNonce: $reloadNonce,
+                historyAction: $historyAction,
+                canGoBack: $canGoBack,
+                canGoForward: $canGoForward
             )
 
             if overlayShown {
@@ -332,6 +349,30 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             .fixedSize()
+
+            Button {
+                historyAction = .goBack
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+            .opacity(canGoBack ? 1 : 0.35)
+            .accessibilityLabel("Quay lại trang")
+
+            Button {
+                historyAction = .goForward
+            } label: {
+                Image(systemName: "chevron.forward")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoForward)
+            .opacity(canGoForward ? 1 : 0.35)
+            .accessibilityLabel("Tiến tới trang")
 
             HStack(spacing: 8) {
                 Image(systemName: "link")
@@ -516,34 +557,39 @@ struct ContentView: View {
             } else {
                 let live = currentCues.filter { !$0.isDeleted }
                 ScrollViewReader { proxy in
-                    List {
-                        ForEach(live) { cue in
-                            let active = activeCueId == cue.id
-                            CueEditorRow(
-                                cue: cue,
-                                isActive: active,
-                                neighbors: live,
-                                fontScale: sidePanelFontScale,
-                                onSeek: { seekRequest = $0 },
-                                onSave: {
-                                    saveCues()
-                                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
-                                        .filter { !$0.isDeleted }
-                                },
-                                onEditingChanged: { editing in
-                                    editingCue = editing
-                                    if editing { followTimeline = false }
-                                }
-                            )
-                                .id(cue.id)
-                                .listRowBackground(
+                    // List.scrollTo is a no-op when the row is already (partially) visible.
+                    // LazyVStack.scrollTo mis-estimates unloaded rows (overshoot past active).
+                    // ponytail: VStack ok for ~300 cues; LazyVStack if row count blows up
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(live) { cue in
+                                let active = activeCueId == cue.id
+                                CueEditorRow(
+                                    cue: cue,
+                                    isActive: active,
+                                    neighbors: live,
+                                    fontScale: sidePanelFontScale,
+                                    onSeek: { seekRequest = $0 },
+                                    onSave: {
+                                        saveCues()
+                                        currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
+                                            .filter { !$0.isDeleted }
+                                    },
+                                    onEditingChanged: { editing in
+                                        editingCue = editing
+                                        if editing { followTimeline = false }
+                                    }
+                                )
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 12)
+                                // Always reserve bar pad — toggling it on active caused a one-frame flash.
+                                .padding(.leading, 12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
                                     active
                                         ? Color(red: 0.08, green: 0.30, blue: 0.36).opacity(0.18)
                                         : Color.clear
                                 )
-                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                                // Bar sits in the leading pad — 12pt gap before text (not flush).
-                                .padding(.leading, active ? 12 : 0)
                                 .overlay(alignment: .leading) {
                                     if active {
                                         RoundedRectangle(cornerRadius: 2)
@@ -553,19 +599,40 @@ struct ContentView: View {
                                             .allowsHitTesting(false)
                                     }
                                 }
+                                .overlay(alignment: .bottom) { Divider() }
+                                .background(
+                                    GeometryReader { g in
+                                        Color.clear.preference(
+                                            key: CueRowFramesKey.self,
+                                            value: [cue.id: g.frame(in: .global)]
+                                        )
+                                    }
+                                )
+                                .id(cue.id)
+                            }
                         }
                     }
-                    .listStyle(.plain)
+                    .background(
+                        GeometryReader { g in
+                            Color.clear.preference(key: CueListBoundsKey.self, value: g.frame(in: .global))
+                        }
+                    )
+                    .onPreferenceChange(CueListBoundsKey.self) { bounds in
+                        if !ignoreScrollEvent { cueListBounds = bounds }
+                    }
+                    .onPreferenceChange(CueRowFramesKey.self) { frames in
+                        if !ignoreScrollEvent { cueRowFrames = frames }
+                    }
                     // ponytail: DragGesture ≈ desktop wheel/touch; trackpad-only scroll may not pause — UIScrollViewDelegate if needed
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 8)
                             .onChanged { _ in pauseFollowFromUser() }
                     )
                     .onChange(of: activeCueId) { _, newId in
-                        scrollActiveIntoView(proxy, id: newId)
+                        scrollActiveIntoView(proxy, id: newId, force: false)
                     }
                     .onChange(of: followResumeNonce) { _, _ in
-                        scrollActiveIntoView(proxy, id: activeCueId)
+                        scrollActiveIntoView(proxy, id: activeCueId, force: true)
                     }
                 }
             }
@@ -673,15 +740,60 @@ struct ContentView: View {
         followTimeline = false
     }
 
-    private func scrollActiveIntoView(_ proxy: ScrollViewProxy, id: ScriptCue.ID?) {
+    private func scrollActiveIntoView(_ proxy: ScrollViewProxy, id: ScriptCue.ID?, force: Bool) {
         guard followTimeline, !editingCue, let id else { return }
+        // Target = list top (flush under Phụ đề tabs). Skip only when already flush.
+        // ponytail: 0.12*height skipped "one cue behind" (2nd row still within 12%) — use ~24pt.
+        if !force,
+           !cueListBounds.isNull,
+           let row = cueRowFrames[id] {
+            let delta = row.minY - cueListBounds.minY
+            if delta >= -4, delta <= 24 { return }
+        }
+        // Short cues flip faster than the soft scroll — coalesce to latest id.
+        if !force, scrollAnimInFlight {
+            pendingScrollId = id
+            return
+        }
+        if force {
+            pendingScrollId = nil
+            scrollAnimInFlight = false
+        }
         ignoreScrollEvent = true
-        withAnimation(.easeInOut(duration: 0.2)) {
-            proxy.scrollTo(id, anchor: .center)
+        if !force { scrollAnimInFlight = true }
+        let scrolledId = id
+        let animNs: UInt64 = 280_000_000
+        // ScrollView.scrollTo is a no-op when the row is already (partially) visible —
+        // active sits one cue down. Nudge off-screen briefly, then pin to top.
+        let live = currentCues.filter { !$0.isDeleted }
+        let prevId: ScriptCue.ID? = {
+            guard let i = live.firstIndex(where: { $0.id == id }), i > 0 else { return nil }
+            return live[i - 1].id
+        }()
+        DispatchQueue.main.async {
+            if force {
+                withTransaction(Transaction(animation: nil)) {
+                    proxy.scrollTo(id, anchor: .top)
+                }
+            } else {
+                if let prevId {
+                    withTransaction(Transaction(animation: nil)) {
+                        proxy.scrollTo(prevId, anchor: .top)
+                    }
+                }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(id, anchor: .top)
+                }
+            }
         }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            try? await Task.sleep(nanoseconds: force ? 50_000_000 : animNs)
             ignoreScrollEvent = false
+            guard !force else { return }
+            scrollAnimInFlight = false
+            let next = pendingScrollId ?? (activeCueId != scrolledId ? activeCueId : nil)
+            pendingScrollId = nil
+            if let next { scrollActiveIntoView(proxy, id: next, force: false) }
         }
     }
 
@@ -756,6 +868,8 @@ struct ContentView: View {
                 return
             }
             statusMessage = "Drive: đã kết nối · đang tìm \(videoID)…"
+            await SettingsSync.shared.syncOnConnect()
+            await VocabSync.shared.syncOnConnect(context: modelContext)
             let result = await DriveScriptsService.sync(videoId: videoID, context: modelContext)
             applyDriveSync(result)
         } catch {
@@ -860,6 +974,18 @@ struct ContentView: View {
 private final class PlayheadSync {
     var timeMs: Double = 0
     var at: Date = Date()
+}
+
+private struct CueListBoundsKey: PreferenceKey {
+    static var defaultValue: CGRect = .null
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+private struct CueRowFramesKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
 }
 
 /// Own timer for the clock so ContentView / cue List don't rebuild on playhead ticks.

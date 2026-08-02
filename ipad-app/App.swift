@@ -10,6 +10,8 @@ struct YouTubeJPCaptionStudioApp: App {
         #if DEBUG
         DriveScriptsSmoke.run()
         DriveAPISmoke.run()
+        SettingsSyncSmoke.run()
+        VocabSyncSmoke.run()
         #endif
     }
 

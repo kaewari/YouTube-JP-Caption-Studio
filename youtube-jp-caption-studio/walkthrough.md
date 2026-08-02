@@ -13,18 +13,19 @@ Tài liệu này được viết dưới góc nhìn của một chuyên gia IT (
 ### 1.1. `ipad-app/` (Native iOS / iPadOS App)
 Thư mục này chứa mã nguồn ứng dụng iPad hoàn chỉnh được viết bằng Swift/SwiftUI. Nó là một ứng dụng độc lập (standalone) bám sát tính năng Desktop (hardsub, side panel, tokenize, dict popup, import/export) mà không cần server Python. Một số tính năng Desktop vẫn chưa có trên iPad (đánh dấu Known/Learning/Ignore theo trạng thái user, Auto IME).
 - **`Views/`**:
-  - `ContentView.swift`: Màn hình chính quản lý Layout (chia đôi màn hình giữa Video và Side Panel); toggle overlay JA/EN/VI/furigana.
-  - `YouTubePlayerView.swift`: Gói WKWebView để nhúng video YouTube, tiêm (inject) mã JavaScript để bắt sự kiện thời gian và chặn phụ đề.
+  - `ContentView.swift`: Layout Video + Side Panel; address-bar Back/Forward (WKWebView history); toggle **Theo timeline**; overlay JA/EN/VI/furigana.
+  - `YouTubePlayerView.swift`: WKWebView YouTube + JS inject (media time, chặn phụ đề); `goBack`/`goForward` theo `canGoBack`/`canGoForward`.
   - `HardsubOverlayView.swift`: Hardsub đè lên video — tokenize JA theo màu JLPT, tap từ → dict popup, hiện EN/VI theo settings (default bật).
   - `TokenizedJAView.swift`: Render từng token (furigana + màu N5→N1 / unknown); dùng chung overlay và side panel.
   - `DictPopupView.swift`: Popup tra từ — gloss VI + EN, khối dịch câu (VI/EN của cue), nút Lưu từ vào SwiftData.
-  - `SidePanelToolbar.swift` & `CueEditorRow.swift`: Toolbar + editor cue; JA hiển thị dạng token (tap tra từ), nút «Sửa JA» để edit TextField.
+  - `SidePanelToolbar.swift` & `CueEditorRow.swift`: Toolbar + editor cue; label **ĐANG PHÁT** luôn reserve height (opacity) — không flash khi đổi cue.
 - **`Services/`**:
   - `CaptionService.swift` & `SubtitleParser.swift`: Fetch/parse timedtext JSON3/XML từ YouTube và chuẩn hóa cue.
   - `NLPTagger.swift`: `NLTagger` tokenize tiếng Nhật (thay Sudachi); gắn `freqRank` / `jlpt`; furigana qua Latin transcription → hiragana.
   - `FreqService.swift`: Load `freq_ja.json` (cùng map Desktop `vocab_freq.py`) → rank → band JLPT.
   - `VocabStyle.swift`: Bảng màu JLPT parity với `extension/shared/vocab_style.js`.
   - `DictionaryService.swift`: Tra `dict.sqlite` (jmdict / javi / jmdict_vi / en_vi) — mirror local-bridge `/dict` (VI + EN, stem/prefix fallback).
+  - `SettingsSync.swift` / `VocabSync.swift`: Drive OAuth sync — `caption-studio-settings.json` / vocab trong `caption-studio-backup.json` (xem §3.5).
 - **`Resources/`**:
   - `dict.sqlite`: JMdict + JA→VI + EN→VI (bundle vào app).
   - `freq_ja.json`: ~15k lemma frequency ranks cho tô màu JLPT.
@@ -45,6 +46,7 @@ Thư mục này chứa mã nguồn thuần của Extension cho Chrome, đóng va
   - `dictionary.py`: Quản lý query dữ liệu từ điển JMdict (SQLite).
   - `tokenize_ja.py`: Sử dụng thư viện `sudachipy` để chia từ, phân tích từ loại (POS), bóc tách furigana.
   - `script_store.py`: Đọc/ghi các file phụ đề (`.json`/`.txt`) xuống ổ cứng (`data/subtitles/`). Hỗ trợ xuất và nhập file hàng loạt.
+  - `snapshot.py`: Encode/decode Snapshot v1 (`GET`/`POST /backup/snapshot`) — start+text only; derive end từ start kế.
   - `ime_switch.py`: Chạy script tự động chuyển bộ gõ (IME) trên macOS.
   - `vocab_freq.py`: Tính toán tần suất và cấp độ JLPT.
 
@@ -122,3 +124,23 @@ Chrome Extensions không hoạt động trên iPadOS. Để mang ứng dụng l�
 ### 3.4. Xử Lý Xung Đột (Edge Cases)
 - **Tombstone (Cơ chế Xóa Sub)**: Khi User ấn "Xóa" một câu phụ đề rác do YouTube tạo ra, thay vì xóa hoàn toàn khỏi mảng nhớ, hệ thống tạo ra một object **Tombstone** (`isDeleted: true`). Trong các lần tải lại sau, trình Merge thấy Tombstone sẽ chủ động ẩn câu gốc của YouTube, chặn sự "hồi sinh" của sub rác.
 - **Import/Export Data**: Người dùng có quyền lấy toàn bộ kịch bản, ấn "Import", hệ thống sẽ matching theo ID hoặc thời gian (±0,35s) để map bản dịch vào đúng vị trí video. Hỗ trợ thay thế toàn bộ (Full Replace) hoặc chỉ gộp những phần đã dịch (Partial Merge). Tích hợp xuyên suốt cả iPad và Desktop.
+
+### 3.5. Drive sync PC ↔ iPad (`caption-studio-backup.json`)
+
+Cùng một file JSON trong folder Drive cố định → last-write-wins. **Vocab primary path = OAuth Connect** (iPad `VocabSync` + PC `pullVocabSnapshot` / debounce upload). Wire: `{ version, updatedAt, scripts: [], vocab: [...] }` — iPad apply chỉ Vocabulary (không xóa VideoScript). Scripts đi folder `<videoId>/`, không qua backup.json.
+
+**Settings** (`caption-studio-settings.json`, cùng folder): auto sync sau **Connect Drive** — pull nếu Drive mới hơn, không thì push local (tạo file nếu thiếu). Sửa settings khi đã Connect → debounce push. Không sync geometry (barPos, panel width). Keys: furigana, barShow*/barScale/opacities, dimHardsub, dictShowSentence, JLPT colors, followTimeline, isDarkTheme, sidePanelFontScale.
+
+**Setup (một lần):**
+1. Google Cloud → OAuth client kiểu Chrome Extension → thay `YOUR_CHROME_EXTENSION_OAUTH_CLIENT_ID…` trong `extension/manifest.json` (`oauth2.client_id`). Reload extension.
+2. Chạy local-bridge (`./start.sh`) — extension cần `GET/POST /backup/snapshot`.
+3. Side panel → **Connect Drive** (OAuth). Folder hardcode `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA` — [mở folder](https://drive.google.com/drive/folders/1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA).
+4. iPad: **Thư mục** → Connect Drive (OAuth). Settings + vocab sync qua Drive REST cùng folder.
+5. Side panel → **Upload Drive** để đẩy snapshot bridge lên Drive ngay (không chờ debounce sau save). Files bookmark trên iPad chỉ còn fallback offline/reinstall.
+
+**Smoke checklist:** sửa vocab PC → JSON lên Drive (debounce) → mở iPad (foreground / Connect) → auto-pull vocab; lưu từ iPad → Drive cập nhật → PC pull. Settings: Connect một lần → `caption-studio-settings.json` xuất hiện / cập nhật. Files **Backup**/**Restore** trên iPad vẫn là fallback offline/reinstall.
+
+### 3.6. iPad: Back/Forward + Theo timeline
+
+- **Back/Forward** (chevron cạnh ô URL): lịch sử `WKWebView` (`goBack`/`goForward`) — không phải seek cue. Thử: mở YouTube → vào watch → Back về home; Forward khi có history.
+- **Theo timeline** (toggle side panel): bật → cue đang phát scroll vào giữa list (`scrollTo` + animation); kéo list / sửa cue → tắt follow. Label **ĐANG PHÁT** luôn chiếm chỗ (ẩn bằng opacity) nên đổi cue không nhấp nháy hàng.

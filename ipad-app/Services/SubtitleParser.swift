@@ -119,14 +119,20 @@ enum SubtitleParser {
     /// Active cue at playhead (ms). Hold through gaps until next start; last cue gets +150ms grace (matches ScriptCue.active).
     static func activeCue(in cues: [Cue], atMs: Double) -> Cue? {
         let graceMs = 150.0
-        let live = cues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
-        var hit: Cue? = nil
+        var live = cues.filter { !$0.isDeleted }
+        if live.count > 1 {
+            for i in 1..<live.count where live[i].startTime < live[i - 1].startTime {
+                live.sort { $0.startTime < $1.startTime }
+                break
+            }
+        }
         for (i, c) in live.enumerated() {
             let end = c.startTime + max(c.duration, 0)
             let holdEnd = i + 1 < live.count ? live[i + 1].startTime : end + graceMs
-            if atMs >= c.startTime && atMs < holdEnd { hit = c }
+            if atMs >= c.startTime && atMs < holdEnd { return c }
+            if atMs < c.startTime { return nil }
         }
-        return hit
+        return nil
     }
 
     static func jsonNumber(_ any: Any?) -> Double? {

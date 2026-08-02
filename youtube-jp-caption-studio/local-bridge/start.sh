@@ -41,7 +41,7 @@ pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
 # Ensure Sudachi dict present
-python - <<'PY'
+python3 - <<'PY'
 try:
     from sudachipy import Dictionary
     Dictionary().create()
@@ -106,4 +106,4 @@ start_saved_items
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 echo "Starting bridge on http://127.0.0.1:8765"
-exec python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1
+exec python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1
