@@ -53,6 +53,7 @@ struct YouTubePlayerView: UIViewRepresentable {
 
         configuration.userContentController = contentController
         configuration.allowsInlineMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         // Disable OS/element fullscreen — JS maps YT zoom to left-pane fill only.
         if #available(iOS 15.4, *) {

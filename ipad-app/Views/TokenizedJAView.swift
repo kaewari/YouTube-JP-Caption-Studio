@@ -10,10 +10,14 @@ struct TokenizedJAView: View {
     /// Soft outline for video / dark bars (skip on light side-panel).
     var shadowed: Bool = false
     var onTapToken: (Token) -> Void
+    /// Observe so JLPT colors refresh when Settings change.
+    @AppStorage("levelHighlightEnabled") private var levelHighlightEnabled = true
+    @AppStorage("levelColorsJSON") private var levelColorsJSON = VocabStyle.defaultLevelColorsJSON
 
     private var tokens: [Token] { NLPTagger.tokenize(text) }
 
     var body: some View {
+        let _ = (levelHighlightEnabled, levelColorsJSON) // refresh on settings change
         FlowLayout(alignment: centered ? .center : .leading, spacing: 0) {
             ForEach(tokens) { tok in
                 tokenLabel(tok)

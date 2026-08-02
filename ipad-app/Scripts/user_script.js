@@ -72,10 +72,30 @@
     });
   }
 
+  // ponytail: YT web may still block background; Premium ≠ WKWebView
+  var __csWantPlay = false;
+  function resumeIfWanted() {
+    if (!__csWantPlay) return;
+    var v = mainVideo();
+    if (!v) return;
+    try {
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") resumeIfWanted();
+  });
+  document.addEventListener("pagehide", resumeIfWanted);
+
   function bindVideo(video) {
     if (!video || video.__captionStudioBound) return;
     video.__captionStudioBound = true;
     video.setAttribute("playsinline", "1");
+    video.addEventListener("play", function () { __csWantPlay = true; });
+    video.addEventListener("pause", function () {
+      if (document.visibilityState !== "hidden") __csWantPlay = false;
+    });
     ["timeupdate", "play", "pause", "seeking", "seeked"].forEach(function (ev) {
       video.addEventListener(ev, postTime);
     });

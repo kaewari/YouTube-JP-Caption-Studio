@@ -50,6 +50,12 @@ struct ContentView: View {
     /// From WKWebView `PAGE_NAV` — nil on YT home/search (desktop-equivalent gate).
     @State private var pageWatchID: String?
     @State private var pageNavKnown = false
+    /// Side-panel edit in progress — skip auto-scroll (desktop `isEditingAny`).
+    @State private var editingCue = false
+    /// Bump to force one scroll-to-active after re-enabling follow.
+    @State private var followResumeNonce = 0
+    /// Ignore drag/scroll that comes from our own `scrollTo` (desktop `ignoreScrollEvent`).
+    @State private var ignoreScrollEvent = false
     @FocusState private var urlFocused: Bool
 
     private enum ToolTab: String, CaseIterable {
@@ -88,11 +94,13 @@ struct ContentView: View {
         .preferredColorScheme(isDarkTheme ? .dark : .light)
         .task(id: videoID) { await loadCaptions(for: videoID) }
         .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { _ in
-            // Extrapolate from last YT sync — cap so stalled posts can't race ahead of speech.
+            // Gate: no extrapolator work while backgrounded (player keeps playing; we only flush backup).
+            guard scenePhase == .active else { return }
             if isPlaying {
+                // Extrapolate from last YT sync — cap so stalled posts can't race ahead of speech.
                 let elapsed = Date().timeIntervalSince(syncedAt) * 1000
                 currentTimeMs = syncedTimeMs + min(elapsed, 300)
-            } else {
+            } else if currentTimeMs != syncedTimeMs {
                 currentTimeMs = syncedTimeMs
             }
         }
@@ -131,6 +139,7 @@ struct ContentView: View {
             if let s = BackupService.shared.status { statusMessage = s }
         }
         .onChange(of: scenePhase) { _, phase in
+            // Flush only — do not pause YouTube when backgrounding.
             if phase == .background {
                 BackupService.shared.flushPending(context: modelContext)
             }
@@ -427,16 +436,6 @@ struct ContentView: View {
                 importPanel
             }
 
-            if let active = activeCue {
-                Text(active.textJA)
-                    .font(.system(size: 17 * CGFloat(sidePanelFontScale), weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-            }
-
             HStack(spacing: 10) {
                 Image(systemName: isPlaying ? "play.fill" : "pause.fill")
                     .font(.caption)
@@ -452,7 +451,13 @@ struct ContentView: View {
                         .foregroundStyle(.primary.opacity(0.75))
                 }
                 Spacer()
-                Toggle(isOn: $followTimeline) {
+                Toggle(isOn: Binding(
+                    get: { followTimeline },
+                    set: { on in
+                        followTimeline = on
+                        if on { followResumeNonce &+= 1 }
+                    }
+                )) {
                     Text("Theo timeline")
                         .font(.caption)
                 }
@@ -460,7 +465,7 @@ struct ContentView: View {
                 .tint(followTimeline ? Color(red: 0.08, green: 0.30, blue: 0.36) : .secondary)
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 6)
+            .padding(.vertical, 12)
 
             if let statusMessage {
                 Label(statusMessage, systemImage: isLoadingCaptions ? "arrow.triangle.2.circlepath" : "info.circle")
@@ -524,6 +529,10 @@ struct ContentView: View {
                                     saveCues()
                                     currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
                                         .filter { !$0.isDeleted }
+                                },
+                                onEditingChanged: { editing in
+                                    editingCue = editing
+                                    if editing { followTimeline = false }
                                 }
                             )
                                 .id(cue.id)
@@ -533,6 +542,8 @@ struct ContentView: View {
                                         : Color.clear
                                 )
                                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                // Bar sits in the leading pad — 12pt gap before text (not flush).
+                                .padding(.leading, active ? 12 : 0)
                                 .overlay(alignment: .leading) {
                                     if active {
                                         RoundedRectangle(cornerRadius: 2)
@@ -545,11 +556,16 @@ struct ContentView: View {
                         }
                     }
                     .listStyle(.plain)
+                    // ponytail: DragGesture ≈ desktop wheel/touch; trackpad-only scroll may not pause — UIScrollViewDelegate if needed
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 8)
+                            .onChanged { _ in pauseFollowFromUser() }
+                    )
                     .onChange(of: activeCue?.id) { _, newId in
-                        guard followTimeline, let newId else { return }
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(newId, anchor: .center)
-                        }
+                        scrollActiveIntoView(proxy, id: newId)
+                    }
+                    .onChange(of: followResumeNonce) { _, _ in
+                        scrollActiveIntoView(proxy, id: activeCue?.id)
                     }
                 }
             }
@@ -644,6 +660,25 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
+
+    /// Desktop `pauseFollowFromUser` — user drag on subtitle list stops auto-scroll.
+    private func pauseFollowFromUser() {
+        if ignoreScrollEvent { return }
+        if !followTimeline { return }
+        followTimeline = false
+    }
+
+    private func scrollActiveIntoView(_ proxy: ScrollViewProxy, id: ScriptCue.ID?) {
+        guard followTimeline, !editingCue, let id else { return }
+        ignoreScrollEvent = true
+        withAnimation(.easeInOut(duration: 0.2)) {
+            proxy.scrollTo(id, anchor: .center)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            ignoreScrollEvent = false
+        }
+    }
 
     private func loadAndRefresh() {
         urlFocused = false

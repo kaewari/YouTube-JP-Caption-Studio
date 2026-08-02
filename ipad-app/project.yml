@@ -12,6 +12,7 @@ targets:
       - path: Views
       - path: Models
       - path: Services
+      - path: Assets.xcassets
       - path: Scripts
         buildPhase: resources
       - path: Resources/dict.sqlite
@@ -20,6 +21,12 @@ targets:
       - path: Resources/freq_ja.json
         type: file
         buildPhase: resources
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        DEVELOPMENT_TEAM: 44T7Y77WAJ
+        CODE_SIGN_IDENTITY: iPhone Developer
+        CODE_SIGN_STYLE: Automatic
     info:
       path: Info.plist
       properties:

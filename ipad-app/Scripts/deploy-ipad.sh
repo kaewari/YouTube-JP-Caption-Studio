@@ -42,6 +42,14 @@ die() { log "fail: $*"; exit 1; }
 
 ms_now() { python3 -c 'import time; print(int(time.time()*1000))'; }
 
+# Skip adhoc leftovers (e.g. ROOT/build/*.app) — device install needs Apple Development signature.
+_app_device_signed() {
+  local out
+  out="$(codesign -dv "$1" 2>&1)" || return 1
+  [[ "$out" != *"Signature=adhoc"* ]] || return 1
+  [[ "$out" == *"TeamIdentifier="* && "$out" != *"TeamIdentifier=not set"* ]]
+}
+
 find_app() {
   if [[ -n "${APP_PATH:-}" && -d "$APP_PATH" ]]; then
     printf '%s\n' "$APP_PATH"
@@ -52,7 +60,10 @@ find_app() {
     "${ROOT}/build/Build/Products/${CONFIGURATION}-iphoneos/${SCHEME}.app" \
     "${ROOT}/build/${SCHEME}.app"
   do
-    [[ -d "$cand" ]] && { printf '%s\n' "$cand"; return 0; }
+    [[ -d "$cand" ]] || continue
+    _app_device_signed "$cand" || continue
+    printf '%s\n' "$cand"
+    return 0
   done
   cand="$(
     find "${HOME}/Library/Developer/Xcode/DerivedData" \
@@ -63,6 +74,7 @@ find_app() {
         done | sort -nr | head -1 | cut -f2-
   )"
   [[ -n "$cand" && -d "$cand" ]] || return 1
+  _app_device_signed "$cand" || return 1
   printf '%s\n' "$cand"
 }
 

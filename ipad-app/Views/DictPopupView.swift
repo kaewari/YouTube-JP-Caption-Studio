@@ -90,7 +90,8 @@ struct DictPopupView: View {
         }
         .padding(14)
         .frame(maxWidth: 360, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Solid dark — material over video looks muddy / janks with 30Hz overlay redraws
+        .background(Color(red: 0.11, green: 0.12, blue: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
@@ -112,34 +113,45 @@ struct DictPopupView: View {
     }
 }
 
-/// Shared presenter: lookup + optional vocab save.
+/// Shared presenter: lookup once on open + optional vocab save.
 struct DictPopupHost: ViewModifier {
     @Binding var token: Token?
     var sentenceJA: String
     var sentenceEN: String?
     var sentenceVI: String?
     @Environment(\.modelContext) private var modelContext
+    @State private var cachedLookup: DictLookup?
 
     func body(content: Content) -> some View {
-        content.overlay {
-            if let token {
-                let result = DictionaryService.shared.lookup(surface: token.surface, lemma: token.lemma)
-                ZStack {
-                    Color.black.opacity(0.001)
-                        .ignoresSafeArea()
-                        .onTapGesture { self.token = nil }
-                    DictPopupView(
-                        lookup: result,
-                        sentenceJA: sentenceJA,
-                        sentenceEN: sentenceEN,
-                        sentenceVI: sentenceVI,
-                        onSave: { save($0) },
-                        onClose: { self.token = nil }
-                    )
-                    .padding(20)
+        content
+            .overlay {
+                if let cachedLookup {
+                    ZStack {
+                        Color.black.opacity(0.001)
+                            .ignoresSafeArea()
+                            .onTapGesture { token = nil }
+                        DictPopupView(
+                            lookup: cachedLookup,
+                            sentenceJA: sentenceJA,
+                            sentenceEN: sentenceEN,
+                            sentenceVI: sentenceVI,
+                            onSave: { save($0) },
+                            onClose: { token = nil }
+                        )
+                        .padding(20)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    }
                 }
             }
-        }
+            .onChange(of: token) { _, new in
+                withAnimation(.easeOut(duration: 0.14)) {
+                    if let t = new {
+                        cachedLookup = DictionaryService.shared.lookup(surface: t.surface, lemma: t.lemma)
+                    } else {
+                        cachedLookup = nil
+                    }
+                }
+            }
     }
 
     private func save(_ d: DictLookup) {

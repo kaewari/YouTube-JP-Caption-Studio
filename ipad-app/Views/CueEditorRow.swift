@@ -11,15 +11,19 @@ struct CueEditorRow: View {
     var fontScale: Double = 1.0
     let onSeek: (Double) -> Void
     let onSave: () -> Void
+    /// Fired when any field gains/loses edit focus (side panel follow pause).
+    var onEditingChanged: ((Bool) -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @State private var editingJA = false
     @State private var selectedToken: Token?
+    @State private var sheetLookup: DictLookup?
     @State private var saveTask: Task<Void, Never>?
     @State private var startText = ""
     @State private var confirmDelete = false
     @State private var copyToast = false
-    @FocusState private var startFocused: Bool
+    private enum FocusField: Hashable { case start, ja, vi, en }
+    @FocusState private var focused: FocusField?
 
     private var s: CGFloat { CGFloat(max(0.7, min(1.8, fontScale))) }
     private var metaH: CGFloat { 32 * s }
@@ -39,6 +43,7 @@ struct CueEditorRow: View {
                     .font(.system(size: 16 * s, weight: .semibold))
                     .foregroundStyle(.primary)
                     .textFieldStyle(.plain)
+                    .focused($focused, equals: .ja)
                     .onChange(of: cue.textJA) { _, _ in scheduleSave() }
             } else if !cue.textJA.isEmpty {
                 TokenizedJAView(
@@ -49,13 +54,14 @@ struct CueEditorRow: View {
                     centered: false
                 ) { tok in
                     guard tok.isContentWord else { return }
+                    sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
                     selectedToken = tok
                 }
             } else {
                 Text("Japanese")
                     .font(.system(size: 16 * s))
                     .foregroundStyle(.tertiary)
-                    .onTapGesture { editingJA = true }
+                    .onTapGesture { beginJAEdit() }
             }
 
             TextField("Vietnamese (Optional)", text: Binding(
@@ -65,6 +71,7 @@ struct CueEditorRow: View {
                 .font(.system(size: 14 * s, weight: .semibold))
                 .foregroundStyle(Color.primary.opacity(0.78))
                 .textFieldStyle(.plain)
+                .focused($focused, equals: .vi)
                 .padding(.leading, 6)
                 .onChange(of: cue.textVI) { _, _ in scheduleSave() }
 
@@ -75,6 +82,7 @@ struct CueEditorRow: View {
                 .font(.system(size: 12 * s))
                 .foregroundStyle(.secondary)
                 .textFieldStyle(.plain)
+                .focused($focused, equals: .en)
                 .padding(.leading, 6)
                 .onChange(of: cue.textEN) { _, _ in scheduleSave() }
         }
@@ -84,13 +92,16 @@ struct CueEditorRow: View {
                 Spacer()
                 Button("Xong") {
                     commitTimeline()
-                    startFocused = false
+                    focused = nil
+                    if editingJA { editingJA = false }
                 }
             }
         }
         .onAppear { syncTimeFields() }
         .onChange(of: cue.startTime) { _, _ in syncTimeFields() }
         .onChange(of: cue.duration) { _, _ in syncTimeFields() }
+        .onChange(of: editingJA) { _, _ in reportEditing() }
+        .onChange(of: focused) { _, _ in reportEditing() }
         .confirmationDialog("Xóa cue này?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Xóa", role: .destructive) {
                 cue.softDelete()
@@ -108,11 +119,19 @@ struct CueEditorRow: View {
                     .transition(.opacity)
             }
         }
-        .sheet(item: $selectedToken) { tok in
-            let result = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
+        .onChange(of: selectedToken) { _, tok in
+            if let tok {
+                sheetLookup = DictionaryService.shared.lookup(surface: tok.surface, lemma: tok.lemma)
+            } else {
+                sheetLookup = nil
+            }
+        }
+        .sheet(item: $selectedToken) { _ in
             NavigationStack {
                 DictPopupView(
-                    lookup: result,
+                    lookup: sheetLookup ?? DictLookup(
+                        surface: "", matched: "", reading: "", found: false, senses: [], message: ""
+                    ),
                     sentenceJA: cue.textJA,
                     sentenceEN: cue.textEN,
                     sentenceVI: cue.textVI,
@@ -148,7 +167,7 @@ struct CueEditorRow: View {
                 TextField("Start", text: $startText)
                     .textFieldStyle(.plain)
                     .keyboardType(.decimalPad)
-                    .focused($startFocused)
+                    .focused($focused, equals: .start)
                     .font(.system(size: 12 * s, weight: .semibold).monospacedDigit())
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -186,7 +205,14 @@ struct CueEditorRow: View {
             }
 
             metaCell {
-                Button(editingJA ? "Xong" : "Sửa JA") { editingJA.toggle() }
+                Button(editingJA ? "Xong" : "Sửa JA") {
+                    if editingJA {
+                        editingJA = false
+                        if focused == .ja { focused = nil }
+                    } else {
+                        beginJAEdit()
+                    }
+                }
                     .font(.system(size: 12 * s, weight: .semibold))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .buttonStyle(.borderless)
@@ -200,6 +226,15 @@ struct CueEditorRow: View {
         content()
             .frame(maxWidth: .infinity, minHeight: metaH, maxHeight: metaH)
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6 * s))
+    }
+
+    private func beginJAEdit() {
+        editingJA = true
+        focused = .ja
+    }
+
+    private func reportEditing() {
+        onEditingChanged?(editingJA || focused != nil)
     }
 
     private func syncTimeFields() {

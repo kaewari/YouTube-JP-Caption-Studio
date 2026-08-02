@@ -22,11 +22,15 @@ struct HardsubOverlayView: View {
     @State private var dragOrigin: CGPoint?
     @State private var resizeStart: (scaleW: Double, scaleH: Double, origin: CGPoint, box: CGSize)?
     @State private var selectedToken: Token?
+    /// Freeze caption while dict popup open so 30Hz time ticks don't rebuild tokens.
+    @State private var frozenCues: [ScriptCue]?
 
-    private var activeCues: [ScriptCue] {
+    private var liveActiveCues: [ScriptCue] {
         if let c = ScriptCue.active(in: cues, atMs: currentTimeMs) { return [c] }
         return []
     }
+
+    private var activeCues: [ScriptCue] { frozenCues ?? liveActiveCues }
 
     private var activeCue: ScriptCue? { activeCues.first }
 
@@ -59,6 +63,13 @@ struct HardsubOverlayView: View {
                 sentenceEN: activeCue?.textEN,
                 sentenceVI: activeCue?.textVI
             )
+            .onChange(of: selectedToken) { _, tok in
+                if tok != nil {
+                    if frozenCues == nil { frozenCues = liveActiveCues }
+                } else {
+                    frozenCues = nil
+                }
+            }
         }
     }
 

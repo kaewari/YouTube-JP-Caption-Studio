@@ -38,6 +38,9 @@ final class DictionaryService {
 
     private var db: OpaquePointer?
     private let punct = CharacterSet(charactersIn: "　 \t\n\r。、．，！？!?,;:「」『』（）()[]【】…・〜～\"'")
+    // ponytail: small surface|lemma cache; wipe when full — LRU if thrash grows
+    private var lookupCache: [String: DictLookup] = [:]
+    private let lookupCacheLimit = 64
 
     private init() {
         guard let path = Bundle.main.path(forResource: "dict", ofType: "sqlite") else {
@@ -57,6 +60,15 @@ final class DictionaryService {
     }
 
     func lookup(surface: String, lemma: String = "") -> DictLookup {
+        let cacheKey = "\(surface)|\(lemma)"
+        if let hit = lookupCache[cacheKey] { return hit }
+        let result = lookupUncached(surface: surface, lemma: lemma)
+        if lookupCache.count >= lookupCacheLimit { lookupCache.removeAll(keepingCapacity: true) }
+        lookupCache[cacheKey] = result
+        return result
+    }
+
+    private func lookupUncached(surface: String, lemma: String) -> DictLookup {
         let raw = surface.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty, db != nil else {
             return DictLookup(surface: surface, matched: "", reading: "", found: false, senses: [], message: "empty")
@@ -325,6 +337,8 @@ enum DictionarySmoke {
         let d = DictionaryService.shared.lookup(surface: "人間")
         assert(d.found, "人間 should be in jmdict")
         assert(!d.primaryEN.isEmpty || !d.primaryVI.isEmpty, "need EN or VI gloss")
+        let again = DictionaryService.shared.lookup(surface: "人間")
+        assert(again == d, "lookup cache identity")
         print("[DictionarySmoke] ok found=\(d.found) vi=\(d.primaryVI.prefix(40)) en=\(d.primaryEN.prefix(40))")
     }
 }

@@ -70,6 +70,8 @@ struct SidePanelSettingsSheet: View {
     @AppStorage("hardsubShowFurigana") var showFurigana = true
     @AppStorage("hardsubBarScale") var overlayFontScale = 1.0
     @AppStorage("sidePanelFontScale") var sidePanelFontScale = 1.0
+    @AppStorage("levelHighlightEnabled") var levelHighlightEnabled = true
+    @AppStorage("levelColorsJSON") var levelColorsJSON = VocabStyle.defaultLevelColorsJSON
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -91,6 +93,48 @@ struct SidePanelSettingsSheet: View {
                         Text("Side panel \(String(format: "%.1f", sidePanelFontScale))×")
                     }
                 }
+                Section {
+                    Toggle("Bật tô màu theo JLPT", isOn: $levelHighlightEnabled)
+                    ForEach(VocabStyle.levelKeys, id: \.self) { key in
+                        HStack {
+                            Toggle(isOn: levelOnBinding(key)) {
+                                Text(VocabStyle.levelLabels[key] ?? key.uppercased())
+                            }
+                            ColorPicker(
+                                "",
+                                selection: levelColorBinding(key),
+                                supportsOpacity: false
+                            )
+                            .labelsHidden()
+                            .disabled(!levelHighlightEnabled || !(VocabStyle.decode(levelColorsJSON)[key]?.on ?? true))
+                        }
+                    }
+                    Button("Đặt lại") {
+                        levelColorsJSON = VocabStyle.defaultLevelColorsJSON
+                        levelHighlightEnabled = true
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Văn bản ví dụ")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            ForEach(
+                                [("初めて", "n5"), ("砂", "n3"), ("住まい", "n2"), ("マイル", "n1"), ("珍語", "unknown")],
+                                id: \.0
+                            ) { surface, key in
+                                Text(surface)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(
+                                        VocabStyle.color(forKey: key, json: levelColorsJSON, enabled: levelHighlightEnabled)
+                                            ?? Color.primary
+                                    )
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Màu JLPT")
+                }
                 Section("Backup") {
                     Text("Chọn folder trên Google Drive trong Files (nút Thư mục trên toolbar). Mỗi lần sửa sẽ tự ghi caption-studio-backup.json.")
                         .font(.footnote)
@@ -105,6 +149,23 @@ struct SidePanelSettingsSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+
+    private func levelOnBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { VocabStyle.decode(levelColorsJSON)[key]?.on ?? true },
+            set: { levelColorsJSON = VocabStyle.updating(json: levelColorsJSON, key: key, on: $0) }
+        )
+    }
+
+    private func levelColorBinding(_ key: String) -> Binding<Color> {
+        Binding(
+            get: {
+                let hex = VocabStyle.decode(levelColorsJSON)[key]?.color ?? "#c5c5d0"
+                return VocabStyle.color(hex: hex) ?? .gray
+            },
+            set: { levelColorsJSON = VocabStyle.updating(json: levelColorsJSON, key: key, hex: VocabStyle.hex(from: $0)) }
+        )
     }
 }

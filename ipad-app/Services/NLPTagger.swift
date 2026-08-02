@@ -37,9 +37,20 @@ struct Token: Identifiable, Hashable {
 
 enum NLPTagger {
     private static let kanji = try! NSRegularExpression(pattern: "[\\u3400-\\u9fff]")
+    // ponytail: small string→tokens map; wipe when full — LRU if thrash grows
+    private static var tokenizeCache: [String: [Token]] = [:]
+    private static let tokenizeCacheLimit = 48
 
     static func tokenize(_ text: String) -> [Token] {
         guard !text.isEmpty else { return [] }
+        if let hit = tokenizeCache[text] { return hit }
+        let out = tokenizeUncached(text)
+        if tokenizeCache.count >= tokenizeCacheLimit { tokenizeCache.removeAll(keepingCapacity: true) }
+        tokenizeCache[text] = out
+        return out
+    }
+
+    private static func tokenizeUncached(_ text: String) -> [Token] {
         var out: [Token] = []
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
         tagger.string = text
@@ -105,6 +116,8 @@ enum NLPTaggerSmoke {
         }
         let particle = NLPTagger.tokenize("の")
         assert(particle.first?.isContentWord == false || particle.first?.pos == "Particle", "particle skip")
+        let again = NLPTagger.tokenize("人間の住まい")
+        assert(again == toks, "tokenize cache identity")
         print("[NLPTaggerSmoke] ok tokens=\(toks.count)")
     }
 }

@@ -1,17 +1,12 @@
 import SwiftUI
 import SwiftData
+import AVFoundation
 
 @main
 struct YouTubeJPCaptionStudioApp: App {
     init() {
-        #if DEBUG
-        SubtitleParserSmoke.run()
-        LayoutSmoke.run()
-        ImportSmoke.run()
-        NLPTaggerSmoke.run()
-        DictionarySmoke.run()
-        BackupSmoke.run()
-        #endif
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
 
     var body: some Scene {
