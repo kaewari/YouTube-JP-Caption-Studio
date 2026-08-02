@@ -25,7 +25,9 @@ Thư mục này chứa mã nguồn ứng dụng iPad hoàn chỉnh được vi�
   - `FreqService.swift`: Load `freq_ja.json` (cùng map Desktop `vocab_freq.py`) → rank → band JLPT.
   - `VocabStyle.swift`: Bảng màu JLPT parity với `extension/shared/vocab_style.js`.
   - `DictionaryService.swift`: Tra `dict.sqlite` (jmdict / javi / jmdict_vi / en_vi) — mirror local-bridge `/dict` (VI + EN, stem/prefix fallback).
-  - `SettingsSync.swift` / `VocabSync.swift`: Drive OAuth sync — `caption-studio-settings.json` / vocab trong `caption-studio-backup.json` (xem §3.5).
+  - `SettingsSync.swift` / `VocabSync.swift`: Drive OAuth sync — `caption-studio-settings.json` / vocab-only `caption-studio-backup.json` (xem §3.5).
+  - `DriveAuthService.swift` / `DriveOAuthConfig.swift`: OAuth iOS (`ASWebAuthenticationSession` + PKCE). **Phải** dùng client kiểu iOS trên GCP — không dùng `client_id` Chrome extension.
+  - `DriveAPIClient.swift` / `DriveScriptsService.swift`: Drive REST — pull panel từ `script.txt`, patch write-back `cues.json` + `meta.json` (Lamport `rev`).
 - **`Resources/`**:
   - `dict.sqlite`: JMdict + JA→VI + EN→VI (bundle vào app).
   - `freq_ja.json`: ~15k lemma frequency ranks cho tô màu JLPT.
@@ -45,8 +47,8 @@ Thư mục này chứa mã nguồn thuần của Extension cho Chrome, đóng va
 - **`app/services/`**:
   - `dictionary.py`: Quản lý query dữ liệu từ điển JMdict (SQLite).
   - `tokenize_ja.py`: Sử dụng thư viện `sudachipy` để chia từ, phân tích từ loại (POS), bóc tách furigana.
-  - `script_store.py`: Đọc/ghi các file phụ đề (`.json`/`.txt`) xuống ổ cứng (`data/subtitles/`). Hỗ trợ xuất và nhập file hàng loạt.
-  - `snapshot.py`: Encode/decode Snapshot v1 (`GET`/`POST /backup/snapshot`) — start+text only; derive end từ start kế.
+  - `script_store.py`: Per-video folder `data/subtitles/{videoId}/` — `cues.json` + `meta.json` (+ `script.txt` khi mirror) + `tokens.json` (local-only, không lên Drive). Lamport `rev`, cờ `owned`.
+  - `snapshot.py`: Encode/decode Snapshot v1 (`GET`/`POST /backup/snapshot`) — legacy/slim; script sync chính = folder mirror qua `/scripts/{id}/files`.
   - `ime_switch.py`: Chạy script tự động chuyển bộ gõ (IME) trên macOS.
   - `vocab_freq.py`: Tính toán tần suất và cấp độ JLPT.
 
@@ -125,22 +127,61 @@ Chrome Extensions không hoạt động trên iPadOS. Để mang ứng dụng l�
 - **Tombstone (Cơ chế Xóa Sub)**: Khi User ấn "Xóa" một câu phụ đề rác do YouTube tạo ra, thay vì xóa hoàn toàn khỏi mảng nhớ, hệ thống tạo ra một object **Tombstone** (`isDeleted: true`). Trong các lần tải lại sau, trình Merge thấy Tombstone sẽ chủ động ẩn câu gốc của YouTube, chặn sự "hồi sinh" của sub rác.
 - **Import/Export Data**: Người dùng có quyền lấy toàn bộ kịch bản, ấn "Import", hệ thống sẽ matching theo ID hoặc thời gian (±0,35s) để map bản dịch vào đúng vị trí video. Hỗ trợ thay thế toàn bộ (Full Replace) hoặc chỉ gộp những phần đã dịch (Partial Merge). Tích hợp xuyên suốt cả iPad và Desktop.
 
-### 3.5. Drive sync PC ↔ iPad (`caption-studio-backup.json`)
+### 3.5. Drive sync PC ↔ iPad (folder mirror + vocab/settings)
 
-Cùng một file JSON trong folder Drive cố định → last-write-wins. **Vocab primary path = OAuth Connect** (iPad `VocabSync` + PC `pullVocabSnapshot` / debounce upload). Wire: `{ version, updatedAt, scripts: [], vocab: [...] }` — iPad apply chỉ Vocabulary (không xóa VideoScript). Scripts đi folder `<videoId>/`, không qua backup.json.
+Folder Drive cố định: `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA` — [mở folder](https://drive.google.com/drive/folders/1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA).
 
-**Settings** (`caption-studio-settings.json`, cùng folder): auto sync sau **Connect Drive** — pull nếu Drive mới hơn, không thì push local (tạo file nếu thiếu). Sửa settings khi đã Connect → debounce push. Không sync geometry (barPos, panel width). Keys: furigana, barShow*/barScale/opacities, dimHardsub, dictShowSentence, JLPT colors, followTimeline, isDarkTheme, sidePanelFontScale.
+#### Scripts — per-video folder mirror
 
-**Setup (một lần):**
-1. Google Cloud → OAuth client kiểu Chrome Extension → thay `YOUR_CHROME_EXTENSION_OAUTH_CLIENT_ID…` trong `extension/manifest.json` (`oauth2.client_id`). Reload extension.
-2. Chạy local-bridge (`./start.sh`) — extension cần `GET/POST /backup/snapshot`.
-3. Side panel → **Connect Drive** (OAuth). Folder hardcode `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA` — [mở folder](https://drive.google.com/drive/folders/1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA).
-4. iPad: **Thư mục** → Connect Drive (OAuth). Settings + vocab sync qua Drive REST cùng folder.
-5. Side panel → **Upload Drive** để đẩy snapshot bridge lên Drive ngay (không chờ debounce sau save). Files bookmark trên iPad chỉ còn fallback offline/reinstall.
+Mỗi video = folder `<videoId>/` trên Drive (và `data/subtitles/{videoId}/` trên PC):
 
-**Smoke checklist:** sửa vocab PC → JSON lên Drive (debounce) → mở iPad (foreground / Connect) → auto-pull vocab; lưu từ iPad → Drive cập nhật → PC pull. Settings: Connect một lần → `caption-studio-settings.json` xuất hiện / cập nhật. Files **Backup**/**Restore** trên iPad vẫn là fallback offline/reinstall.
+| File | Lên Drive? | Vai trò |
+|------|------------|---------|
+| `cues.json` | ✅ | Cue wire (JA/EN/VI, timing, tombstone…) — iPad patch write-back |
+| `meta.json` | ✅ | Lamport `rev`, `owned`, `deviceId`, tombstones |
+| `script.txt` | ✅ | Bản đọc được + **nguồn pull panel iPad** (import) |
+| `tokens.json` | ❌ local-only | Furigana / tokenize cache — không mirror |
+
+**PC (extension + bridge):**
+- Bridge: `GET/POST /scripts/{id}/files` (3 file mirror), `GET /scripts/{id}/meta`, `GET /scripts/{id}/tokens`; library index có `rev` / `owned` / `cue_count`.
+- Extension: **Upload Drive** / `mirrorToDrive` / `mirrorFromDrive` — đọc owned từ disk `meta.json` (không chỉ chrome.storage).
+- Freshness = Lamport `rev` trong `meta.json` (không dùng mtime / clock).
+
+**iPad:**
+- **Thư mục** = Connect Drive (OAuth `ASWebAuthenticationSession` + PKCE) rồi sync — **không** cần Files “Open folder” (Drive File Provider làm Open folder xám).
+- Pull panel từ **`script.txt`** → import SwiftData; push sửa → patch `cues.json` + bump `meta.json` rev.
+- UI dùng cues trả về từ sync (không phụ thuộc predicate relationship `ScriptCue.load` sau import).
+
+#### Vocab + settings (cùng folder gốc)
+
+- **Vocab** — `caption-studio-backup.json`: LWW; wire `{ version, updatedAt, scripts: [], vocab: [...] }` — chỉ Vocabulary (scripts không qua file này).
+- **Settings** — `caption-studio-settings.json`: auto pull/push sau Connect; không sync geometry. Keys: furigana, barShow*/barScale/opacities, dimHardsub, dictShowSentence, JLPT colors, followTimeline, isDarkTheme, sidePanelFontScale.
+- Files **Backup**/**Restore** trên iPad = fallback offline/reinstall.
+
+#### Setup OAuth (một lần)
+
+**PC (Chrome extension):**
+1. GCP → OAuth client kiểu **Chrome Extension** → `extension/manifest.json` (`oauth2.client_id`). Reload.
+2. Chạy local-bridge (`./start.sh`).
+3. Side panel → **Connect Drive** → **Upload Drive** để đẩy mirror ngay.
+
+**iPad (bắt buộc client riêng):**
+1. GCP (cùng project) → OAuth client kiểu **iOS**, bundle `com.example.YouTubeJPCaptionStudio`.
+2. Paste `….apps.googleusercontent.com` vào `ipad-app/Services/DriveOAuthConfig.swift` (`clientId`) — **không** dùng client Chrome (→ Error 400 `invalid_request`).
+3. URL scheme / `project.yml`: `com.googleusercontent.apps.<prefix>` (reverse-client-id); redirect `…:/oauth2redirect`.
+4. App → **Thư mục** → Connect Drive.
+
+Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
+
+**Smoke:** PC save/Upload → Drive có `<videoId>/{cues,meta,script}` → iPad Connect → side panel có cue từ `script.txt`; sửa iPad → `cues.json` + `rev` tăng → PC mirrorFromDrive. Vocab/settings: Connect một lần → file JSON cập nhật hai chiều.
 
 ### 3.6. iPad: Back/Forward + Theo timeline
 
 - **Back/Forward** (chevron cạnh ô URL): lịch sử `WKWebView` (`goBack`/`goForward`) — không phải seek cue. Thử: mở YouTube → vào watch → Back về home; Forward khi có history.
-- **Theo timeline** (toggle side panel): bật → cue đang phát scroll vào giữa list (`scrollTo` + animation); kéo list / sửa cue → tắt follow. Label **ĐANG PHÁT** luôn chiếm chỗ (ẩn bằng opacity) nên đổi cue không nhấp nháy hàng.
+- **Theo timeline** (toggle side panel): cue list = `ScrollView` + `VStack` (không còn `List` — `scrollTo` no-op khi row đã visible). Advance: soft-scroll, anchor `.top` — **ĐANG PHÁT** sát dưới tab Phụ đề/Từ vựng. Load / bật lại follow (`force`): jump instant, không animate từ đầu list. Cue ngắn (1–2 chữ): `scrollAnimInFlight` + `pendingScrollId` coalesce — tránh chồng animation. Kéo list / sửa cue → tắt follow. Label **ĐANG PHÁT** luôn chiếm chỗ (ẩn bằng opacity). Extension mirror: `scrollIntoView({ block: "start", behavior: smooth|instant })`. Thử: bật Theo timeline → play qua vài cue (kể cả dòng ngắn) → ĐANG PHÁT luôn sát dưới tab, scroll mượt.
+
+---
+
+## 4. Incidents
+
+Lỗi / incident đã gặp (Drive sync, OAuth, panel trống, bridge…): xem [`INCIDENTS.md`](./INCIDENTS.md).
