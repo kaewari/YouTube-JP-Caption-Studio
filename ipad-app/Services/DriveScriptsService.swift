@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 
 /// Mirror of the per-video Drive folder the bridge/extension writes:
-/// `<videoId>/cues.json` + `<videoId>/meta.json` under fixed folder
-/// `DriveOAuthConfig.folderId`, via Drive REST (not Files / NSFileCoordinator).
+/// `<videoId>/script.txt` (panel import) + `cues.json` (push patch) + `meta.json` (rev)
+/// under fixed folder `DriveOAuthConfig.folderId`, via Drive REST (not Files / NSFileCoordinator).
 ///
 /// Freshness is the Lamport `rev` in `meta.json`, never a timestamp: Mac and iPad clocks
 /// drift, and Drive file mtime is the sync time, not the edit time.
@@ -92,9 +92,13 @@ enum DriveScriptsService {
         // Rev gate alone is not enough: a stale/empty local script with matching rev
         // must still pull when Drive actually has cues (else "đã đồng bộ" is a false success).
         if needsPull(driveRev: driveRev, localRev: script?.rev ?? 0, localLiveCount: liveCount, driveCueCount: driveCueCount) {
-            let count = pull(videoId: videoId, cuesData: cuesData, meta: meta, rev: driveRev, context: context)
+            guard let scriptFileId = children["script.txt"] else {
+                return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu script.txt")
+            }
+            let scriptText = try await DriveAPIClient.getText(fileId: scriptFileId)
+            let count = pull(videoId: videoId, scriptText: scriptText, meta: meta, rev: driveRev, context: context)
             guard count > 0 else {
-                return SyncResult(changed: false, message: "Drive: cues.json trống (\(videoId))")
+                return SyncResult(changed: false, message: "Drive: script.txt trống (\(videoId))")
             }
             return SyncResult(changed: true, message: "Drive: đã nạp \(videoId) (\(count) cue · rev \(driveRev))")
         }
@@ -138,13 +142,12 @@ enum DriveScriptsService {
 
     private static func pull(
         videoId: String,
-        cuesData: Data,
+        scriptText: String,
         meta: [String: Any],
         rev: Int,
         context: ModelContext
     ) -> Int {
-        guard let text = String(data: cuesData, encoding: .utf8) else { return 0 }
-        let rows = ScriptCue.parseImportRows(text)
+        let rows = ScriptCue.parseImportRows(scriptText)
         guard !rows.isEmpty else { return 0 }
         let result = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
         if let script = fetchScript(videoId: videoId, context: context) {
@@ -316,11 +319,30 @@ enum DriveScriptsSmoke {
         assert(DriveScriptsService.needsPull(driveRev: 6, localRev: 5, localLiveCount: 2, driveCueCount: 2),
                "higher Drive rev must pull")
 
-        // Simulated pull path: parse Drive-shaped cues.json → row count matches panel load.
-        let pullRows = ScriptCue.parseImportRows(json)
-        assert(pullRows.count == 2, "pull parse cue count")
-        assert(pullRows[0].id == "a" && pullRows[0].ja == "あ", "pull row id/source")
-        assert(abs(pullRows[0].startMs - 599) < 1e-6, "pull start_media_time → ms")
+        // Pull imports from script.txt (not cues.json); parse → import → load.count == replaced.
+        let scriptTxt = """
+        [001] 0:00 → 0:02
+        JA: あ
+        EN: A
+        ----------
+        [002] 0:03 → 0:04
+        JA: い
+        """
+        let pullRows = ScriptCue.parseImportRows(scriptTxt)
+        assert(pullRows.count == 2, "script.txt parse cue count")
+        assert(pullRows[0].ja == "あ" && pullRows[0].en == "A", "script.txt row ja/en")
+        assert(pullRows[0].startMs == 0 && pullRows[0].endMs == 2000, "script.txt times")
+
+        let container = try! ModelContainer(
+            for: VideoScript.self, ScriptCue.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let ctx = ModelContext(container)
+        let imported = ScriptCue.importRows(
+            videoId: "smoke-v", rows: pullRows, mode: .replace, includeJA: true, context: ctx
+        )
+        assert(ScriptCue.load(videoId: "smoke-v", context: ctx).count == imported.replaced,
+               "load.count == replaced after script.txt import")
 
         print("[DriveScriptsSmoke] ok")
     }

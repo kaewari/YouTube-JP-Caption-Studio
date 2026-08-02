@@ -8,6 +8,11 @@ class VideoScript {
     var savedAt: Date
     /// Import-replace script: reload must not rebuild from YouTube IDs.
     var owned: Bool = false
+    /// Lamport clock shared with bridge/extension via Drive `meta.json` — never a wall clock.
+    /// Default-valued so SwiftData lightweight migration keeps the existing sandbox.
+    var rev: Int = 0
+    /// Device that produced `rev`; tie-break when two devices land on the same rev.
+    var deviceId: String = ""
     
     // Relationship
     @Relationship(deleteRule: .cascade, inverse: \ScriptCue.video)
@@ -62,11 +67,10 @@ extension ScriptCue {
 
     @MainActor
     static func load(videoId: String, context: ModelContext) -> [ScriptCue] {
-        let descriptor = FetchDescriptor<ScriptCue>(
-            predicate: #Predicate { $0.video?.videoId == videoId },
-            sortBy: [SortDescriptor(\.startTime)]
-        )
-        return (try? context.fetch(descriptor)) ?? []
+        // Fetch parent first — optional-relationship predicates miss after insert.
+        let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
+        guard let script = try? context.fetch(descriptor).first else { return [] }
+        return script.cues.sorted { $0.startTime < $1.startTime }
     }
 
     @MainActor
