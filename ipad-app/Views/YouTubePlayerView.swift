@@ -16,9 +16,13 @@ struct YouTubePlayerView: UIViewRepresentable {
     var onLayoutCheck: (([String: Any]) -> Void)? = nil
     /// Watch-page video id from `?v=` + href (empty id on YouTube home/search — gate overlay/panel).
     var onPageNav: ((String?, String) -> Void)? = nil
+    /// OS/app fullscreen enter/exit from page (`fullscreenHandler`).
+    var onFullscreenChange: ((Bool) -> Void)? = nil
     @Binding var seekRequest: Double?
     /// Bump to force a page reload without changing `videoID`.
     @Binding var reloadNonce: Int
+    /// Bump to run `window.__csToggleFull()` (app maximize only — OS video FS disabled).
+    @Binding var fullscreenToggleNonce: Int
     @Binding var historyAction: PlayerHistoryAction?
     @Binding var canGoBack: Bool
     @Binding var canGoForward: Bool
@@ -35,18 +39,6 @@ struct YouTubePlayerView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         let contentController = WKUserContentController()
 
-        // Block OS fullscreen early; visual pane-fill lives in user_script.js (no fixed CSS).
-        let fsPatch = """
-        (function(){if(window.__csFsPatched)return;window.__csFsPatched=1;
-        function noop(){return Promise.resolve()}
-        try{Element.prototype.requestFullscreen=noop;Element.prototype.webkitRequestFullscreen=noop;Element.prototype.webkitRequestFullScreen=noop}catch(e){}
-        try{Document.prototype.exitFullscreen=noop;Document.prototype.webkitExitFullscreen=noop;Document.prototype.webkitCancelFullScreen=noop}catch(e){}
-        try{Object.defineProperty(document,'fullscreenElement',{configurable:true,get:function(){return null}})}catch(e){}
-        try{HTMLVideoElement.prototype.webkitEnterFullscreen=function(){};HTMLVideoElement.prototype.webkitEnterFullScreen=function(){}}catch(e){}
-        })();
-        """
-        contentController.addUserScript(WKUserScript(source: fsPatch, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-
         if let scriptPath = Bundle.main.path(forResource: "user_script", ofType: "js"),
            let scriptSource = try? String(contentsOfFile: scriptPath) {
             let userScript = WKUserScript(source: scriptSource, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -58,12 +50,14 @@ struct YouTubePlayerView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "rectHandler")
         contentController.add(context.coordinator, name: "layoutHandler")
         contentController.add(context.coordinator, name: "navHandler")
+        contentController.add(context.coordinator, name: "fullscreenHandler")
 
         configuration.userContentController = contentController
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-        // Disable OS/element fullscreen — JS maps YT zoom to left-pane fill only.
+        // Fullscreen must stay app-maximize: element fullscreen (iOS 15.4+) would present
+        // the OS layer over our overlay. Default is off — pin it off explicitly.
         if #available(iOS 15.4, *) {
             configuration.preferences.isElementFullscreenEnabled = false
         }
@@ -89,6 +83,11 @@ struct YouTubePlayerView: UIViewRepresentable {
                 "(function(){if(window.__csSeek)return window.__csSeek(\(seconds));var v=document.querySelector('#movie_player video.html5-main-video')||document.querySelector('#movie_player video');if(v)v.currentTime=\(seconds);})();"
             )
             DispatchQueue.main.async { seekRequest = nil }
+        }
+
+        if fullscreenToggleNonce != context.coordinator.lastFullscreenToggleNonce {
+            context.coordinator.lastFullscreenToggleNonce = fullscreenToggleNonce
+            uiView.evaluateJavaScript("window.__csToggleFull&&window.__csToggleFull();")
         }
 
         if let action = historyAction {
@@ -124,6 +123,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         var parent: YouTubePlayerView
         var loadedID: String?
         var lastReloadNonce: Int = 0
+        var lastFullscreenToggleNonce: Int = 0
         /// Coalesce bridge storms before they invalidate SwiftUI @State.
         private var lastTimeSec: Double = -1
         private var lastPaused: Bool?
@@ -134,6 +134,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         init(_ parent: YouTubePlayerView) {
             self.parent = parent
             self.lastReloadNonce = parent.reloadNonce
+            self.lastFullscreenToggleNonce = parent.fullscreenToggleNonce
         }
 
         func observeHistory(_ webView: WKWebView) {
@@ -173,8 +174,15 @@ struct YouTubePlayerView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let dict = message.body as? [String: Any],
-                  let type = dict["type"] as? String else { return }
+            guard let dict = message.body as? [String: Any] else { return }
+
+            if message.name == "fullscreenHandler" {
+                let active = Self.bool(dict["active"]) ?? false
+                DispatchQueue.main.async { [parent] in parent.onFullscreenChange?(active) }
+                return
+            }
+
+            guard let type = dict["type"] as? String else { return }
 
             if type == "CAPTIONS_RECEIVED",
                let url = dict["url"] as? String,

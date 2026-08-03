@@ -65,6 +65,9 @@ struct ContentView: View {
     @State private var cueListBounds: CGRect = .null
     @State private var cueRowFrames: [String: CGRect] = [:]
     @FocusState private var urlFocused: Bool
+    @State private var isPlayerFullscreen = false
+    @State private var sidePanelBeforeFullscreen: Bool?
+    @State private var fullscreenToggleNonce = 0
 
     private enum ToolTab: String, CaseIterable {
         case subtitles = "Phụ đề"
@@ -91,12 +94,14 @@ struct ContentView: View {
     }
 
     private var overlayShown: Bool { overlayOn && onYouTubeWatch }
-    private var sidePanelShown: Bool { sidePanelOn && onYouTubeWatch }
+    private var sidePanelShown: Bool { sidePanelOn && onYouTubeWatch && !isPlayerFullscreen }
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Divider()
+            if !isPlayerFullscreen {
+                topBar
+                Divider()
+            }
             GeometryReader { geo in
                 let wide = geo.size.width >= 800
                 Group {
@@ -143,6 +148,9 @@ struct ContentView: View {
             }
         }
         .task {
+            #if DEBUG
+            runAutotestIfRequested()
+            #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
                 currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
@@ -312,8 +320,12 @@ struct ContentView: View {
                     // Keep chrome in sync on in-page YT nav without remounting via `.id(videoID)`.
                     if let id, id != videoID { videoID = id }
                 },
+                onFullscreenChange: { active in
+                    applyPlayerFullscreen(active)
+                },
                 seekRequest: $seekRequest,
                 reloadNonce: $reloadNonce,
+                fullscreenToggleNonce: $fullscreenToggleNonce,
                 historyAction: $historyAction,
                 canGoBack: $canGoBack,
                 canGoForward: $canGoForward
@@ -331,6 +343,10 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // App-full hides topBar — keep overlay + exit pills reachable.
+        .overlay(alignment: .topTrailing) {
+            if isPlayerFullscreen { fullscreenExitChrome }
+        }
     }
 
     private func saveCues() {
@@ -410,8 +426,19 @@ struct ContentView: View {
             .opacity(onYouTubeWatch ? 1 : 0.35)
 
             iconPill("sidebar.trailing", active: sidePanelShown, label: sidePanelOn ? "Ẩn side panel" : "Hiện side panel") {
-                guard onYouTubeWatch else { return }
+                guard onYouTubeWatch, !isPlayerFullscreen else { return }
                 sidePanelOn.toggle()
+            }
+            .disabled(!onYouTubeWatch || isPlayerFullscreen)
+            .opacity(onYouTubeWatch && !isPlayerFullscreen ? 1 : 0.35)
+
+            iconPill(
+                isPlayerFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                active: isPlayerFullscreen,
+                label: isPlayerFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"
+            ) {
+                guard onYouTubeWatch else { return }
+                fullscreenToggleNonce &+= 1
             }
             .disabled(!onYouTubeWatch)
             .opacity(onYouTubeWatch ? 1 : 0.35)
@@ -441,6 +468,94 @@ struct ContentView: View {
         .padding(.vertical, 10)
         .background(Color(uiColor: .systemBackground))
     }
+
+    /// App-full: topBar hidden — overlay + full exit on the player.
+    private var fullscreenExitChrome: some View {
+        HStack(spacing: 6) {
+            iconPill("captions.bubble.fill", active: overlayShown, label: overlayOn ? "Tắt overlay" : "Bật overlay") {
+                guard onYouTubeWatch else { return }
+                overlayOn.toggle()
+            }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
+
+            iconPill(
+                isPlayerFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                active: isPlayerFullscreen,
+                label: isPlayerFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"
+            ) {
+                guard onYouTubeWatch else { return }
+                fullscreenToggleNonce &+= 1
+            }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
+        }
+        .padding(8)
+    }
+
+    /// App maximize: panel off, overlay stays on; restore panel on exit.
+    private func applyPlayerFullscreen(_ active: Bool) {
+        if active {
+            if sidePanelBeforeFullscreen == nil {
+                sidePanelBeforeFullscreen = sidePanelOn
+            }
+            sidePanelOn = false
+            isPlayerFullscreen = true
+        } else {
+            isPlayerFullscreen = false
+            if let prev = sidePanelBeforeFullscreen {
+                sidePanelOn = prev
+                sidePanelBeforeFullscreen = nil
+            }
+        }
+    }
+
+    #if DEBUG
+    /// Device self-test driver — config via launch args (devicectl -e env vars don't reach iOS processes):
+    ///   -CS_AUTOTEST_OVERLAY            → overlay on
+    ///   -CS_AUTOTEST_FULLSCREEN 8,16    → toggle app-full at 8s and 16s
+    ///   -CS_AUTOTEST_SHOT 5,12,19       → save window PNGs to Documents/autotest/ at those seconds
+    /// ponytail: device-only check for the fullscreen-overlay fix; no UI needed, shots are the evidence.
+    private func runAutotestIfRequested() {
+        let a = CommandLine.arguments
+        let argVal = { (flag: String) -> String in
+            (0..<(a.count - 1)).first { a[$0] == flag }.map { a[$0 + 1] } ?? ""
+        }
+        if a.contains("-CS_AUTOTEST_OVERLAY") { overlayOn = true }
+        let toggles = argVal("-CS_AUTOTEST_FULLSCREEN")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        let shots = argVal("-CS_AUTOTEST_SHOT")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        print("[Autotest] args=\(a) toggles=\(toggles) shots=\(shots)")
+        for t in toggles {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                fullscreenToggleNonce &+= 1
+                print("[Autotest] toggle full at \(t)s")
+            }
+        }
+        for (i, s) in shots.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + s) {
+                saveAutotestShot(index: i + 1)
+            }
+        }
+    }
+
+    private func saveAutotestShot(index: Int) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.keyWindow else { return }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let image = renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = image.pngData() else { return }
+        let sub = dir.appendingPathComponent("autotest", isDirectory: true)
+        try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        let url = sub.appendingPathComponent(String(format: "autotest-%02d.png", index))
+        try? data.write(to: url)
+        print("[Autotest] shot \(url.lastPathComponent) ovl=\(overlayShown) full=\(isPlayerFullscreen)")
+    }
+    #endif
 
     private func iconPill(
         _ systemImage: String,

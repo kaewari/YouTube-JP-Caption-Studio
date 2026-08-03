@@ -31,3 +31,9 @@ Nhật ký ngắn (không phải transcript). Runtime bridge: `local-bridge/erro
 7. **Local meta `MOIbaNe4Pmw` thiếu rev/owned so với sibling**  
    Cause: meta chưa migrate / save cũ không ghi owned+rev.  
    Fix: script_store luôn persist `owned` + Lamport `rev`; library index đọc từ meta.
+
+## 2026-08-04 — Fullscreen: bấm zoom → app đơ, không thao tác được (iPad)
+
+1. **Nút Toàn màn hình bị chặn / đơ toàn app**  
+   Cause: rework (copilot/dev) thay app-maximize đã verify bằng `webkitEnterFullscreen()` (gọi từ `evaluateJavaScript`, không phải user gesture) + overlay window level 3000 (`FullscreenOverlay.swift` / `FullscreenPlayerControls.swift`) — native player phủ window, hitTest pass-through chỉ nhả `self`/`rootViewController.view` → end-fullscreen không về → Swift kẹt `isPlayerFullscreen`, topBar ẩn, mọi touch bị chặn.  
+   Fix: restore đúng path B10 đã verify (claude/dev): app maximize only — `__csToggleFull` → `forceAppFullscreen` + `killOsFullscreen` safety net, intercept `.ytp-fullscreen-button`, `isElementFullscreenEnabled = false`; xoá 2 file overlay + pbxproj refs. Verify autotest iPad thật: enter (t=12s) video chiếm pane, không lớp OS FS; exit (t=19s) topBar + side panel restore ✓.

@@ -101,6 +101,78 @@
   });
   document.addEventListener("pagehide", resumeIfWanted);
 
+  function postFullscreenActive(active, mode) {
+    if (window !== window.top) return;
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler)) return;
+    try {
+      window.webkit.messageHandlers.fullscreenHandler.postMessage({
+        active: !!active,
+        mode: mode || (window.__csAppFull ? "app" : "os")
+      });
+    } catch (e) {}
+  }
+  // App maximize only — never webkitEnterFullscreen (system FS layer covers the overlay).
+  // Safety net: any OS video/element fullscreen is force-killed and converted to app mode.
+  function killOsFullscreen() {
+    var v = mainVideo();
+    if (v && v.webkitDisplayingFullscreen) {
+      try { if (typeof v.webkitExitFullscreen === "function") v.webkitExitFullscreen(); } catch (e) {}
+    }
+    var de = document.fullscreenElement || document.webkitFullscreenElement;
+    if (de) {
+      try {
+        if (document.exitFullscreen && typeof document.exitFullscreen === "function") document.exitFullscreen();
+        else if (document.webkitExitFullscreen && typeof document.webkitExitFullscreen === "function") document.webkitExitFullscreen();
+      } catch (e) {}
+    }
+  }
+  var __csFsKillTimer = null;
+  function forceAppFullscreen() {
+    window.__csAppFull = true;
+    killOsFullscreen();
+    postFullscreenActive(true, "app");
+    // ponytail: exit is async — if its end event never fires, re-kill once.
+    clearTimeout(__csFsKillTimer);
+    __csFsKillTimer = setTimeout(function () {
+      var v = mainVideo();
+      if ((v && v.webkitDisplayingFullscreen) || !!(document.fullscreenElement || document.webkitFullscreenElement)) {
+        killOsFullscreen();
+      }
+    }, 400);
+  }
+  function postFullscreen() {
+    var v = mainVideo();
+    if ((v && v.webkitDisplayingFullscreen) || !!(document.fullscreenElement || document.webkitFullscreenElement)) {
+      forceAppFullscreen();
+      return;
+    }
+    postFullscreenActive(!!window.__csAppFull, "app");
+  }
+  ["fullscreenchange", "webkitfullscreenchange"].forEach(function (ev) {
+    document.addEventListener(ev, postFullscreen);
+  });
+
+  window.__csToggleFull = function () {
+    if (window.__csAppFull) {
+      window.__csAppFull = false;
+      postFullscreenActive(false, "app");
+      return;
+    }
+    forceAppFullscreen();
+  };
+
+  // Intercept YT FS button — block unsupported tooltip; same path as full pill.
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest(".ytp-fullscreen-button");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+    window.__csToggleFull();
+  }, true);
+
   function bindVideo(video) {
     if (!video || video.__captionStudioBound) return;
     video.__captionStudioBound = true;
@@ -114,6 +186,11 @@
         postTime(ev === "play" || ev === "pause" || ev === "seeked" || ev === "seeking");
       });
     });
+    if (!video.__csFsBound) {
+      video.__csFsBound = true;
+      video.addEventListener("webkitbeginfullscreen", postFullscreen);
+      video.addEventListener("webkitendfullscreen", postFullscreen);
+    }
     postTime(true);
   }
 
