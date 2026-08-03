@@ -222,6 +222,7 @@ Bảng gộp symptom → root cause → trạng thái. Chi tiết / lịch sử:
 
 **B6–B8:** WEB timedtext empty → ANDROID rescue; tokenize mọi JA; user confirmed OK (2026-08-02).
 **B9:** overlap fill + pending semantics; verify: Reload → cue trước đây trống VI/EN được fill hoặc `pending` giảm; active cue không còn blank khi track EN/VI chồng thời gian.
+**B10:** verify trên iPad thật 2026-08-03 (autotest `-CS_AUTOTEST_*` → PNG): overlay ON hiện trong app-full (t=12s) ✓; overlay OFF → không chữ (A/B) ✓; thoát full → topBar restore ✓. Bằng chứng `.tmp-fullscreen-verify/run3/` + `run4/`.
 
 ---
 

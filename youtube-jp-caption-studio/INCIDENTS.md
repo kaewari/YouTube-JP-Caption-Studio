@@ -55,3 +55,9 @@ Ledger ngắn trong walkthrough §3.7 (B1–B10).
 16. **Full pill → OS native video FS, overlay (HardsubOverlayView) bị che hoàn toàn**  
    Cause: `__csToggleFull` gọi `video.webkitEnterFullscreen()` trước — lớp system player phủ cả window, SwiftUI overlay (cùng window, nằm dưới lớp đó) không hiện dù `hardsubOverlayOn = ON`.  
    Fix: fullscreen **chỉ app maximize** — bỏ `webkitEnterFullscreen`; pill + intercept YT FS button → `__csAppFull` trực tiếp; safety net `webkitbeginfullscreen`/`fullscreenchange` ép OS FS về app maximize (`webkitExitFullscreen`/`exitFullscreen`); `isElementFullscreenEnabled = false` (ipad-app + iphone-app).
+   Verified 2026-08-03 trên iPad thật (iPad Pro 13" M5, hot fix, autotest harness `-CS_AUTOTEST_*` launch args → window PNGs):
+   - t=5s (overlay ON, chưa full): overlay hiện trên video ✓
+   - t=12s (sau toggle full lúc 8s): topBar ẩn, video chiếm hết pane, **overlay vẫn hiện** — không có lớp system player ✓
+   - t=19s (sau thoát lúc 16s): topBar khôi phục ✓
+   - A/B overlay OFF ở t=12s: không có chữ → text thấy được là overlay của app, không phải CC của YouTube ✓
+   Bằng chứng: `.tmp-fullscreen-verify/run3/` + `run4/` (autotest-01..03.png + crops).

@@ -148,6 +148,9 @@ struct ContentView: View {
             }
         }
         .task {
+            #if DEBUG
+            runAutotestIfRequested()
+            #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
                 currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
@@ -506,6 +509,53 @@ struct ContentView: View {
             }
         }
     }
+
+    #if DEBUG
+    /// Device self-test driver — config via launch args (devicectl -e env vars don't reach iOS processes):
+    ///   -CS_AUTOTEST_OVERLAY            → overlay on
+    ///   -CS_AUTOTEST_FULLSCREEN 8,16    → toggle app-full at 8s and 16s
+    ///   -CS_AUTOTEST_SHOT 5,12,19       → save window PNGs to Documents/autotest/ at those seconds
+    /// ponytail: device-only check for the fullscreen-overlay fix; no UI needed, shots are the evidence.
+    private func runAutotestIfRequested() {
+        let a = CommandLine.arguments
+        let argVal = { (flag: String) -> String in
+            (0..<(a.count - 1)).first { a[$0] == flag }.map { a[$0 + 1] } ?? ""
+        }
+        if a.contains("-CS_AUTOTEST_OVERLAY") { overlayOn = true }
+        let toggles = argVal("-CS_AUTOTEST_FULLSCREEN")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        let shots = argVal("-CS_AUTOTEST_SHOT")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        print("[Autotest] args=\(a) toggles=\(toggles) shots=\(shots)")
+        for t in toggles {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                fullscreenToggleNonce &+= 1
+                print("[Autotest] toggle full at \(t)s")
+            }
+        }
+        for (i, s) in shots.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + s) {
+                saveAutotestShot(index: i + 1)
+            }
+        }
+    }
+
+    private func saveAutotestShot(index: Int) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.keyWindow else { return }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let image = renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        guard let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = image.pngData() else { return }
+        let sub = dir.appendingPathComponent("autotest", isDirectory: true)
+        try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        let url = sub.appendingPathComponent(String(format: "autotest-%02d.png", index))
+        try? data.write(to: url)
+        print("[Autotest] shot \(url.lastPathComponent) ovl=\(overlayShown) full=\(isPlayerFullscreen)")
+    }
+    #endif
 
     private func iconPill(
         _ systemImage: String,
