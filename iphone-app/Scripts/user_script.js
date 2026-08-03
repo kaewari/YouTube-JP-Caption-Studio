@@ -10,7 +10,34 @@
       /* Hide native CC only — keep below-player chrome + related / other videos. */
       .ytp-caption-window-container, .caption-window, .player-timedtext { display: none !important; }
 
+      /* Masthead only — leave secondary/related rails alone */
+      ytd-masthead, #masthead-container { display: none !important; }
+
+      /* Title + owner/subscribe row — not whole under-player rail */
+      ytd-watch-metadata #title,
+      ytd-watch-metadata #owner,
+      ytd-watch-metadata #top-row,
+      ytd-watch-metadata #actions,
+      ytd-watch-metadata #menu-container {
+        display: none !important;
+      }
+
       html, body, ytd-app { background: #121212 !important; }
+
+      /* Soft widen in landscape pane — no fixed player, no under-player wipe, contain not cover. */
+      @media (orientation: landscape) {
+        ytd-player,
+        #player,
+        #movie_player,
+        #player-container-inner {
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+        #movie_player video.html5-main-video,
+        #movie_player video {
+          object-fit: contain !important;
+        }
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {}

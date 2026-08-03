@@ -65,6 +65,9 @@ struct ContentView: View {
     @State private var cueListBounds: CGRect = .null
     @State private var cueRowFrames: [String: CGRect] = [:]
     @FocusState private var urlFocused: Bool
+    @State private var isPlayerFullscreen = false
+    @State private var sidePanelBeforeFullscreen: Bool?
+    @State private var fullscreenToggleNonce = 0
 
     private enum ToolTab: String, CaseIterable {
         case subtitles = "Phụ đề"
@@ -91,12 +94,14 @@ struct ContentView: View {
     }
 
     private var overlayShown: Bool { overlayOn && onYouTubeWatch }
-    private var sidePanelShown: Bool { sidePanelOn && onYouTubeWatch }
+    private var sidePanelShown: Bool { sidePanelOn && onYouTubeWatch && !isPlayerFullscreen }
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Divider()
+            if !isPlayerFullscreen {
+                topBar
+                Divider()
+            }
             GeometryReader { geo in
                 let wide = geo.size.width >= 800
                 Group {
@@ -312,8 +317,12 @@ struct ContentView: View {
                     // Keep chrome in sync on in-page YT nav without remounting via `.id(videoID)`.
                     if let id, id != videoID { videoID = id }
                 },
+                onFullscreenChange: { active in
+                    applyPlayerFullscreen(active)
+                },
                 seekRequest: $seekRequest,
                 reloadNonce: $reloadNonce,
+                fullscreenToggleNonce: $fullscreenToggleNonce,
                 historyAction: $historyAction,
                 canGoBack: $canGoBack,
                 canGoForward: $canGoForward
@@ -331,6 +340,10 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // App-full hides topBar — keep overlay + exit pills reachable.
+        .overlay(alignment: .topTrailing) {
+            if isPlayerFullscreen { fullscreenExitChrome }
+        }
     }
 
     private func saveCues() {
@@ -410,8 +423,19 @@ struct ContentView: View {
             .opacity(onYouTubeWatch ? 1 : 0.35)
 
             iconPill("sidebar.trailing", active: sidePanelShown, label: sidePanelOn ? "Ẩn side panel" : "Hiện side panel") {
-                guard onYouTubeWatch else { return }
+                guard onYouTubeWatch, !isPlayerFullscreen else { return }
                 sidePanelOn.toggle()
+            }
+            .disabled(!onYouTubeWatch || isPlayerFullscreen)
+            .opacity(onYouTubeWatch && !isPlayerFullscreen ? 1 : 0.35)
+
+            iconPill(
+                isPlayerFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                active: isPlayerFullscreen,
+                label: isPlayerFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"
+            ) {
+                guard onYouTubeWatch else { return }
+                fullscreenToggleNonce &+= 1
             }
             .disabled(!onYouTubeWatch)
             .opacity(onYouTubeWatch ? 1 : 0.35)
@@ -440,6 +464,47 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(uiColor: .systemBackground))
+    }
+
+    /// App-full: topBar hidden — overlay + full exit on the player.
+    private var fullscreenExitChrome: some View {
+        HStack(spacing: 6) {
+            iconPill("captions.bubble.fill", active: overlayShown, label: overlayOn ? "Tắt overlay" : "Bật overlay") {
+                guard onYouTubeWatch else { return }
+                overlayOn.toggle()
+            }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
+
+            iconPill(
+                isPlayerFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                active: isPlayerFullscreen,
+                label: isPlayerFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"
+            ) {
+                guard onYouTubeWatch else { return }
+                fullscreenToggleNonce &+= 1
+            }
+            .disabled(!onYouTubeWatch)
+            .opacity(onYouTubeWatch ? 1 : 0.35)
+        }
+        .padding(8)
+    }
+
+    /// App maximize: panel off, overlay stays on; restore panel on exit.
+    private func applyPlayerFullscreen(_ active: Bool) {
+        if active {
+            if sidePanelBeforeFullscreen == nil {
+                sidePanelBeforeFullscreen = sidePanelOn
+            }
+            sidePanelOn = false
+            isPlayerFullscreen = true
+        } else {
+            isPlayerFullscreen = false
+            if let prev = sidePanelBeforeFullscreen {
+                sidePanelOn = prev
+                sidePanelBeforeFullscreen = nil
+            }
+        }
     }
 
     private func iconPill(

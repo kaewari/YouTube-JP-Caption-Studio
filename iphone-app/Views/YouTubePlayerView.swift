@@ -56,9 +56,9 @@ struct YouTubePlayerView: UIViewRepresentable {
         configuration.allowsInlineMediaPlayback = true
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-        // Fullscreen must stay app-maximize: element fullscreen (iOS 15.4+) would present
-        // the OS layer over our overlay. Default is off — pin it off explicitly.
         if #available(iOS 15.4, *) {
+            // Fullscreen must stay app-maximize: element fullscreen (iOS 15.4+) would present
+            // the OS layer over our overlay. Default is off — pin it off explicitly.
             configuration.preferences.isElementFullscreenEnabled = false
         }
 
