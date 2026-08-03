@@ -106,13 +106,20 @@ enum DriveScriptsService {
             localTranslated: localTranslated,
             driveTranslated: driveTranslated
         ) {
-            var rows = ScriptCue.parseImportRows(cuesText)
-            if rows.isEmpty || rows.filter({ hasMT($0.en, $0.vi) }).isEmpty {
-                guard let scriptFileId = children["script.txt"] else {
-                    return SyncResult(changed: false, message: "Drive: folder \(videoId) thiếu script.txt")
-                }
+            // Prefer script.txt; cues.json only if TXT missing or parse empty.
+            // TXT has no tokens — stamp cue ids from cues.json (PC `_cues_from_txt` parity)
+            // so replace import keeps stable ids; JLPT/dict = live NLPTagger on JA.
+            var rows: [ScriptCue.ImportRow] = []
+            let cuesRows = ScriptCue.parseImportRows(cuesText)
+            if let scriptFileId = children["script.txt"] {
                 let scriptText = try await DriveAPIClient.getText(fileId: scriptFileId)
                 rows = ScriptCue.parseImportRows(scriptText)
+                if !rows.isEmpty {
+                    rows = stampCueIds(txt: rows, from: cuesRows)
+                }
+            }
+            if rows.isEmpty {
+                rows = cuesRows
             }
             let pulled = pull(videoId: videoId, rows: rows, meta: meta, rev: driveRev, context: context)
             guard !pulled.isEmpty else {
@@ -182,9 +189,24 @@ enum DriveScriptsService {
         }
         // Prefer import's inserted array — relationship reload can still be empty.
         let live = result.cues.filter { !$0.isDeleted }
-        return live.isEmpty
+        let out = live.isEmpty
             ? ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
             : live
+        // No tokens.json on device / Drive — warm NLP so JLPT colors + dict taps work after TXT pull.
+        for cue in out where !cue.textJA.isEmpty {
+            _ = NLPTagger.tokenize(cue.textJA)
+        }
+        return out
+    }
+
+    /// Keep cues.json ids when TXT rewrite drops them (index match, like bridge `_cues_from_txt`).
+    static func stampCueIds(txt: [ScriptCue.ImportRow], from cues: [ScriptCue.ImportRow]) -> [ScriptCue.ImportRow] {
+        guard !cues.isEmpty else { return txt }
+        var out = txt
+        for i in out.indices where i < cues.count && !cues[i].id.isEmpty {
+            out[i].id = cues[i].id
+        }
+        return out
     }
 
     // MARK: - Patch merge
@@ -382,7 +404,7 @@ enum DriveScriptsSmoke {
             localOwned: true, localTranslated: 300, driveTranslated: 337
         ), "owned+synced with local MT stays put")
 
-        // Pull imports from script.txt (fallback); parse → import → load.count == replaced.
+        // Pull imports prefer script.txt; parse → import → load.count == replaced.
         let scriptTxt = """
         [001] 0:00 → 0:02
         JA: あ
@@ -396,17 +418,27 @@ enum DriveScriptsSmoke {
         assert(pullRows[0].ja == "あ" && pullRows[0].en == "A", "script.txt row ja/en")
         assert(pullRows[0].startMs == 0 && pullRows[0].endMs == 2000, "script.txt times")
 
+        // TXT rows lack ids — stamp from cues.json so replace keeps stable cue identity.
+        let jsonRows = ScriptCue.parseImportRows(json)
+        let stamped = DriveScriptsService.stampCueIds(txt: pullRows, from: jsonRows)
+        assert(stamped[0].id == "a" && stamped[1].id == "b", "stampCueIds from cues.json")
+        assert(stamped[0].ja == "あ", "stamp keeps TXT ja")
+
         let container = try! ModelContainer(
             for: VideoScript.self, ScriptCue.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let ctx = ModelContext(container)
         let imported = ScriptCue.importRows(
-            videoId: "smoke-v", rows: pullRows, mode: .replace, includeJA: true, context: ctx
+            videoId: "smoke-v", rows: stamped, mode: .replace, includeJA: true, context: ctx
         )
         assert(imported.cues.count == imported.replaced, "import returns cue array")
         assert(ScriptCue.load(videoId: "smoke-v", context: ctx).count == imported.replaced,
                "load.count == replaced after script.txt import")
+        assert(imported.cues[0].id == "a", "imported cue keeps stamped id")
+        // iPad: no tokens.json — JLPT/dict from live NLP of JA after TXT pull.
+        let toks = NLPTagger.tokenize(imported.cues[0].textJA)
+        assert(!toks.isEmpty, "TXT pull JA must tokenize for dict/JLPT")
 
         // Shape of real Drive export (MOIbaNe4Pmw): # --- headers + furigana (…） lines.
         let moiShape = """
