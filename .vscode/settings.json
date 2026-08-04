@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^node --check \"/Users/hoangson/Documents/YouTube JP Caption Studio/ipad-app/Scripts/user_script\\.js\" 2>&1; echo \"EXIT:\\$\\?\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "xcrun": true
+    }
+}

@@ -13,7 +13,8 @@ targets:
       - path: Models
       - path: Services
       - path: Assets.xcassets
-      - path: Scripts
+      # Only the injected player script ships in the app — dev tooling (sh/md/plist) must not.
+      - path: Scripts/user_script.js
         buildPhase: resources
       - path: Resources/dict.sqlite
         type: file
@@ -30,6 +31,7 @@ targets:
     info:
       path: Info.plist
       properties:
+        LSSupportsOpeningDocumentsInPlace: true
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

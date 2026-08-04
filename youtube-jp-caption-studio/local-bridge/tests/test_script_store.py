@@ -22,7 +22,9 @@ from app.services.script_store import (  # noqa: E402
     load_script,
     load_tokens,
     merge_tokens,
+    parse_script_txt,
     read_files,
+    render_script_txt,
     save_script,
     write_files,
 )
@@ -110,10 +112,9 @@ def test_rev_monotonic_and_owned(root: Path) -> None:
 def test_files_mirror_roundtrip(root: Path) -> None:
     save_script(VID, [cue(1, tokens=TOKENS)], title="猫", url="http://x")
     folder = root / VID
-    (folder / "script.txt").unlink(missing_ok=True)
 
-    save_script(VID, [cue(1, tokens=TOKENS)])
-    assert not (folder / "script.txt").exists(), "save_script still writes script.txt"
+    assert (folder / "script.txt").exists(), "save_script should write script.txt"
+    assert "猫だ1" in (folder / "script.txt").read_text(encoding="utf-8")
 
     files = read_files(VID)
     assert files is not None and set(files) == {"cues.json", "meta.json", "script.txt"}
@@ -134,12 +135,221 @@ def test_files_mirror_roundtrip(root: Path) -> None:
             pass
 
 
+def test_script_txt_always_emits_ja_en_vi() -> None:
+    """Empty EN/VI/JA still get their lines; furigana only when tokens exist."""
+    txt = render_script_txt(
+        [
+            {
+                "id": "a",
+                "start_media_time": 0,
+                "end_media_time": 13,
+                "source": "私は毒島すみれ、図書委員です。",
+                "en": "I am Sumire Busujima, a library committee member.",
+                "vi": "",
+            },
+            {
+                "id": "b",
+                "start_media_time": 20,
+                "end_media_time": 24,
+                "source": "",
+                "en": "(extra English line with no Japanese match)",
+                "vi": "",
+            },
+            {
+                "id": "c",
+                "start_media_time": 30,
+                "end_media_time": 32,
+                "source": "猫",
+                "en": "",
+                "vi": "",
+                "tokens": [{"surface": "猫", "reading": "ねこ"}],
+            },
+        ],
+        video_id=VID,
+    )
+    assert "JA: 私は毒島すみれ、図書委員です。\nEN: I am Sumire Busujima, a library committee member.\nVI:" in txt
+    assert "JA:\nEN: (extra English line with no Japanese match)\nVI:" in txt
+    assert "JA: 猫\n    (猫(ねこ))\nEN:\nVI:" in txt
+    assert txt.count("JA:") == 3 and txt.count("EN:") == 3 and txt.count("VI:") == 3
+
+
+def test_parse_empty_ja_en_vi_lines() -> None:
+    txt = """
+# ----------------------------------------
+[001] 0:00 → 0:02
+JA:
+EN:
+VI:
+
+# ----------------------------------------
+[002] 0:03 → 0:05
+JA: 猫
+EN:
+VI: mèo
+
+# ----------------------------------------
+"""
+    rows = parse_script_txt(txt)
+    assert len(rows) == 2
+    assert rows[0]["start_media_time"] == 0.0 and rows[0]["end_media_time"] == 2.0
+    assert rows[0]["source"] == "" and rows[0]["en"] == "" and rows[0]["vi"] == ""
+    assert rows[1]["source"] == "猫" and rows[1]["en"] == "" and rows[1]["vi"] == "mèo"
+
+
+def test_load_prefers_script_txt_over_garbage_cues(root: Path) -> None:
+    vid = "txtPrefer99"
+    folder = root / vid
+    folder.mkdir(parents=True)
+    good_txt = render_script_txt(
+        [
+            {
+                "id": "real",
+                "start_media_time": 0,
+                "end_media_time": 3.1,
+                "source": "なーヒカル、リコちゃんと喋ったことある？",
+                "en": "Hey Hikaru",
+                "vi": "Này Hikaru",
+            }
+        ],
+        video_id=vid,
+    )
+    (folder / "script.txt").write_text(good_txt, encoding="utf-8")
+    (folder / "cues.json").write_text(
+        json.dumps(
+            {
+                "video_id": vid,
+                "cues": [
+                    {
+                        "id": "junk",
+                        "start_media_time": 0,
+                        "end_media_time": 0.5,
+                        "source": "あ",
+                        "en": "en0",
+                        "vi": "vi0",
+                    }
+                ],
+                "meta": {"rev": 5, "owned": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (folder / "meta.json").write_text(
+        json.dumps({"video_id": vid, "rev": 5, "owned": True, "deviceId": "pc-test"}),
+        encoding="utf-8",
+    )
+    before_txt = (folder / "script.txt").read_text(encoding="utf-8")
+
+    loaded = load_script(vid)
+    assert loaded is not None
+    assert loaded["cues"][0]["source"] == "なーヒカル、リコちゃんと喋ったことある？"
+    assert loaded["cues"][0]["vi"] == "Này Hikaru"
+    assert loaded["meta"]["rev"] == 6, "content change must bump Lamport rev"
+    disk = json.loads((folder / "cues.json").read_text(encoding="utf-8"))
+    assert disk["cues"][0]["source"].startswith("なーヒカル")
+    assert (folder / "script.txt").read_text(encoding="utf-8") == before_txt
+
+
+def test_load_script_txt_rescues_inline_tokens(root: Path) -> None:
+    """script.txt prefer must not discard tokens still sitting inline on cues.json."""
+    vid = "tokRescue1"
+    folder = root / vid
+    folder.mkdir(parents=True)
+    good_txt = render_script_txt(
+        [
+            {
+                "id": "keep-me",
+                "start_media_time": 0,
+                "end_media_time": 2,
+                "source": "猫だ",
+                "en": "cat",
+                "vi": "mèo",
+            }
+        ],
+        video_id=vid,
+    )
+    (folder / "script.txt").write_text(good_txt, encoding="utf-8")
+    (folder / "cues.json").write_text(
+        json.dumps(
+            {
+                "video_id": vid,
+                "cues": [
+                    {
+                        "id": "keep-me",
+                        "start_media_time": 0,
+                        "end_media_time": 2,
+                        "source": "あ",
+                        "en": "en0",
+                        "vi": "vi0",
+                        "tokens": TOKENS,
+                    }
+                ],
+                "meta": {"rev": 1, "owned": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (folder / "meta.json").write_text(
+        json.dumps({"video_id": vid, "rev": 1, "owned": True, "deviceId": "pc-test"}),
+        encoding="utf-8",
+    )
+    (folder / "tokens.json").write_text("{}", encoding="utf-8")
+
+    loaded = load_script(vid)
+    assert loaded is not None
+    assert loaded["cues"][0]["source"] == "猫だ"
+    assert "tokens" not in loaded["cues"][0]
+    assert load_tokens(vid) == {"keep-me": TOKENS}, "TXT prefer dropped inline tokens"
+
+
+def test_read_files_keeps_existing_script_txt(root: Path) -> None:
+    vid = "keepTxt1234"
+    folder = root / vid
+    folder.mkdir(parents=True)
+    custom = "# CUSTOM SCRIPT\n[001] 0:00 → 0:01\nJA: 残す\nEN: keep\nVI: giữ\n\n# ----------------------------------------\n"
+    (folder / "script.txt").write_text(custom, encoding="utf-8")
+    (folder / "cues.json").write_text(
+        json.dumps(
+            {
+                "video_id": vid,
+                "cues": [
+                    {
+                        "id": "c0",
+                        "start_media_time": 0,
+                        "end_media_time": 1,
+                        "source": "残す",
+                        "en": "keep",
+                        "vi": "giữ",
+                    }
+                ],
+                "meta": {"rev": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (folder / "meta.json").write_text(
+        json.dumps({"video_id": vid, "rev": 1, "deviceId": "pc-test"}),
+        encoding="utf-8",
+    )
+
+    files = read_files(vid)
+    assert files is not None
+    assert files["script.txt"] == custom
+    assert (folder / "script.txt").read_text(encoding="utf-8") == custom
+
+
 def main() -> None:
+    test_script_txt_always_emits_ja_en_vi()
+    print("  [ok] test_script_txt_always_emits_ja_en_vi")
+    test_parse_empty_ja_en_vi_lines()
+    print("  [ok] test_parse_empty_ja_en_vi_lines")
     for fn in (
         test_tokens_split_merge_roundtrip,
         test_legacy_inline_tokens_migrate_on_read,
         test_rev_monotonic_and_owned,
         test_files_mirror_roundtrip,
+        test_load_prefers_script_txt_over_garbage_cues,
+        test_load_script_txt_rescues_inline_tokens,
+        test_read_files_keeps_existing_script_txt,
     ):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -3,7 +3,15 @@
  * ROI capture retained for debug only — product path is caption-only.
  */
 (function () {
-  if (window.__HARDSubOCRCapture) return;
+  // Bump when message API changes so content can reinject after extension reload
+  // without a full YouTube document reload (SPA keeps old MAIN-world listeners).
+  const API_VER = 3;
+  if (window.__HARDSubOCRCapture?.apiVer === API_VER) return;
+  if (typeof window.__hardsubPageMsgHandler === "function") {
+    try {
+      window.removeEventListener("message", window.__hardsubPageMsgHandler);
+    } catch (_) {}
+  }
 
   const state = {
     video: null,
@@ -384,14 +392,23 @@
     return [];
   }
 
+  function normalizeTimedtextUrl(url) {
+    let u = String(url || "").trim();
+    if (u.startsWith("//")) u = `https:${u}`;
+    return u;
+  }
+
   async function fetchJson3Cues(url) {
     if (!url) return { cues: [], error: "no_url" };
-    // Prefer raw URL first (YSD style); only then explicit formats.
-    const urls = [String(url)];
-    const u0 = urls[0];
+    const u0 = normalizeTimedtextUrl(url);
+    // Prefer json3; raw then srv3 as fallback.
+    const urls = [];
     if (!u0.includes("fmt=")) {
       urls.push(`${u0}${u0.includes("?") ? "&" : "?"}fmt=json3`);
+      urls.push(u0);
       urls.push(`${u0}${u0.includes("?") ? "&" : "?"}fmt=srv3`);
+    } else {
+      urls.push(u0);
     }
     let lastError = "empty_or_html";
     for (const u of urls) {
@@ -414,6 +431,100 @@
       }
     }
     return { cues: [], error: lastError };
+  }
+
+  function pickBestTrackByPrefix(tracks, prefix) {
+    const pref = String(prefix || "").toLowerCase();
+    const ranked = (tracks || [])
+      .filter(
+        (t) =>
+          t?.baseUrl &&
+          String(t.languageCode || "")
+            .toLowerCase()
+            .startsWith(pref)
+      )
+      .sort((a, b) => (a.kind === "asr" ? 1 : 0) - (b.kind === "asr" ? 1 : 0));
+    return ranked[0] || null;
+  }
+
+  /**
+   * Fetch best ja/en/vi. WEB captionTracks baseUrls often 200+empty (no pot);
+   * ANDROID innertube track URLs return real timedtext — rescue when web miss.
+   * No setOption per lang. JA only in cues; en/vi stay in secondary packs.
+   */
+  async function fetchMultiLangCaptions(payload) {
+    const videoId = (payload && payload.videoId) || videoIdFromLocation();
+    const preferLang = (payload && payload.lang) || "ja";
+    if (!videoId) {
+      return {
+        ok: false,
+        reason: "no_video_id",
+        cues: [],
+        enCues: [],
+        viCues: [],
+        hasEn: false,
+        hasVi: false,
+      };
+    }
+
+    async function packsFromTracks(tracks) {
+      const ja = pickBestTrackByPrefix(tracks, "ja");
+      const en = pickBestTrackByPrefix(tracks, "en");
+      const vi = pickBestTrackByPrefix(tracks, "vi");
+      const [jaGot, enGot, viGot] = await Promise.all([
+        ja?.baseUrl ? fetchJson3Cues(ja.baseUrl) : Promise.resolve({ cues: [] }),
+        en?.baseUrl ? fetchJson3Cues(en.baseUrl) : Promise.resolve({ cues: [] }),
+        vi?.baseUrl ? fetchJson3Cues(vi.baseUrl) : Promise.resolve({ cues: [] }),
+      ]);
+      return { ja, en, vi, jaGot, enGot, viGot };
+    }
+
+    let tracks = tracksFromPr(getPlayerResponse(videoId));
+    if (!tracks.length) {
+      try {
+        const waited = await waitForCaptionTracks(videoId, preferLang, 4000);
+        tracks = waited?.tracks || tracks;
+      } catch (_) {}
+    }
+    let got = await packsFromTracks(tracks);
+    const webMiss =
+      !(got.jaGot.cues.length && got.enGot.cues.length && got.viGot.cues.length);
+    // WEB listed en/vi but bodies empty → ANDROID URLs (proven non-empty).
+    if (webMiss) {
+      try {
+        const androidPr = await fetchPlayerViaInnertube(videoId);
+        const androidTracks = tracksFromPr(androidPr);
+        if (androidTracks.length) {
+          const a = await packsFromTracks(androidTracks);
+          if (!got.jaGot.cues.length && a.jaGot.cues.length) {
+            got.ja = a.ja;
+            got.jaGot = a.jaGot;
+          }
+          if (!got.enGot.cues.length && a.enGot.cues.length) {
+            got.en = a.en;
+            got.enGot = a.enGot;
+          }
+          if (!got.viGot.cues.length && a.viGot.cues.length) {
+            got.vi = a.vi;
+            got.viGot = a.viGot;
+          }
+          if (!tracks.length) tracks = androidTracks;
+        }
+      } catch (_) {}
+    }
+    return {
+      ok: !!(got.jaGot.cues.length || got.enGot.cues.length || got.viGot.cues.length),
+      status: "ok",
+      via: webMiss ? "page_multi_android" : "page_multi",
+      count: got.jaGot.cues.length,
+      cues: got.jaGot.cues,
+      enCues: got.enGot.cues,
+      viCues: got.viGot.cues,
+      hasEn: !!got.en || got.enGot.cues.length > 0,
+      hasVi: !!got.vi || got.viGot.cues.length > 0,
+      lang: got.ja?.languageCode || "ja",
+      asr: got.ja?.kind === "asr",
+    };
   }
 
   function noteTimedtext(url, body) {
@@ -477,11 +588,10 @@
   }
 
   /**
-   * Last-resort: enable player CC so timedtext intercept can fire.
-   * Once per videoId — never spam setOption (causes timeline stutter).
-   * Skip if track already matches prefer/ja, or intercept already has data.
+   * Last-resort: enable JA player CC so timedtext intercept can fire.
+   * Once per videoId — never spam setOption; never flip player to en/vi.
    */
-  function tryEnablePlayerCaptions(videoId, preferLang) {
+  function tryEnablePlayerCaptions(videoId, _preferLang) {
     const vid = String(videoId || "").trim();
     if (!vid) return false;
     if (ccTriggerVideoId === vid) return false;
@@ -499,7 +609,7 @@
           player.loadModule("captions");
         } catch (_) {}
       }
-      const prefer = String(preferLang || "ja").toLowerCase();
+      // JA-only hygiene — never setOption to en/vi for secondary fill.
       const list =
         (typeof player.getOption === "function" &&
           player.getOption("captions", "tracklist")) ||
@@ -511,28 +621,27 @@
       const curLang = String(
         cur?.languageCode || cur?.translationLanguage || ""
       ).toLowerCase();
-      if (
-        curLang &&
-        (curLang.startsWith(prefer) || curLang.startsWith("ja"))
-      ) {
+      if (curLang.startsWith("ja")) {
         ccTriggerVideoId = vid;
         return false;
       }
       if (Array.isArray(list) && list.length && typeof player.setOption === "function") {
-        let best = list[0];
+        let best = null;
         for (const t of list) {
           const lang = String(t.languageCode || t.translationLanguage || "").toLowerCase();
-          if (lang.startsWith(prefer)) {
+          if (lang.startsWith("ja")) {
             best = t;
             break;
           }
-          if (lang.startsWith("ja")) best = t;
+        }
+        if (!best) {
+          ccTriggerVideoId = vid;
+          return false;
         }
         player.setOption("captions", "track", best);
         ccTriggerVideoId = vid;
         return true;
       }
-      // Mark attempted even if no tracklist yet — avoid repeat setOption spam.
       ccTriggerVideoId = vid;
       return false;
     } catch (_) {
@@ -778,17 +887,25 @@
     const pr = getPlayerResponse(videoId);
     const tracks = tracksFromPr(pr);
     const track = pickCaptionTrack(tracks, preferLang);
-    const url =
+    const url = normalizeTimedtextUrl(
       (state.timedtext.videoId === videoId && state.timedtext.url) ||
-      track?.baseUrl ||
-      state.timedtext.url ||
-      "";
+        track?.baseUrl ||
+        state.timedtext.url ||
+        ""
+    );
     const cuesForVid =
       state.timedtext.cues?.length &&
       (!state.timedtext.videoId || state.timedtext.videoId === videoId)
         ? state.timedtext.cues
         : [];
-    if (cuesForVid.length) ccTriggerVideoId = videoId;
+    // JA-only: mark ccTrigger when intercept lang is ja (not en/vi).
+    let urlLang = "";
+    try {
+      urlLang = new URL(url, location.href).searchParams.get("lang") || "";
+    } catch (_) {}
+    if (cuesForVid.length && String(urlLang).toLowerCase().startsWith("ja")) {
+      ccTriggerVideoId = videoId;
+    }
     return {
       ok: !!url || !!cuesForVid.length,
       baseUrl: url,
@@ -885,12 +1002,14 @@
   }
 
   window.__HARDSubOCRCapture = {
+    apiVer: API_VER,
     bindVideo,
     captureRoi,
     getMediaTime,
     seekTo,
     playAt,
     loadCaptions,
+    fetchMultiLangCaptions,
     captionAt,
     getTimedtextLink,
     setRoi(roi) {
@@ -901,7 +1020,7 @@
     },
   };
 
-  window.addEventListener("message", (ev) => {
+  window.__hardsubPageMsgHandler = (ev) => {
     if (!ev.data || ev.data.source !== "hardsub-ocr-ext") return;
     const { type, requestId, payload } = ev.data;
 
@@ -910,7 +1029,7 @@
     };
 
     try {
-      if (type === "PING") reply({ ok: true, ready: true });
+      if (type === "PING") reply({ ok: true, ready: true, apiVer: API_VER });
       else if (type === "BIND") reply({ ok: bindVideo() });
       else if (type === "CAPTURE") reply(captureRoi());
       else if (type === "GET_MEDIA_TIME") reply(getMediaTime());
@@ -925,13 +1044,29 @@
           .catch((err) =>
             reply({ ok: false, reason: "exception", message: String(err), cues: [] })
           );
+      } else if (type === "FETCH_MULTI_LANG") {
+        fetchMultiLangCaptions(payload || {})
+          .then(reply)
+          .catch((err) =>
+            reply({
+              ok: false,
+              reason: "exception",
+              message: String(err),
+              cues: [],
+              enCues: [],
+              viCues: [],
+              hasEn: false,
+              hasVi: false,
+            })
+          );
       } else if (type === "GET_TIMEDTEXT_LINK") reply(getTimedtextLink(payload || {}));
       else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
       else reply({ ok: false, reason: "unknown" });
     } catch (err) {
       reply({ ok: false, reason: "exception", message: String(err) });
     }
-  });
+  };
+  window.addEventListener("message", window.__hardsubPageMsgHandler);
 
   document.addEventListener("yt-navigate-finish", () => {
     bindVideo();
