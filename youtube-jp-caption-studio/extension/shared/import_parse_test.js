@@ -107,4 +107,25 @@ const rows = normalizeParsedImportRows(hyphen);
 assert.strictEqual(rows[0].start_media_time, 0);
 assert.strictEqual(rows[0].end_media_time, 2);
 
+// Empty JA:/EN:/VI: lines are kept (orphan EN, blank columns).
+const emptyCols = parseExportTxt(`[001] 0:00 → 0:13
+JA: 私は毒島すみれ、図書委員です。
+EN: I am Sumire Busujima, a library committee member.
+VI:
+----------
+[003] 0:20 → 0:24
+JA:
+EN: (extra English line with no Japanese match)
+VI:
+`);
+assert.strictEqual(emptyCols.length, 2);
+assert.strictEqual(emptyCols[0].source, "私は毒島すみれ、図書委員です。");
+assert.strictEqual(emptyCols[0].en, "I am Sumire Busujima, a library committee member.");
+assert.strictEqual(emptyCols[0].vi, "");
+assert.strictEqual(emptyCols[1].source, "");
+assert.strictEqual(emptyCols[1].en, "(extra English line with no Japanese match)");
+assert.strictEqual(emptyCols[1].vi, "");
+assert.strictEqual(emptyCols[1].start_media_time, 20);
+assert.strictEqual(emptyCols[1].end_media_time, 24);
+
 process.exit(0);

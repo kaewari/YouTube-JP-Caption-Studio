@@ -185,6 +185,17 @@ def bootstrap() -> dict[str, Any]:
     return get_progress().model_dump()
 
 
+@app.post("/log")
+def client_log(body: dict[str, Any]) -> dict[str, bool]:
+    """Extension/runtime one-liner into errors.log (silent YT secondary miss, etc.)."""
+    level = str(body.get("level") or "WARNING").upper()
+    if level not in ("ERROR", "WARNING", "INFO"):
+        level = "WARNING"
+    msg = str(body.get("message") or "").strip() or "empty"
+    _append_errors_log(level, msg)
+    return {"ok": True}
+
+
 @app.post("/tokenize", response_model=TokenizeResponse)
 def tokenize_text(body: TokenizeRequest) -> TokenizeResponse:
     """Furigana + JLPT/freq tokens only."""

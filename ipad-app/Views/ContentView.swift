@@ -30,6 +30,10 @@ struct ContentView: View {
     @State private var activeCueId: String?
     @State private var isPlaying: Bool = false
     @State private var seekRequest: Double? = nil
+    /// Autotest scroll target (px) — reproduce fullscreen-while-scrolled state.
+    @State private var scrollRequest: Double? = nil
+    /// Autotest arbitrary-JS driver (miniplayer toggle repro).
+    @State private var jsEvalRequest: String? = nil
     @State private var reloadNonce = 0
     @State private var historyAction: PlayerHistoryAction? = nil
     @State private var canGoBack = false
@@ -308,6 +312,10 @@ struct ContentView: View {
                     if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
                         let payload = "ok=\(layoutOK)\n\(layoutNote ?? "")\n"
                         try? payload.write(to: dir.appendingPathComponent("layout_smoke.txt"), atomically: true, encoding: .utf8)
+                        if let json = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+                           let jsonString = String(data: json, encoding: .utf8) {
+                            try? jsonString.write(to: dir.appendingPathComponent("layout_smoke.json"), atomically: true, encoding: .utf8)
+                        }
                     }
                     #if DEBUG
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
@@ -324,6 +332,8 @@ struct ContentView: View {
                     applyPlayerFullscreen(active)
                 },
                 seekRequest: $seekRequest,
+                scrollRequest: $scrollRequest,
+                jsEvalRequest: $jsEvalRequest,
                 reloadNonce: $reloadNonce,
                 fullscreenToggleNonce: $fullscreenToggleNonce,
                 historyAction: $historyAction,
@@ -514,6 +524,7 @@ struct ContentView: View {
     /// Device self-test driver — config via launch args (devicectl -e env vars don't reach iOS processes):
     ///   -CS_AUTOTEST_OVERLAY            → overlay on
     ///   -CS_AUTOTEST_FULLSCREEN 8,16    → toggle app-full at 8s and 16s
+    ///   -CS_AUTOTEST_SCROLL 6,500       → scrollTo(0,500) at 6s (scrolled-fullscreen repro)
     ///   -CS_AUTOTEST_SHOT 5,12,19       → save window PNGs to Documents/autotest/ at those seconds
     /// ponytail: device-only check for the fullscreen-overlay fix; no UI needed, shots are the evidence.
     private func runAutotestIfRequested() {
@@ -526,7 +537,40 @@ struct ContentView: View {
             .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
         let shots = argVal("-CS_AUTOTEST_SHOT")
             .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-        print("[Autotest] args=\(a) toggles=\(toggles) shots=\(shots)")
+        let scrolls = argVal("-CS_AUTOTEST_SCROLL")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        let miniplayerAt = Double(argVal("-CS_AUTOTEST_MINIPLAYER").trimmingCharacters(in: .whitespaces))
+        let trapbox = argVal("-CS_AUTOTEST_TRAPBOX")
+            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        print("[Autotest] args=\(a) toggles=\(toggles) scrolls=\(scrolls) shots=\(shots) miniplayer=\(miniplayerAt.map { String($0) } ?? "-") trapbox=\(trapbox)")
+        if scrolls.count == 2 {
+            let at = scrolls[0], y = scrolls[1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                scrollRequest = y
+                print("[Autotest] scroll to \(y) at \(at)s")
+            }
+        }
+        if let at = miniplayerAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + at) {
+                // Try the classic control-bar button, then any renderer whose label
+                // mentions miniplayer; always dump the result state.
+                jsEvalRequest = "(function(){var cands=[document.querySelector('.ytp-miniplayer-button')]; var tb=Array.prototype.slice.call(document.querySelectorAll('ytd-toggle-button-renderer, ytd-button-renderer')).find(function(b){return /[Mm]iniplayer/.test((b.getAttribute('aria-label')||'')+' '+b.textContent);}); if(tb)cands.push(tb); var hit=cands.filter(Boolean)[0]; if(hit)hit.click(); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                print("[Autotest] miniplayer click at \(at)s")
+            }
+        }
+        if trapbox.count == 2 {
+            let on = trapbox[0], off = trapbox[1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + on) {
+                // Simulate YT's miniplayer re-parent: move #movie_player into a
+                // fixed, TRANSFORMED box (containing block for position:fixed).
+                jsEvalRequest = "(function(){var p=document.querySelector('#movie_player'); if(!p)return; var box=document.getElementById('cs-trap-box'); if(!box){box=document.createElement('div'); box.id='cs-trap-box'; box.style.cssText='position:fixed; right:16px; bottom:16px; width:400px; height:301px; transform:translate3d(0,0,0); background:#000; z-index:2147483647; overflow:hidden;'; document.body.appendChild(box);} box.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                print("[Autotest] trapbox ON at \(on)s")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + off) {
+                jsEvalRequest = "(function(){var p=document.querySelector('#movie_player'); var host=document.querySelector('#player'); if(!p||!host)return; host.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                print("[Autotest] trapbox OFF at \(off)s")
+            }
+        }
         for t in toggles {
             DispatchQueue.main.asyncAfter(deadline: .now() + t) {
                 fullscreenToggleNonce &+= 1
@@ -553,6 +597,17 @@ struct ContentView: View {
         try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
         let url = sub.appendingPathComponent(String(format: "autotest-%02d.png", index))
         try? data.write(to: url)
+        // Pair each shot with the latest layout smoke dump for DOM ground truth.
+        if let smoke = try? String(contentsOf: dir.appendingPathComponent("layout_smoke.txt"), encoding: .utf8) {
+            try? smoke.write(
+                to: sub.appendingPathComponent(String(format: "smoke-%02d.txt", index)),
+                atomically: true, encoding: .utf8)
+        }
+        if let json = try? String(contentsOf: dir.appendingPathComponent("layout_smoke.json"), encoding: .utf8) {
+            try? json.write(
+                to: sub.appendingPathComponent(String(format: "smoke-%02d.json", index)),
+                atomically: true, encoding: .utf8)
+        }
         print("[Autotest] shot \(url.lastPathComponent) ovl=\(overlayShown) full=\(isPlayerFullscreen)")
     }
     #endif

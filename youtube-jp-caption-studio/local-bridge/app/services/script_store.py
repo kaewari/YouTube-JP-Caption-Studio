@@ -1,16 +1,17 @@
 """Per-video caption script persistence under data/subtitles/{videoId}/.
 
 Files per video:
-  cues.json   — cues WITHOUT tokens (+ embedded meta)
+  cues.json   — cues WITHOUT tokens (+ embedded meta); rebuilt from script.txt on load
   tokens.json — {cueId: [token, ...]}; local only, never mirrored to Drive
   meta.json   — video_id/url/title/updated_at/cue_count/translated_count/owned/rev/deviceId
-  script.txt  — human-readable, generated on demand (files/export), not on every save
+  script.txt  — canonical human-readable script (load source + written on save)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import shutil
 import time
@@ -28,6 +29,10 @@ _DEVICE_ID_PATH = ROOT / "data" / "config" / "device_id.txt"
 FILE_NAMES = ("cues.json", "meta.json", "script.txt")
 
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
+_TIME_TOKEN = r"\d+(?::\d{1,2})?(?:\.\d+)?"
+_HEAD_RE = re.compile(
+    rf"^\[(\d+(?:-\d+)?)\]\s+({_TIME_TOKEN})(?:\s*(?:→|->|–|—|-)\s*({_TIME_TOKEN}))?"
+)
 _device_id: str = ""
 
 
@@ -120,19 +125,132 @@ def render_script_txt(
         lines.append(
             f"[{str(i).zfill(3)}] {_format_time_plain(start)} → {_format_time_plain(end)}"
         )
-        if source:
-            lines.append(f"JA: {source}")
-            if furi:
-                lines.append(f"    ({furi})")
-        if en:
-            lines.append(f"EN: {en}")
-        if vi:
-            lines.append(f"VI: {vi}")
+        # Always emit JA/EN/VI (empty allowed) so script.txt mirrors all columns.
+        lines.append(f"JA: {source}" if source else "JA:")
+        if furi:
+            lines.append(f"    ({furi})")
+        lines.append(f"EN: {en}" if en else "EN:")
+        lines.append(f"VI: {vi}" if vi else "VI:")
         lines.append("")
         lines.append("# ----------------------------------------")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _parse_time_token(raw: str) -> float:
+    """m:ss(.frac) or plain seconds — port of import_parse.parseTimeToken."""
+    s = str(raw or "").strip().replace(",", ".")
+    if not s:
+        return float("nan")
+    if re.fullmatch(r"\d+(\.\d+)?", s):
+        return float(s)
+    m = re.fullmatch(r"(\d+):(\d{1,2})(?:\.(\d+))?", s)
+    if not m:
+        return float("nan")
+    frac = float(f"0.{m.group(3)}") if m.group(3) else 0.0
+    return int(m.group(1)) * 60 + int(m.group(2)) + frac
+
+
+def parse_script_txt(text: str) -> list[dict[str, Any]]:
+    """Port of extension import_parse.parseExportTxt — blocks -{10,}, head, JA/EN/VI."""
+    out: list[dict[str, Any]] = []
+    for block in re.split(r"-{10,}", str(text or "")):
+        start = float("nan")
+        end = float("nan")
+        source = ""
+        en: str | None = None
+        vi: str | None = None
+
+        def flush() -> None:
+            nonlocal start, end, source, en, vi
+            if not math.isfinite(start) and not source and en is None and vi is None:
+                return
+            if not math.isfinite(start) and not source:
+                return
+            out.append(
+                {
+                    "start_media_time": start if math.isfinite(start) else 0.0,
+                    "end_media_time": (
+                        end if math.isfinite(end) else (start if math.isfinite(start) else 0.0)
+                    ),
+                    "source": source,
+                    "en": en if en is not None else "",
+                    "vi": vi if vi is not None else "",
+                }
+            )
+
+        for line in block.splitlines():
+            t = line.strip()
+            if not t:
+                continue
+            head = _HEAD_RE.match(t)
+            if head:
+                flush()
+                start = _parse_time_token(head.group(2))
+                end = _parse_time_token(head.group(3)) if head.group(3) else float("nan")
+                source, en, vi = "", None, None
+                continue
+            if re.match(r"^JA:\s*", t, re.I):
+                source = re.sub(r"^JA:\s*", "", t, count=1, flags=re.I)
+                continue
+            if re.match(r"^EN:\s*", t, re.I):
+                en = re.sub(r"^EN:\s*", "", t, count=1, flags=re.I)
+                continue
+            if re.match(r"^VI:\s*", t, re.I):
+                vi = re.sub(r"^VI:\s*", "", t, count=1, flags=re.I)
+                continue
+        flush()
+    out.sort(
+        key=lambda c: (
+            float(c.get("start_media_time") or 0),
+            float(c.get("end_media_time") or 0),
+        )
+    )
+    return out
+
+
+def _cue_content_sig(cues: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    return [
+        (
+            round(float(c.get("start_media_time") or c.get("start") or 0), 3),
+            round(float(c.get("end_media_time") or c.get("end") or 0), 3),
+            str(c.get("source") or c.get("text") or "").strip(),
+            str(c.get("en") or "").strip(),
+            str(c.get("vi") or "").strip(),
+        )
+        for c in cues
+    ]
+
+
+def _cues_from_txt(
+    parsed: list[dict[str, Any]], old_cues: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Normalize TXT rows to cues.json shape; keep old ids by index when possible."""
+    cleaned: list[dict[str, Any]] = []
+    for i, c in enumerate(parsed):
+        start = float(c.get("start_media_time") or 0)
+        end = float(c.get("end_media_time") or start)
+        source = str(c.get("source") or "").strip()
+        en = str(c.get("en") or "")
+        vi = str(c.get("vi") or "")
+        old = old_cues[i] if i < len(old_cues) else {}
+        cue_id = str(old.get("id") or "").strip() or f"{int(start * 1000)}-txt-{i}"
+        cleaned.append(
+            {
+                "id": cue_id,
+                "start_media_time": start,
+                "end_media_time": end,
+                "source": source,
+                "en": en,
+                "vi": vi,
+                "translated": bool(en.strip() or vi.strip()),
+                "text_source": "script",
+                "mt_locked": bool(old.get("mt_locked")),
+                "translation_source": str(old.get("translation_source") or ""),
+            }
+        )
+    return cleaned
 
 
 def _atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
@@ -258,6 +376,16 @@ def save_script(
     )
     _atomic_write_text(tokens_path, _dump(new_tokens))
     _atomic_write_text(meta_path, _dump(meta))
+    _atomic_write_text(
+        folder / "script.txt",
+        render_script_txt(
+            cleaned,
+            video_id=vid,
+            url=str(meta.get("url") or ""),
+            title=str(meta.get("title") or ""),
+            tokens=new_tokens,
+        ),
+    )
 
     logger.info(
         "Saved script %s cues=%d translated=%d rev=%d → %s",
@@ -289,13 +417,96 @@ def load_tokens(video_id: str) -> dict[str, list[Any]]:
 
 
 def load_script(video_id: str) -> dict[str, Any] | None:
-    """Cues WITHOUT tokens. Legacy files with inline tokens are split once."""
+    """Prefer script.txt when present; else cues.json. Cues WITHOUT tokens."""
     try:
         vid = _safe_video_id(video_id)
     except ValueError:
         return None
     folder = scripts_root() / vid
     cues_path = folder / "cues.json"
+    meta_path = folder / "meta.json"
+    txt_path = folder / "script.txt"
+
+    # script.txt is the load source when it parses to ≥1 cue.
+    if txt_path.is_file():
+        try:
+            parsed = parse_script_txt(txt_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            logger.warning("Failed reading %s: %s", txt_path, exc)
+            parsed = []
+        if parsed:
+            old_raw = _read_json(cues_path)
+            old_cues = (
+                [c for c in old_raw["cues"] if isinstance(c, dict)]
+                if isinstance(old_raw, dict) and isinstance(old_raw.get("cues"), list)
+                else []
+            )
+            # TXT rewrite drops cue fields — migrate inline tokens before they vanish.
+            if any("tokens" in c for c in old_cues):
+                inline = _split_tokens([dict(c) for c in old_cues])
+                if inline:
+                    existing = load_tokens(vid)
+                    _atomic_write_text(
+                        folder / "tokens.json", _dump({**existing, **inline})
+                    )
+                    logger.info(
+                        "load_script %s: rescued %d cue token lists before script.txt sync",
+                        vid,
+                        len(inline),
+                    )
+            prev = _read_json(meta_path)
+            if not isinstance(prev, dict):
+                prev = (
+                    old_raw.get("meta")
+                    if isinstance(old_raw, dict) and isinstance(old_raw.get("meta"), dict)
+                    else {}
+                )
+            cues = _cues_from_txt(parsed, old_cues)
+            changed = _cue_content_sig(cues) != _cue_content_sig(old_cues)
+            translated_count = sum(
+                1
+                for c in cues
+                if c.get("translated")
+                or str(c.get("vi") or "").strip()
+                or str(c.get("en") or "").strip()
+            )
+            meta = {
+                "video_id": vid,
+                "url": str(prev.get("url") or ""),
+                "title": str(prev.get("title") or ""),
+                "updated_at": (
+                    time.strftime("%Y-%m-%dT%H:%M:%S")
+                    if changed
+                    else str(prev.get("updated_at") or "")
+                ),
+                "cue_count": len(cues),
+                "translated_count": translated_count,
+                "owned": bool(prev.get("owned")),
+                "rev": int(prev.get("rev") or 0) + (1 if changed else 0),
+                "deviceId": str(prev.get("deviceId") or device_id()),
+            }
+            _atomic_write_text(
+                cues_path, _dump({"video_id": vid, "cues": cues, "meta": meta})
+            )
+            if changed or not meta_path.is_file():
+                _atomic_write_text(meta_path, _dump(meta))
+            if changed:
+                logger.info(
+                    "load_script %s: synced cues.json from script.txt (%d cues, rev=%d)",
+                    vid,
+                    len(cues),
+                    meta["rev"],
+                )
+            return {
+                "ok": True,
+                "video_id": vid,
+                "path": str(folder),
+                "cues": cues,
+                "meta": meta,
+                "cue_count": len(cues),
+                "translated_count": translated_count,
+            }
+
     raw = _read_json(cues_path)
     cues = raw.get("cues") if isinstance(raw, dict) else None
     if not isinstance(cues, list):
@@ -365,7 +576,7 @@ def list_scripts() -> list[dict[str, Any]]:
 
 
 def read_files(video_id: str) -> dict[str, str] | None:
-    """The 3 mirrorable files as text; script.txt is rendered here, not on save."""
+    """The 3 mirrorable files as text. Existing script.txt is returned as-is (never overwritten)."""
     data = load_script(video_id)
     if not data:
         return None
@@ -374,14 +585,18 @@ def read_files(video_id: str) -> dict[str, str] | None:
     full_meta = _read_json(folder / "meta.json")
     full_meta = full_meta if isinstance(full_meta, dict) else data.get("meta") or {}
     cues = data["cues"]
-    txt = render_script_txt(
-        cues,
-        video_id=vid,
-        url=str(full_meta.get("url") or ""),
-        title=str(full_meta.get("title") or ""),
-        tokens=load_tokens(vid),
-    )
-    _atomic_write_text(folder / "script.txt", txt)
+    txt_path = folder / "script.txt"
+    if txt_path.is_file():
+        txt = txt_path.read_text(encoding="utf-8")
+    else:
+        txt = render_script_txt(
+            cues,
+            video_id=vid,
+            url=str(full_meta.get("url") or ""),
+            title=str(full_meta.get("title") or ""),
+            tokens=load_tokens(vid),
+        )
+        _atomic_write_text(txt_path, txt)
     return {
         "cues.json": _dump({"video_id": vid, "cues": cues, "meta": full_meta}),
         "meta.json": _dump(full_meta),

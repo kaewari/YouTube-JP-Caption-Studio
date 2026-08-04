@@ -32,32 +32,12 @@ Nhật ký ngắn (không phải transcript). Runtime bridge: `local-bridge/erro
    Cause: meta chưa migrate / save cũ không ghi owned+rev.  
    Fix: script_store luôn persist `owned` + Lamport `rev`; library index đọc từ meta.
 
-## 2026-08-02 — Panel load sai file (3 nền tảng)
+## 2026-08-04 — Fullscreen: bấm zoom → app đơ, không thao tác được (iPad)
 
-8. **Extension / iPad / iPhone đều hiện `あ`/`vi0` cho `MOIbaNe4Pmw` dù `script.txt` đúng**  
-   Cause: cả ba nạp panel từ `cues.json` rác; bridge `load_script` bỏ qua TXT; `read_files` còn render-đè TXT từ cues.  
-   Fix: bridge ưu tiên parse `script.txt` → sync `cues.json` + bump rev; `read_files` giữ TXT có sẵn; `save_script` ghi cả TXT; iPad/iPhone Drive pull TXT trước.
+1. **Nút Toàn màn hình bị chặn / đơ toàn app**  
+   Cause: rework (copilot/dev) thay app-maximize đã verify bằng `webkitEnterFullscreen()` (gọi từ `evaluateJavaScript`, không phải user gesture) + overlay window level 3000 (`FullscreenOverlay.swift` / `FullscreenPlayerControls.swift`) — native player phủ window, hitTest pass-through chỉ nhả `self`/`rootViewController.view` → end-fullscreen không về → Swift kẹt `isPlayerFullscreen`, topBar ẩn, mọi touch bị chặn.  
+   Fix: restore đúng path B10 đã verify (claude/dev): app maximize only — `__csToggleFull` → `forceAppFullscreen` + `killOsFullscreen` safety net, intercept `.ytp-fullscreen-button`, `isElementFullscreenEnabled = false`; xoá 2 file overlay + pbxproj refs. Verify autotest iPad thật: enter (t=12s) video chiếm pane, không lớp OS FS; exit (t=19s) topBar + side panel restore ✓.
 
-## 2026-08-02 — Caption / tokens / timeline (session)
-
-9. **Overlay OFF đóng side panel** — Fixed: OFF không gọi `closeSidePanel`.  
-10. **Side panel không mở** — Fixed: SW SyntaxError JSDoc `en*/vi*`.  
-11. **Prefer-TXT làm mất furigana/JLPT/popup (PC)** — Fixed: migrate inline tokens → `tokens.json`; hydrate + re-tokenize.  
-12. **Timeline follow lệch iPad** — Fixed: pin ~24px, coalesce, gap-hold, ĐANG PHÁT.  
-13. **Fixed — VI/EN trống / phải bật từng CC** — page `FETCH_MULTI_LANG` từ `captionTracks` baseUrl (cookie); không setOption từng lang; SW empty pack → bắt buộc page fetch.  
-14. **Fixed — Panel load chậm** — SW kick ‖ bridge; JA paint sớm; EN/VI async; parallel web+Android; cookies once; prefer json3; `//`→`https:`.  
-15. **Fixed — Furigana/JLPT không auto trên mọi video** — bỏ gate `owned`; luôn `enrichTokensAfterImport` sau JA; retry khi bridge ready.
-
-Ledger ngắn trong walkthrough §3.7 (B1–B10).
-
-## 2026-08-03 — Fullscreen ẩn overlay (iPad + iPhone)
-
-16. **Full pill → OS native video FS, overlay (HardsubOverlayView) bị che hoàn toàn**  
-   Cause: `__csToggleFull` gọi `video.webkitEnterFullscreen()` trước — lớp system player phủ cả window, SwiftUI overlay (cùng window, nằm dưới lớp đó) không hiện dù `hardsubOverlayOn = ON`.  
-   Fix: fullscreen **chỉ app maximize** — bỏ `webkitEnterFullscreen`; pill + intercept YT FS button → `__csAppFull` trực tiếp; safety net `webkitbeginfullscreen`/`fullscreenchange` ép OS FS về app maximize (`webkitExitFullscreen`/`exitFullscreen`); `isElementFullscreenEnabled = false` (ipad-app + iphone-app).
-   Verified 2026-08-03 trên iPad thật (iPad Pro 13" M5, hot fix, autotest harness `-CS_AUTOTEST_*` launch args → window PNGs):
-   - t=5s (overlay ON, chưa full): overlay hiện trên video ✓
-   - t=12s (sau toggle full lúc 8s): topBar ẩn, video chiếm hết pane, **overlay vẫn hiện** — không có lớp system player ✓
-   - t=19s (sau thoát lúc 16s): topBar khôi phục ✓
-   - A/B overlay OFF ở t=12s: không có chữ → text thấy được là overlay của app, không phải CC của YouTube ✓
-   Bằng chứng: `.tmp-fullscreen-verify/run3/` + `run4/` (autotest-01..03.png + crops).
+2. **In-page fill: bấm zoom → mất hình (video không render), kẹt full**  
+   Cause: thử nghiệm fill `#movie_player { position:fixed; 100vw×100vh }` + `video { width:100%; height:100% }` — `.html5-video-container` có **height 0** (bản YT này size video bằng inline px, container chain không có box height) → `height:100%` trên video collapse về 0 → video rect `[0,0,W,0]`, black screen; người dùng bấm zoom thấy mất hình, tưởng app đơ (smoke live: `fixed=YES / Player 100%`).  
+   Fix: ghim video thẳng viewport, không qua container: `video { position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:contain }` (16:9 letterbox). Thêm instrument: `postLayout()` ngay trong `forceAppFullscreen` (sau `applyInPageFullscreen(true)`) và nhánh exit của `__csToggleFull` (sau `applyInPageFullscreen(false)`); `onLayoutCheck` ghi payload đầy đủ ra `layout_smoke.json`; `saveAutotestShot` copy `smoke-%02d.json` mỗi shot. Verify autotest iPad thật: tại toggle (t≈8s) video đã `[0,0,1376,980]` full (bản cũ: `[0,0,1376,0]`), pixels phủ màn hình (bottom-center = letterbox đen, không phải app bg), exit (t=16s) restore normal ✓.

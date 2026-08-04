@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube JP Caption Studio",
-  "version": "0.9.9",
+  "version": "0.9.11",
   "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
   "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
   "host_permissions": [
@@ -40,6 +40,7 @@
         "shared/vocab_style.js",
         "content/normalize_cues.js",
         "content/cue_timing.js",
+        "content/fill_yt_secondary.js",
         "content/content.js"
       ],
       "css": ["styles/panel.css"],

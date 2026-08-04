@@ -302,6 +302,23 @@ body {
   flex-wrap: wrap;
 }
 
+/* Always reserve height — toggling caused list flash on cue advance (iPad CueEditorRow). */
+.sp-now-playing {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgb(115, 209, 230);
+  line-height: 1.2;
+  margin: 0 0 4px;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.sp-sentence.active .sp-now-playing {
+  opacity: 1;
+}
+
 .sp-play {
   width: 24px;
   height: 24px;

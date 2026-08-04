@@ -92,6 +92,11 @@
   /** YouTube-like: auto-scroll until user scrolls; ▶ / button resumes. */
   let followTimeline = true;
   let ignoreScrollEvent = false;
+  // Short cues flip faster than scroll settle — coalesce to latest id (iPad parity).
+  let scrollAnimInFlight = false;
+  let pendingScrollId = null;
+  let scrollAnimRaf = null;
+  const SCROLL_EASE_MS = 380;
 
   function setStatus(text) {
     statusEl.textContent = text || "…";
@@ -455,33 +460,92 @@
     levelDrawer.hidden = !open;
   }
 
+  /** Pin row flush under list top via scrollTop (avoids scrollIntoView ancestor / no-op). */
+  function pinRowScrollTop(row) {
+    return (
+      listEl.scrollTop +
+      (row.getBoundingClientRect().top - listEl.getBoundingClientRect().top)
+    );
+  }
+
+  function cancelScrollAnim() {
+    if (scrollAnimRaf != null) {
+      cancelAnimationFrame(scrollAnimRaf);
+      scrollAnimRaf = null;
+    }
+  }
+
+  /** Ease scrollTop to exact target (~380ms easeInOutQuint). */
+  function easeScrollTop(target, onDone) {
+    const start = listEl.scrollTop;
+    const delta = target - start;
+    if (Math.abs(delta) < 0.5) {
+      listEl.scrollTop = target;
+      onDone();
+      return;
+    }
+    const t0 = performance.now();
+    // easeInOutQuint — softer start/end than cubic in-out.
+    const ease = (t) =>
+      t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2;
+    const frame = (now) => {
+      const t = Math.min(1, (now - t0) / SCROLL_EASE_MS);
+      listEl.scrollTop = start + delta * ease(t);
+      if (t < 1) {
+        scrollAnimRaf = requestAnimationFrame(frame);
+      } else {
+        scrollAnimRaf = null;
+        listEl.scrollTop = target; // exact flush end — no undershoot
+        onDone();
+      }
+    };
+    scrollAnimRaf = requestAnimationFrame(frame);
+  }
+
   function scrollActiveIntoView(force = false) {
     if (!followTimeline && !force) return;
-    const active = listEl.querySelector(".sp-sentence.active");
-    if (!active || listEl.hidden) return;
+    // iPad: scrollActiveIntoView guards editingCue — coalesce must not yank mid-edit.
+    if (!force && isEditingAny()) return;
+    const id = state.activeCueId;
+    if (!id || listEl.hidden) return;
+    const active = listEl.querySelector(
+      `.sp-sentence[data-id="${CSS.escape(id)}"]`
+    );
+    if (!active) return;
     const r = active.getBoundingClientRect();
     const lr = listEl.getBoundingClientRect();
-    // Skip when already ~at list top — matches iPad follow (flush under tabs).
+    // Skip when already flush under list top — iPad uses ~24pt (not 12% height).
     if (!force && lr.height > 0) {
-      const threshold = lr.height * 0.12;
-      if (Math.abs(r.top - lr.top) <= threshold) return;
+      const delta = r.top - lr.top;
+      if (delta >= -4 && delta <= 24) return;
+    }
+    // Soft: cancel in-flight RAF and retarget (don't queue behind old anim).
+    cancelScrollAnim();
+    if (force) {
+      pendingScrollId = null;
+      scrollAnimInFlight = false;
     }
     ignoreScrollEvent = true;
-    active.scrollIntoView({
-      block: "start",
-      behavior: force ? "instant" : "smooth",
-    });
-    // Smooth needs longer than double-rAF or scroll events pause follow.
+    if (!force) scrollAnimInFlight = true;
+    const scrolledId = id;
+    const target = pinRowScrollTop(active);
+    const finish = () => {
+      ignoreScrollEvent = false;
+      if (force) return;
+      scrollAnimInFlight = false;
+      const next =
+        pendingScrollId ||
+        (state.activeCueId !== scrolledId ? state.activeCueId : null);
+      pendingScrollId = null;
+      if (next) scrollActiveIntoView(false);
+    };
+    // Force / resume: instant pin. Soft: RAF ease to exact target (no scrollTo
+    // smooth undershoot; no prev-nudge fight).
     if (force) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          ignoreScrollEvent = false;
-        });
-      });
+      listEl.scrollTop = target;
+      requestAnimationFrame(() => requestAnimationFrame(finish));
     } else {
-      setTimeout(() => {
-        ignoreScrollEvent = false;
-      }, 400);
+      easeScrollTop(target, finish);
     }
   }
 
@@ -975,7 +1039,10 @@
 
   function updateActiveHighlight({ scroll = true } = {}) {
     listEl.querySelectorAll(".sp-sentence").forEach((row) => {
-      row.classList.toggle("active", row.dataset.id === state.activeCueId);
+      const on = row.dataset.id === state.activeCueId;
+      row.classList.toggle("active", on);
+      const label = row.querySelector(".sp-now-playing");
+      if (label) label.setAttribute("aria-hidden", on ? "false" : "true");
     });
     if (scroll && !isEditingAny()) scrollActiveIntoView();
   }
@@ -1008,6 +1075,7 @@
       const vi = stripStub(cue.vi);
       const t0 = Timing.formatTimeInput(cue.start_media_time);
       const t1 = Timing.formatTimeInput(cue.end_media_time);
+      const isActive = cue.id === activeId;
       row.innerHTML = `
         <div class="sp-meta">
           <button type="button" class="sp-play" data-t="${cue.start_media_time}" title="Play">▶</button>
@@ -1029,6 +1097,7 @@
             </div>
           </details>
         </div>
+        <div class="sp-now-playing" aria-hidden="${isActive ? "false" : "true"}">ĐANG PHÁT</div>
         <div class="sp-ja-wrap" data-idx="${idx}" tabindex="0">
           <div class="sp-ja-view">${
             cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)

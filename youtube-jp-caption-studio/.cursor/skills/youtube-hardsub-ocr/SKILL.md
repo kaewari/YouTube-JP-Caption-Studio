@@ -19,15 +19,19 @@ description: >-
   cues (drop/strip SFX in place; **keep YouTube start/end**), merges
   `chrome.storage.local` cache (`transcript:${videoId}`) **plus** disk script
   (`scripts/{videoId}/` via bridge), overlays the active cue by `media_time`.
-  **No machine translation** — EN/VI come from **Import** or manual edit.
+  **No machine translation** — EN/VI come from **YouTube tracks** (when
+  present), **Import**, or manual edit.
   JA Enter → commit JA + `POST /tokenize_batch` (furigana/JLPT only).
 - **Script ownership:** hand-edited timeline/JA wins over YouTube re-merge.
   Deleted cues are **tombstoned** per `video_id` so Reload does not resurrect
   them. Never save a poorer YT merge over a richer edited script.
 - Local bridge (`local-bridge/`, `127.0.0.1:8765`): Sudachi furigana, JMdict
   lookup, script store. **No** NLLB/Opus/Gemini/OCR.
-  Auto-persists cues: `POST /scripts/save` → `scripts/{videoId}/script.txt`
-  + `cues.json`; `GET /scripts/{video_id}` restores on reload.
+  Auto-persists cues: `POST /scripts/save` → `cues.json` (+ `script.txt` on
+  files/export render). `script.txt` **always** emits `JA:` / `EN:` / `VI:`
+  per cue (empty text allowed); furigana `(…)` only when tokens exist. Import
+  parse accepts empty `JA:`/`EN:`/`VI:` lines. `GET /scripts/{video_id}`
+  restores on reload.
 
 ## API contract
 
@@ -43,7 +47,11 @@ description: >-
 
 ## Caption rules
 
-- Prefer JA (manual over ASR) track; load **full** cue list once per video
+- Prefer JA (manual over ASR) track; load **full** cue list once per video.
+  When EN/VI YouTube tracks exist, **union-merge** into rows: fill empty
+  unlocked `cue.en`/`cue.vi` by start ±0.35s (`translation_source: "yt"`);
+  unmatched EN/VI become **orphan rows** (empty other fields). Never overwrite
+  import/user/`mt_locked`. Owned scripts: fill blanks only (no orphan append).
 - Normalize once after load, **before** cache merge (SFX strip; YouTube times kept)
 - Timeline is **YouTube timedtext** (or import / manual edit) — no CPS/text-length retime
 - **Enter-only commit** (JA / EN / VI):
@@ -66,7 +74,7 @@ description: >-
 
 - Side Panel: cue list, import/export, JA/EN/VI edit, furigana + JLPT colors
 - Toolbar popup = Saved Items static build (`npm run build:extension`)
-- Overlay on video; player pill opens side panel
+- Overlay on video; player pill toggles overlay (ON also opens side panel; OFF leaves panel open)
 - Dict hover via `POST /dict`; level colors via `HardsubVocab.applyHighlightVars`
 
 ## Key paths

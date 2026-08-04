@@ -64,6 +64,10 @@
     GAP: 0.05,
   };
 
+  const FillYtSecondary = globalThis.HardsubFillYtSecondary || {
+    fillYtSecondary: () => 0,
+  };
+
   let settings = { ...DEFAULTS };
   /** @type {Record<string, string>} */
   let userVocab = {};
@@ -131,11 +135,27 @@
     c.translation_source = "";
   }
 
-  function injectPageScript() {
-    if (document.getElementById("hardsub-ocr-page-script")) return;
+  // Must match page_capture.js API_VER — stale MAIN-world inject lacks FETCH_MULTI_LANG.
+  const PAGE_API_VER = 3;
+
+  function injectPageScript(force = false) {
+    const existing = document.getElementById("hardsub-ocr-page-script");
+    if (existing && !force) return;
+    if (existing) existing.remove();
+    if (force) {
+      // Clear MAIN-world guard so re-fetched page_capture.js can rebind.
+      const boot = document.createElement("script");
+      boot.textContent =
+        "try{if(window.__hardsubPageMsgHandler){window.removeEventListener('message',window.__hardsubPageMsgHandler);delete window.__hardsubPageMsgHandler;}delete window.__HARDSubOCRCapture;}catch(e){}";
+      (document.documentElement || document.head).appendChild(boot);
+      boot.remove();
+    }
     const s = document.createElement("script");
     s.id = "hardsub-ocr-page-script";
-    s.src = chrome.runtime.getURL("injected/page_capture.js");
+    s.src =
+      chrome.runtime.getURL("injected/page_capture.js") +
+      "?v=" +
+      encodeURIComponent(chrome.runtime.getManifest().version);
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -144,11 +164,19 @@
   }
 
   async function waitForPageBridge(maxMs = 8000) {
-    injectPageScript();
+    injectPageScript(false);
     const t0 = Date.now();
+    let forced = false;
     while (Date.now() - t0 < maxMs) {
       const r = await pageCall("PING", {}, 300);
-      if (r?.ok) return true;
+      if (r?.ok && Number(r.apiVer) === PAGE_API_VER) return true;
+      if (r?.ok && Number(r.apiVer) !== PAGE_API_VER && !forced) {
+        forced = true;
+        injectPageScript(true);
+      } else if (!r?.ok && !forced && Date.now() - t0 > 600) {
+        forced = true;
+        injectPageScript(true);
+      }
       await sleep(150);
     }
     return false;
@@ -371,10 +399,13 @@
       if (gen !== navigateGen || currentVideoId !== vid) return;
       transcriptMeta = emptyMeta();
       cues = mergeCache(normalized, [], transcriptMeta);
+      applyYtSecondaryFill(opts);
       listDirty = true;
       await syncToPlayhead();
       updateCaptionStatusLine();
       await saveTranscript({ force: true, awaitDisk: true });
+      // B8: tokenize every video after first JA publish (not only owned).
+      void enrichTokensAfterImport();
       return;
     }
     const cached = await loadCachedCues(currentVideoId);
@@ -392,6 +423,7 @@
       // Heal previously saved rolling-ASR overlaps (cache still had long ends).
       cues = CueTiming.clampCueEndsToNextStart(merged);
     }
+    applyYtSecondaryFill(opts);
     listDirty = true;
     // Align list/overlay to current playhead before first publish (mid-video open).
     await syncToPlayhead();
@@ -402,6 +434,143 @@
     if (!meta.owned || scriptListScore(cues) >= scriptListScore(cached)) {
       scheduleSaveTranscript();
     }
+    // B8: always enrich when cues lack tokens — remove owned gate.
+    void enrichTokensAfterImport();
+  }
+
+  /**
+   * Union-merge YT en/vi into cue rows (±tol or overlap): fill empty unlocked,
+   * append orphans when not owned. Triggers save + panel via callers.
+   */
+  function applyYtSecondaryFill(opts) {
+    const n = FillYtSecondary.fillYtSecondary(cues, opts?.enCues, opts?.viCues, {
+      tol: CACHE_MATCH_TOL,
+      isLocked: isMtLocked,
+      // Owned timeline is authoritative — paint blanks only, no orphan rows.
+      appendOrphans: !transcriptMeta.owned,
+    });
+    // Heal pending count when en/vi already present but translated flag lagged.
+    for (const c of cues) {
+      if (c.translated) continue;
+      if (String(c.en || "").trim() || String(c.vi || "").trim()) {
+        c.translated = true;
+      }
+    }
+    return n;
+  }
+
+  function langFromTimedtextUrl(url) {
+    try {
+      return new URL(String(url || ""), location.href).searchParams.get("lang") || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function isJaLang(lang) {
+    return String(lang || "")
+      .toLowerCase()
+      .startsWith("ja");
+  }
+
+  function stampSecondaryStatus(enN, viN) {
+    const base = String(captionsInfo || "").replace(/\s*·\s*en:\d+\s+vi:\d+\s*$/i, "");
+    captionsInfo = `${base} · en:${enN} vi:${viN}`;
+  }
+
+  function logYtSecondaryMiss(sw, enN, viN) {
+    const msg = `yt secondary miss video=${currentVideoId || "?"} hasEn=${!!sw?.hasEn} hasVi=${!!sw?.hasVi} en:${enN} vi:${viN}`;
+    void bridgeFetch("/log", {
+      method: "POST",
+      body: { level: "WARNING", message: msg },
+    }).catch(() => {});
+  }
+
+  /**
+   * Await SW pack, union-fill EN/VI, publish. Never fire-and-forget — silent n===0
+   * left VI/EN blank after ja-intercept early-win.
+   */
+  async function applySecondaryFromSw(sw) {
+    if (!sw) return 0;
+    const enN = Array.isArray(sw.enCues) ? sw.enCues.length : 0;
+    const viN = Array.isArray(sw.viCues) ? sw.viCues.length : 0;
+    const n = applyYtSecondaryFill({ enCues: sw.enCues, viCues: sw.viCues });
+    stampSecondaryStatus(enN, viN);
+    if ((sw.hasEn || sw.hasVi) && enN + viN === 0) {
+      logYtSecondaryMiss(sw, enN, viN);
+    }
+    if (n) {
+      listDirty = true;
+      scheduleSaveTranscript();
+    }
+    // Always push cue rows — status-only publish left EN/VI blank in the panel.
+    updateCaptionStatusLine();
+    publishSidePanelState({ forceList: true });
+    return n;
+  }
+
+  /**
+   * B6: when SW hasEn/hasVi but empty packs (or no packs), page-fetch (web then
+   * ANDROID rescue) — no setOption per lang. VI stays in viCues only.
+   */
+  async function ensureSecondaryPacks(sw) {
+    let enCues = Array.isArray(sw?.enCues) ? sw.enCues : [];
+    let viCues = Array.isArray(sw?.viCues) ? sw.viCues : [];
+    let hasEn = !!sw?.hasEn;
+    let hasVi = !!sw?.hasVi;
+    const needPage =
+      (hasEn && !enCues.length) ||
+      (hasVi && !viCues.length) ||
+      (!enCues.length && !viCues.length);
+    if (!needPage) {
+      return { enCues, viCues, hasEn, hasVi };
+    }
+    // Stale page API (pre-FETCH_MULTI_LANG) → force reinject before multi-fetch.
+    const ping = await pageCall("PING", {}, 400);
+    if (!ping?.ok || Number(ping.apiVer) !== PAGE_API_VER) {
+      injectPageScript(true);
+      await sleep(200);
+    }
+    const page = await pageCall(
+      "FETCH_MULTI_LANG",
+      { videoId: currentVideoId, lang: settings.sourceLang },
+      20000
+    );
+    if (Array.isArray(page?.enCues) && page.enCues.length) enCues = page.enCues;
+    if (Array.isArray(page?.viCues) && page.viCues.length) viCues = page.viCues;
+    if (page?.hasEn) hasEn = true;
+    if (page?.hasVi) hasVi = true;
+    if ((hasEn || hasVi) && !enCues.length && !viCues.length) {
+      logYtSecondaryMiss(
+        { hasEn, hasVi, via: page?.via || page?.reason || "page_multi" },
+        0,
+        0
+      );
+    }
+    return {
+      enCues,
+      viCues,
+      hasEn,
+      hasVi,
+      // Optional JA rescue for callers that still need source — never put VI here.
+      cues: Array.isArray(page?.cues) ? page.cues : [],
+      via: page?.via || "page_multi",
+    };
+  }
+
+  /** B7: fill EN/VI async after JA paint — do not block panel return. */
+  function kickSecondaryFill(sw) {
+    const gen = navigateGen;
+    const vid = currentVideoId;
+    void (async () => {
+      try {
+        const packs = await ensureSecondaryPacks(sw);
+        if (gen !== navigateGen || currentVideoId !== vid) return;
+        await applySecondaryFromSw(packs);
+      } catch (_) {
+        /* secondary miss already logged inside apply when needed */
+      }
+    })();
   }
 
   window.addEventListener("message", (ev) => {
@@ -892,7 +1061,9 @@
 
   /** cues.json / chrome.storage carry no tokens — refill from tokens.json for furigana. */
   async function hydrateTokens(videoId, list) {
-    if (!list.length || list.some((c) => c.tokens?.length)) return list;
+    if (!list.length) return list;
+    // Fill only cues still missing tokens (partial in-memory tokens must not skip the rest).
+    if (list.every((c) => !String(c.source || "").trim() || c.tokens?.length)) return list;
     try {
       const res = await bridgeFetch(`/scripts/${encodeURIComponent(videoId)}/tokens`, {
         method: "GET",
@@ -900,6 +1071,7 @@
       const map = res?.ok && res.data && typeof res.data === "object" ? res.data : null;
       if (!map) return list;
       for (const c of list) {
+        if (c.tokens?.length) continue;
         const t = map[c.id];
         if (Array.isArray(t) && t.length) c.tokens = t;
       }
@@ -1175,6 +1347,8 @@
     if (gen !== navigateGen || currentVideoId !== vid) return false;
     updateCaptionStatusLine();
     scheduleSaveTranscript();
+    // B8: tokenize whenever cues lack tokens (owned or YT).
+    void enrichTokensAfterImport();
     if (!opts.quiet) toast(`Đã tải script đã lưu (${fromScript.length} câu)`);
     return true;
   }
@@ -2001,12 +2175,10 @@
     btn.classList.toggle("hardsub-ytp-toggle--on", on);
     btn.classList.toggle("hardsub-ytp-toggle--off", !on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
-    btn.title = on
-      ? "Tắt overlay + đóng side panel"
-      : "Bật overlay + mở side panel";
+    btn.title = on ? "Tắt overlay trên video" : "Bật overlay trên video (+ mở side panel)";
     btn.setAttribute(
       "aria-label",
-      on ? "Tắt dịch (overlay + side panel)" : "Bật dịch (overlay + side panel)"
+      on ? "Tắt overlay dịch" : "Bật overlay dịch"
     );
     const label = btn.querySelector(".hardsub-ytp-toggle__label");
     if (label) label.textContent = playerToggleLabel();
@@ -2020,11 +2192,8 @@
       if (persist) await saveSettings();
     }
     applyBarVisibility();
-    if (next) {
-      await openSidePanel();
-    } else {
-      await closeSidePanel();
-    }
+    // ON opens panel; OFF only hides overlay (leave side panel open).
+    if (next) await openSidePanel();
     if (toastMsg && changed) toast(next ? "Dịch ON" : "Dịch OFF");
     publishSidePanelState();
     return next;
@@ -2051,14 +2220,6 @@
         bindGestureOpenSidePanel();
         return false;
       });
-  }
-
-  function closeSidePanel() {
-    pendingOpenSidePanel = false;
-    return chrome.runtime
-      .sendMessage({ type: "CLOSE_SIDE_PANEL" })
-      .then((r) => !!r?.ok)
-      .catch(() => false);
   }
 
   function bindGestureOpenSidePanel() {
@@ -2131,7 +2292,7 @@
     btn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Toggle overlay + side panel together (on → both; off → both).
+      // Overlay visibility; ON also opens side panel (OFF leaves panel open).
       await toggleShowOnVideo();
     });
     btn.addEventListener("mousedown", stopBubble);
@@ -2264,6 +2425,20 @@
     return !!(sw?.ok && Array.isArray(sw.cues) && sw.cues.length);
   }
 
+  function swUsable(sw) {
+    return !!(
+      sw?.ok &&
+      (swOk(sw) ||
+        (Array.isArray(sw.enCues) && sw.enCues.length) ||
+        (Array.isArray(sw.viCues) && sw.viCues.length))
+    );
+  }
+
+  /** Intercept body is only JA when timedtext URL lang is ja* — never trust pageLink.lang. */
+  function interceptIsJa(pageLink) {
+    return !!(pageLink?.cues?.length && isJaLang(langFromTimedtextUrl(pageLink.baseUrl)));
+  }
+
   async function loadAllCaptions(force = false, opts = {}) {
     const gen = navigateGen;
     const vid = currentVideoId;
@@ -2290,16 +2465,29 @@
     }
     const skipCache = !!opts.skipCache;
     const applyOpts = skipCache ? { skipCache: true } : {};
+    const swApplyOpts = (sw) => ({
+      ...applyOpts,
+      fromSw: true,
+      enCues: sw?.enCues,
+      viCues: sw?.viCues,
+    });
+    const swLabel = (sw) =>
+      swOk(sw)
+        ? `${sw.lang || "?"}${sw.asr ? " auto" : ""} · ${sw.count || sw.cues.length} cues`
+        : `secondary · en:${sw?.enCues?.length || 0} vi:${sw?.viCues?.length || 0}`;
+
     captionsStatus = "loading";
     captionsInfo = "";
     updateCaptionStatusLine();
 
-    // Start SW/ANDROID path immediately — do not idle behind page intercept waits.
+    // Reuse SW promise from onNavigate when provided (started ‖ bridge).
     let pageLink = null;
-    const swPromise = loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
-      baseUrl: "",
-      lang: settings.sourceLang,
-    });
+    const swPromise =
+      opts.swPromise ||
+      loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
+        baseUrl: "",
+        lang: settings.sourceLang,
+      });
 
     const ready =
       opts.bridgeReady === true
@@ -2310,23 +2498,24 @@
     if (stale()) return;
 
     if (ready) {
-      // Instant use if player already intercepted timedtext body.
       pageLink = await pageCall(
         "GET_TIMEDTEXT_LINK",
         { videoId: currentVideoId, lang: settings.sourceLang },
         800
       );
       if (stale()) return;
-      if (pageLink?.cues?.length) {
+      // Early-win only when URL lang is ja* — then kick secondary async.
+      if (interceptIsJa(pageLink)) {
         await applyLoadedCues(
           pageLink.cues,
-          `${pageLink.lang || settings.sourceLang || "?"} intercept · ${pageLink.cues.length} cues`,
+          `ja intercept · ${pageLink.cues.length} cues`,
           applyOpts
         );
+        if (stale()) return;
+        kickSecondaryFill(await swPromise);
         return;
       }
 
-      // Short race: poll intercept while SW runs (no fixed 600ms idle).
       let swEarly = null;
       swPromise.then((r) => {
         swEarly = r;
@@ -2334,13 +2523,19 @@
       const raceDeadline = Date.now() + 700;
       while (Date.now() < raceDeadline) {
         if (stale()) return;
-        if (swOk(swEarly)) {
-          await applyLoadedCues(
-            swEarly.cues,
-            `${swEarly.lang || "?"}${swEarly.asr ? " auto" : ""} · ${swEarly.count || swEarly.cues.length} cues`,
-            applyOpts
-          );
-          return;
+        if (swUsable(swEarly)) {
+          // Paint JA ASAP; EN/VI fill async (do not await full pack).
+          if (swOk(swEarly)) {
+            await applyLoadedCues(
+              swEarly.cues || [],
+              swLabel(swEarly),
+              swApplyOpts(swEarly)
+            );
+          }
+          if (stale()) return;
+          kickSecondaryFill(swEarly);
+          if (swOk(swEarly)) return;
+          break;
         }
         await sleep(120);
         pageLink = await pageCall(
@@ -2349,12 +2544,14 @@
           400
         );
         if (stale()) return;
-        if (pageLink?.cues?.length) {
+        if (interceptIsJa(pageLink)) {
           await applyLoadedCues(
             pageLink.cues,
-            `${pageLink.lang || "?"} intercept · ${pageLink.cues.length} cues`,
+            `ja intercept · ${pageLink.cues.length} cues`,
             applyOpts
           );
+          if (stale()) return;
+          kickSecondaryFill(await swPromise);
           return;
         }
       }
@@ -2362,52 +2559,100 @@
 
     let sw = await swPromise;
     if (stale()) return;
-    if (!swOk(sw) && pageLink?.baseUrl) {
+    if (!swUsable(sw) && pageLink?.baseUrl) {
+      const urlLang = langFromTimedtextUrl(pageLink.baseUrl);
       sw = await loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
         baseUrl: pageLink.baseUrl,
         asr: !!pageLink.asr,
-        lang: pageLink.lang || settings.sourceLang,
+        lang: urlLang || pageLink.lang || settings.sourceLang,
       });
       if (stale()) return;
     }
-    if (swOk(sw)) {
-      await applyLoadedCues(
-        sw.cues,
-        `${sw.lang || "?"}${sw.asr ? " auto" : ""} · ${sw.count || sw.cues.length} cues`,
-        applyOpts
-      );
-      return;
+    if (swUsable(sw)) {
+      if (swOk(sw)) {
+        await applyLoadedCues(sw.cues || [], swLabel(sw), swApplyOpts(sw));
+        if (stale()) return;
+      }
+      kickSecondaryFill(sw);
+      if (swOk(sw)) return;
     }
 
     if (ready) {
+      // Prefer page multi-fetch (no setOption per lang) before LOAD_CAPTIONS CC path.
+      const multi = await pageCall(
+        "FETCH_MULTI_LANG",
+        { videoId: currentVideoId, lang: settings.sourceLang },
+        20000
+      );
+      if (stale()) return;
+      if (Array.isArray(multi?.cues) && multi.cues.length) {
+        await applyLoadedCues(
+          multi.cues,
+          `ja page · ${multi.cues.length} cues`,
+          applyOpts
+        );
+        if (stale()) return;
+        kickSecondaryFill({
+          ...(sw || {}),
+          enCues: multi.enCues,
+          viCues: multi.viCues,
+          hasEn: multi.hasEn,
+          hasVi: multi.hasVi,
+        });
+        return;
+      }
+
       const r = await pageCall(
         "LOAD_CAPTIONS",
         { videoId: currentVideoId, lang: settings.sourceLang, force: !!force },
         45000
       );
       if (stale()) return;
-      if (r?.ok && r.status === "ok" && Array.isArray(r.cues) && r.cues.length) {
+      const pageLang = langFromTimedtextUrl(r?.baseUrl) || r?.lang || "";
+      if (
+        r?.ok &&
+        r.status === "ok" &&
+        Array.isArray(r.cues) &&
+        r.cues.length &&
+        isJaLang(pageLang)
+      ) {
         await applyLoadedCues(
           r.cues,
-          `${r.lang || "?"}${r.asr ? " auto" : ""} · ${r.count || r.cues.length} cues`,
+          `ja${r.asr ? " auto" : ""} · ${r.count || r.cues.length} cues`,
           applyOpts
         );
+        if (stale()) return;
+        kickSecondaryFill(sw);
         return;
       }
-      if (r?.baseUrl) {
+      if (r?.baseUrl && isJaLang(langFromTimedtextUrl(r.baseUrl) || r.lang)) {
         const rescued = await fetchTimedtextInContent(r.baseUrl);
         if (stale()) return;
         if (rescued?.length) {
           await applyLoadedCues(
             rescued,
-            `${r.lang || "?"} rescue · ${rescued.length} cues`,
+            `ja rescue · ${rescued.length} cues`,
             applyOpts
           );
+          if (stale()) return;
+          kickSecondaryFill(sw);
           return;
         }
       }
       captionsStatus = r?.status || sw?.status || "none";
       captionsInfo = sw?.reason || r?.reason || r?.message || "empty";
+      if (sw?.hasEn || sw?.hasVi) {
+        stampSecondaryStatus(
+          Array.isArray(sw.enCues) ? sw.enCues.length : 0,
+          Array.isArray(sw.viCues) ? sw.viCues.length : 0
+        );
+        logYtSecondaryMiss(
+          sw,
+          Array.isArray(sw.enCues) ? sw.enCues.length : 0,
+          Array.isArray(sw.viCues) ? sw.viCues.length : 0
+        );
+        kickSecondaryFill(sw);
+      }
     } else {
       captionsStatus = "none";
       captionsInfo = sw?.reason || "page_bridge_timeout";
@@ -2439,6 +2684,7 @@
       return;
     }
     const h = res.data;
+    const wasReady = bridgeReady;
     bridgeReady = !!h.ready;
     caps = h.caps || caps;
     const boot = h.bootstrap;
@@ -2446,6 +2692,10 @@
       setStatus(`bootstrap ${Math.round(boot.percent || 0)}%`);
     } else {
       updateCaptionStatusLine();
+    }
+    // B8: retry tokenize when bridge comes ready after JA already painted.
+    if (!wasReady && bridgeReady && cues.some((c) => Vocab.tokensNeedEnrich(c))) {
+      void enrichTokensAfterImport();
     }
   }
 
@@ -2810,21 +3060,36 @@
     applyBarVisibility();
   }
 
-  /** Active cue only inside YouTube [start, end); no nearest-gap inventing. */
+  /**
+   * Playhead match — hold through gaps until next cue starts (YT durations often end early).
+   * Last cue: +150ms grace past end. Last match wins on ties. (iPad ScriptCue.active)
+   */
   function findActiveCue(mediaTime) {
     const t = Number(mediaTime) || 0;
-    let active = null;
-    for (const c of cues) {
+    const grace = 0.15;
+    const live = cues
+      .slice()
+      .sort(
+        (a, b) =>
+          (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
+      );
+    let hit = null;
+    for (let i = 0; i < live.length; i++) {
+      const c = live[i];
       const start = Number(c.start_media_time) || 0;
-      const end = Number(c.end_media_time) || 0;
-      if (t >= start && t < end) active = c;
+      const end = Number(c.end_media_time) || start;
+      const holdEnd =
+        i + 1 < live.length
+          ? Number(live[i + 1].start_media_time) || 0
+          : end + grace;
+      if (t >= start && t < holdEnd) hit = c;
     }
-    return active;
+    return hit;
   }
 
   /**
    * Token enrich via /tokenize_batch. Keeps en/vi/mt_locked intact.
-   * Used after import and JA Enter.
+   * Used after import and JA Enter. Retries later via syncHealth if bridge offline.
    */
   async function enrichTokensAfterImport(cueIds = null) {
     if (!bridgeReady) return 0;
@@ -3399,6 +3664,14 @@
     }
     if (gen !== navigateGen) return;
 
+    // B7: kick SW caption pack immediately in parallel with page bridge wait.
+    const swPromise = currentVideoId
+      ? loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
+          baseUrl: "",
+          lang: settings.sourceLang,
+        })
+      : null;
+
     // iPad parity: restore saved script immediately; owned import skips YT replace.
     listDirty = true;
     const restored =
@@ -3426,8 +3699,8 @@
     if (gen !== navigateGen) return;
     if (ready) await pageCall("BIND", {}, 400);
     if (gen !== navigateGen) return;
-    // Pass bridgeReady so loadAllCaptions does not wait again; SW starts ASAP inside.
-    await loadAllCaptions(true, { bridgeReady: ready });
+    // Pass bridgeReady + swPromise so loadAllCaptions reuses the early SW kick.
+    await loadAllCaptions(true, { bridgeReady: ready, swPromise });
     if (gen !== navigateGen) return;
     if (!cues.length && currentVideoId) {
       await sleep(800);
@@ -3442,6 +3715,14 @@
 
   async function init() {
     await loadSettings();
+    // Prove which unpacked build is live after chrome://extensions Reload.
+    void bridgeFetch("/log", {
+      method: "POST",
+      body: {
+        level: "INFO",
+        message: `ext content boot v=${chrome.runtime.getManifest().version} api=${PAGE_API_VER}`,
+      },
+    }).catch(() => {});
     ensureUI();
     injectPageScript();
     applyDim();
