@@ -19,6 +19,10 @@ struct YouTubePlayerView: UIViewRepresentable {
     /// OS/app fullscreen enter/exit from page (`fullscreenHandler`).
     var onFullscreenChange: ((Bool) -> Void)? = nil
     @Binding var seekRequest: Double?
+    /// Set to scroll the watch page (autotest: reproduce scrolled-fullscreen state).
+    @Binding var scrollRequest: Double?
+    /// Set to evaluate arbitrary JS (autotest: drive YT UI, e.g. miniplayer toggle).
+    @Binding var jsEvalRequest: String?
     /// Bump to force a page reload without changing `videoID`.
     @Binding var reloadNonce: Int
     /// Bump to run `window.__csToggleFull()` (app maximize only — OS video FS disabled).
@@ -83,6 +87,20 @@ struct YouTubePlayerView: UIViewRepresentable {
                 "(function(){if(window.__csSeek)return window.__csSeek(\(seconds));var v=document.querySelector('#movie_player video.html5-main-video')||document.querySelector('#movie_player video');if(v)v.currentTime=\(seconds);})();"
             )
             DispatchQueue.main.async { seekRequest = nil }
+        }
+
+        if let y = scrollRequest {
+            // Clamp to the page's real scrollable depth — a fixed target fires early
+            // (page still loading) and silently bottoms out (scrollY stuck at ~500).
+            uiView.evaluateJavaScript(
+                "window.scrollTo(0, Math.min(\(y), Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));"
+            )
+            DispatchQueue.main.async { scrollRequest = nil }
+        }
+
+        if let js = jsEvalRequest {
+            uiView.evaluateJavaScript(js)
+            DispatchQueue.main.async { jsEvalRequest = nil }
         }
 
         if fullscreenToggleNonce != context.coordinator.lastFullscreenToggleNonce {

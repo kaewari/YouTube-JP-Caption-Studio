@@ -44,6 +44,22 @@
     var vc = v ? v.closest(".html5-video-container") : null;
     var vcs = vc ? getComputedStyle(vc) : null;
     var vr = vc ? vc.getBoundingClientRect() : null;
+    // Scroll-transform trap diagnostics: YT shifts/shrinks the player via transform
+    // on this chain (scroll-driven). A transformed ancestor turns position:fixed
+    // into "fixed to that box" — the pinned video lifts off the viewport.
+    var wf = document.querySelector("ytd-watch-flexy");
+    var wfs = wf ? getComputedStyle(wf) : null;
+    var pl = document.querySelector("#player");
+    var pls = pl ? getComputedStyle(pl) : null;
+    var yp = document.querySelector("ytd-player");
+    var yps = yp ? getComputedStyle(yp) : null;
+    var mps = p ? getComputedStyle(p) : null;
+    // Miniplayer trap diagnostics: YT's miniplayer RE-PARENTS #movie_player into
+    // ytd-miniplayer (a fixed, transformed, bottom-right box). A pinned fullscreen
+    // video inside a transformed ancestor anchors to that box — not the viewport.
+    var mp = document.querySelector("ytd-miniplayer");
+    var mpr = mp ? mp.getBoundingClientRect() : null;
+    var mps2 = mp ? getComputedStyle(mp) : null;
     return {
       ok80: true,
       ratio: Math.round(ratio * 1000) / 1000,
@@ -59,6 +75,8 @@
       fsClassOn: document.documentElement.classList.contains("cs-app-full"),
       playerRect: pr ? [pr.left | 0, pr.top | 0, pr.width | 0, pr.height | 0] : null,
       scrollY: Math.round(window.scrollY || 0),
+      docHeight: Math.round(document.documentElement.scrollHeight || 0),
+      maxScroll: Math.round(Math.max(0, (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0))),
       containerRect: vr ? [vr.left | 0, vr.top | 0, vr.width | 0, vr.height | 0] : null,
       containerPos: vcs ? vcs.position : "",
       containerTransform: vcs && vcs.transform !== "none" ? vcs.transform : "",
@@ -69,7 +87,51 @@
       videoTransform: vs && vs.transform !== "none" ? vs.transform : "",
       videoIntrinsic: v ? [v.videoWidth, v.videoHeight] : null,
       videoReady: v ? v.readyState : -1,
-      videoPaused: v ? !!v.paused : null
+      videoPaused: v ? !!v.paused : null,
+      miniPlayerOn: wf ? wf.classList.contains("miniplayer") : false,
+      watchFlexyTransform: wfs && wfs.transform !== "none" ? wfs.transform : "",
+      playerTransform: pls && pls.transform !== "none" ? pls.transform : "",
+      ytdPlayerTransform: yps && yps.transform !== "none" ? yps.transform : "",
+      moviePlayerTransform: mps && mps.transform !== "none" ? mps.transform : "",
+      inMiniPlayer: p ? !!p.closest("ytd-miniplayer") : false,
+      playerParentTag: p && p.parentElement ? p.parentElement.tagName + ">" + (p.parentElement.parentElement ? p.parentElement.parentElement.tagName : "") : "",
+      miniPlayerExists: !!mp,
+      miniPlayerRect: mpr ? [mpr.left | 0, mpr.top | 0, mpr.width | 0, mpr.height | 0] : null,
+      miniPlayerTransform: mps2 && mps2.transform !== "none" ? mps2.transform : "",
+      miniPlayerDom: mp ? mp.outerHTML.replace(/\s+/g, " ").slice(0, 320) : "",
+      miniToggleBtn: (function () {
+        if (document.querySelector(".ytp-miniplayer-button")) return "ytp-miniplayer-button";
+        var found = Array.prototype.slice.call(document.querySelectorAll("ytd-toggle-button-renderer, ytd-button-renderer"))
+          .find(function (b) { return /[Mm]iniplayer/.test((b.getAttribute("aria-label") || "") + " " + b.textContent); });
+        return found ? "found-renderer" : "none";
+      })(),
+      // Leak diagnostics: YT inline-sizes the video (px) to fill the pinned player;
+      // on class-off exit the inline size may stay at 1376x980 → video overlaps page.
+      vw: Math.round(window.innerWidth || 0),
+      savedVideoSize: window.__csSavedVideoSize
+        ? [window.__csSavedVideoSize.w, window.__csSavedVideoSize.h] : null,
+      videoPos: vs ? vs.position : "",
+      videoInline: v ? (v.getAttribute("style") || "").slice(0, 160) : "",
+      videoWAttr: v ? v.getAttribute("width") || "" : "",
+      playerInline: p ? (p.getAttribute("style") || "").slice(0, 160) : "",
+      playerClass: p ? String(p.className || "").slice(0, 160) : "",
+      containerInline: vc ? (vc.getAttribute("style") || "").slice(0, 160) : "",
+      // Containing-block hunt: a fixed child anchors to the NEAREST ancestor with
+      // non-none transform/will-change/filter — walk the whole chain up to html.
+      ancChain: (function () {
+        var out = [];
+        var cur = v ? v.parentElement : null;
+        while (cur && out.length < 10) {
+          var cs = getComputedStyle(cur);
+          out.push((cur.id ? "#" + cur.id : cur.tagName)
+            + "{t:" + (cs.transform !== "none" ? cs.transform.slice(0, 24) : "-")
+            + ",wc:" + (cs.willChange !== "auto" ? cs.willChange.slice(0, 16) : "-")
+            + ",fl:" + (cs.filter !== "none" ? cs.filter.slice(0, 16) : "-")
+            + ",pos:" + cs.position + "}");
+          cur = cur.parentElement;
+        }
+        return out.join("|");
+      })()
     };
   };
 
@@ -149,6 +211,19 @@
     }
   }
   var __csFsKillTimer = null;
+  // YT inline-sizes the video (px) while pinned; on class-off exit the inline
+  // size STAYS at 1376x980 → a 1376x980 video box overlaps the page below.
+  // Save the pre-fullscreen inline size at ENTER, restore it on EXIT.
+  var __csSavedVideoSize = null;
+  function restoreVideoSize() {
+    var v = mainVideo();
+    if (!v || !__csSavedVideoSize) return;
+    var s = __csSavedVideoSize;
+    v.style.width = s.w;
+    v.style.height = s.h;
+    v.style.left = s.left || "0px";
+    v.style.top = s.top || "0px";
+  }
   // In-page fullscreen: fixed #movie_player fills the webview so the video truly
   // covers the screen (app-maximize alone only hides app chrome). Scope via
   // html.cs-app-full — YT watch layout untouched outside fullscreen.
@@ -158,12 +233,19 @@
     if (!__csFsStyleEl) {
       __csFsStyleEl = document.createElement("style");
       __csFsStyleEl.id = "cs-fs-style";
+      // Hide watch chrome only under cs-app-full — #movie_player z-index is
+      // trapped in #primary's stacking context, so #secondary paints over it.
       __csFsStyleEl.textContent = [
         "html.cs-app-full, html.cs-app-full body, html.cs-app-full ytd-app { overflow: hidden !important; }",
+        "html.cs-app-full #masthead-container,",
+        "html.cs-app-full #secondary,",
+        "html.cs-app-full #related,",
+        "html.cs-app-full #below { display: none !important; }",
         "html.cs-app-full #movie_player {",
         "  position: fixed !important; top: 0 !important; left: 0 !important;",
         "  width: 100vw !important; height: 100vh !important;",
         "  z-index: 2147483646 !important;",
+        "  background: #000 !important;",
         "}",
         // The .html5-video-container chain has 0 height (YT sizes the video by
         // inline px) — %-height on the video would collapse to 0. Pin the video
@@ -172,6 +254,7 @@
         "  position: fixed !important; top: 0 !important; left: 0 !important;",
         "  width: 100vw !important; height: 100vh !important;",
         "  object-fit: contain !important;",
+        "  background: #000 !important;",
         "}"
       ].join("\n");
       (document.head || docEl).appendChild(__csFsStyleEl);
@@ -179,6 +262,19 @@
     docEl.classList.toggle("cs-app-full", !!on);
   }
   function forceAppFullscreen() {
+    // Capture BEFORE pinning — YT rewrites the video's inline px to the pinned
+    // size while fullscreen; restoreVideoSize() undoes that on exit.
+    var v = mainVideo();
+    // Only the FIRST entry captures — a re-entrant force (safety path) while
+    // already full would save the pinned 1376x980 size and defeat the restore.
+    if (v && !window.__csAppFull) {
+      __csSavedVideoSize = {
+        w: v.style.width,
+        h: v.style.height,
+        left: v.style.left,
+        top: v.style.top
+      };
+    }
     window.__csAppFull = true;
     killOsFullscreen();
     applyInPageFullscreen(true);
@@ -209,6 +305,7 @@
     if (window.__csAppFull) {
       window.__csAppFull = false;
       applyInPageFullscreen(false);
+      restoreVideoSize();
       postLayout();
       postFullscreenActive(false, "app");
       return;
@@ -276,6 +373,8 @@
       );
     } catch (e) {}
   }
+  // Autotest: force a fresh layout dump (shot copies lag the 5s interval otherwise).
+  window.__csPostLayout = postLayout;
 
   // Match desktop: only watch?v=… is a caption session; home/search → no overlay/panel.
   function videoIdFromUrl() {

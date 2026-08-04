@@ -182,11 +182,7 @@ struct CueEditorRow: View {
                 onSave: { d in
                     let word = d.matched.isEmpty ? d.surface : d.matched
                     let meaning = [d.primaryVI, d.primaryEN].filter { !$0.isEmpty }.joined(separator: " / ")
-                    modelContext.insert(Vocabulary(
-                        word: word,
-                        reading: d.reading,
-                        meaning: meaning.isEmpty ? "—" : meaning
-                    ))
+                    Vocabulary.upsert(word: word, reading: d.reading, meaning: meaning.isEmpty ? "—" : meaning, context: modelContext)
                     modelContext.saveAndScheduleBackup()
                     selectedToken = nil
                 },
