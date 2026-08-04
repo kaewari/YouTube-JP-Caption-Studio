@@ -3,3 +3,9 @@ ipad-app/**/xcuserdata/
 **/DerivedData/
 *.xcuserstate
 youtube-jp-caption-studio/local-bridge/errors.log
+
+.tmp-*/
+.tmp-*.log
+.DS_Store
+**/local-bridge/.bridge*.log
+**/local-bridge/.bridge.pid*
