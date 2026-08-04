@@ -409,7 +409,7 @@ async function handleBridgeFetch(msg) {
 }
 
 async function handleYtFetch(msg) {
-  let url = String(msg.url || "");
+  let url = normalizeTimedtextUrl(msg.url || "");
   if (!url.startsWith("https://www.youtube.com/api/timedtext")) {
     return { ok: false, error: "bad_url" };
   }
@@ -417,27 +417,47 @@ async function handleYtFetch(msg) {
   return { ok: !!text, status: text ? 200 : 0, text: text || "" };
 }
 
+function normalizeTimedtextUrl(url) {
+  let u = String(url || "").trim();
+  if (u.startsWith("//")) u = `https:${u}`;
+  return u;
+}
+
+/** Cookie header once per load (not per timedtext URL). */
+async function getYtCookieHeader() {
+  try {
+    const cookies = await chrome.cookies.getAll({ domain: ".youtube.com" });
+    if (cookies?.length) {
+      return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    }
+  } catch (_) {}
+  return "";
+}
+
 /**
  * Caption load cascade (adapted from YSD side-panel pattern):
  * 1) page-provided timedtext baseUrl (content intercepted / player track)
  * 2) scrape watch HTML → ytInitialPlayerResponse.captionTracks
  * 3) ANDROID Innertube player → captionTracks
- * Fetch URL raw first (no forced fmt=json3), parse XML <text>/<p> or json3.
+ * Prefer fmt=json3; parse XML text/p or json3.
+ * Source timeline = ja track only; en and vi packs go to enCues/viCues — never into cues.
  */
 async function handleYtLoadCaptions(msg) {
   const videoId = String(msg.videoId || "").trim();
   const preferLang = String(msg.lang || "ja").toLowerCase();
   if (!videoId) {
-    return { ok: false, reason: "no_video_id", cues: [] };
+    return { ok: false, reason: "no_video_id", cues: [], hasEn: false, hasVi: false };
   }
+
+  const cookieHeader = await getYtCookieHeader();
 
   /** @type {{ url: string, lang: string, asr: boolean, via: string }[]} */
   const candidates = [];
   const seen = new Set();
 
   const pushUrl = (url, lang, asr, via) => {
-    if (!url || !String(url).includes("/api/timedtext")) return;
-    const key = String(url);
+    const key = normalizeTimedtextUrl(url);
+    if (!key || !key.includes("/api/timedtext")) return;
     if (seen.has(key)) return;
     seen.add(key);
     candidates.push({
@@ -449,73 +469,106 @@ async function handleYtLoadCaptions(msg) {
   };
 
   if (msg.baseUrl) {
-    pushUrl(msg.baseUrl, msg.lang || preferLang, !!msg.asr, "page_link");
+    // URL lang is truth; msg.lang may be preferLang and mis-tag a VI intercept as ja.
+    const urlLang = langFromTimedtextUrl(msg.baseUrl) || msg.lang || preferLang;
+    pushUrl(msg.baseUrl, urlLang, !!msg.asr, "page_link");
   }
 
-  try {
-    const webTracks = await fetchWebCaptionTracks(videoId);
-    for (const t of sortTracks(webTracks, preferLang)) {
-      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
-    }
-  } catch (_) {
-    /* continue */
+  // Prefer ANDROID timedtext URLs first — WEB watch HTML baseUrls often 200+empty.
+  const [androidTracks, webTracks] = await Promise.all([
+    fetchAndroidCaptionTracks(videoId).catch(() => []),
+    fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []),
+  ]);
+  for (const t of sortTracks(androidTracks, preferLang)) {
+    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android");
+  }
+  for (const t of sortTracks(webTracks, preferLang)) {
+    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
   }
 
-  try {
-    const androidTracks = await fetchAndroidCaptionTracks(videoId);
-    for (const t of sortTracks(androidTracks, preferLang)) {
-      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android");
-    }
-  } catch (_) {
-    /* continue */
-  }
+  const hasEn = candidates.some((c) =>
+    String(c.lang || "")
+      .toLowerCase()
+      .startsWith("en")
+  );
+  const hasVi = candidates.some((c) =>
+    String(c.lang || "")
+      .toLowerCase()
+      .startsWith("vi")
+  );
 
   if (!candidates.length) {
-    return { ok: false, reason: "no_tracks", cues: [], via: "none" };
+    return { ok: false, reason: "no_tracks", cues: [], via: "none", hasEn, hasVi };
   }
 
-  let lastError = "";
-  for (const c of candidates) {
-    const body = await fetchTimedtextBody(c.url);
-    if (!body) {
-      lastError = "empty_or_html";
-      continue;
-    }
-    const cues = parseTimedtextBody(body);
-    if (cues.length) {
-      return {
-        ok: true,
-        status: "ok",
-        count: cues.length,
-        cues,
-        lang: c.lang || preferLang,
-        asr: c.asr,
-        via: c.via,
-      };
-    }
-    lastError = "parse_empty";
+  // Best track per lang family (manual before ASR), fetched in parallel.
+  const [jaPack, enPack, viPack] = await Promise.all([
+    fetchBestLangPack(candidates, "ja", cookieHeader),
+    fetchBestLangPack(candidates, "en", cookieHeader),
+    fetchBestLangPack(candidates, "vi", cookieHeader),
+  ]);
+
+  const secondary = {
+    ...(enPack?.cues?.length ? { enCues: enPack.cues } : {}),
+    ...(viPack?.cues?.length ? { viCues: viPack.cues } : {}),
+  };
+
+  if (jaPack?.cues?.length) {
+    return {
+      ok: true,
+      status: "ok",
+      count: jaPack.cues.length,
+      cues: jaPack.cues,
+      lang: jaPack.lang || "ja",
+      asr: jaPack.asr,
+      via: jaPack.via,
+      hasEn,
+      hasVi,
+      ...secondary,
+    };
+  }
+
+  // No JA: keep en/vi in secondary columns only — never put them into source cues.
+  if (enPack?.cues?.length || viPack?.cues?.length) {
+    return {
+      ok: true,
+      status: "ok",
+      count: 0,
+      cues: [],
+      lang: "ja",
+      asr: false,
+      via: "secondary_only",
+      hasEn,
+      hasVi,
+      ...secondary,
+    };
   }
 
   return {
     ok: false,
-    reason: lastError || "timedtext_empty",
+    reason: "timedtext_empty",
     cues: [],
     trackCount: candidates.length,
     via: "all_failed",
+    hasEn,
+    hasVi,
   };
 }
 
-async function fetchWebCaptionTracks(videoId) {
+function langFromTimedtextUrl(url) {
+  try {
+    return new URL(String(url)).searchParams.get("lang") || "";
+  } catch {
+    return "";
+  }
+}
+
+async function fetchWebCaptionTracks(videoId, cookieHeader = "") {
   const headers = {
     Accept: "text/html,application/xhtml+xml",
     "Accept-Language": "ja,en;q=0.9",
   };
-  try {
-    const cookies = await chrome.cookies.getAll({ domain: ".youtube.com" });
-    if (cookies?.length) {
-      headers.Cookie = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-    }
-  } catch (_) {}
+  if (cookieHeader) headers.Cookie = cookieHeader;
 
   const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
     headers,
@@ -618,15 +671,46 @@ function scoreTrack(track, preferLang) {
   return s;
 }
 
-async function fetchTimedtextBody(baseUrl) {
+/**
+ * Best timedtext for a lang prefix (ja / en / vi) from candidates.
+ * Manual preferred over ASR. Returns { cues, lang, asr, via } or null.
+ * (Do not put lang globs like en-star in block comments — breaks the SW parse.)
+ */
+async function fetchBestLangPack(candidates, prefix, cookieHeader = "") {
+  const ranked = (candidates || [])
+    .filter((x) => x && String(x.lang || "").toLowerCase().startsWith(prefix))
+    .sort((a, b) => {
+      const sa =
+        (String(a.lang || "").toLowerCase().startsWith(prefix) ? 100 : 0) + (a.asr ? 0 : 25);
+      const sb =
+        (String(b.lang || "").toLowerCase().startsWith(prefix) ? 100 : 0) + (b.asr ? 0 : 25);
+      return sb - sa;
+    });
+  for (const x of ranked) {
+    const body = await fetchTimedtextBody(x.url, cookieHeader);
+    if (!body) continue;
+    const cues = parseTimedtextBody(body);
+    if (cues.length) {
+      return { cues, lang: x.lang || prefix, asr: !!x.asr, via: x.via || "track" };
+    }
+  }
+  return null;
+}
+
+async function fetchTimedtextBody(baseUrl, cookieHeader) {
   if (!baseUrl) return "";
-  const raw = String(baseUrl);
-  const urls = [raw];
-  // YSD fetches the URL as-is first. Only then try explicit formats.
+  const raw = normalizeTimedtextUrl(baseUrl);
+  const urls = [];
+  // Prefer json3; raw then srv3 as fallback.
   if (!raw.includes("fmt=")) {
     urls.push(`${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`);
+    urls.push(raw);
     urls.push(`${raw}${raw.includes("?") ? "&" : "?"}fmt=srv3`);
+  } else {
+    urls.push(raw);
   }
+  const cookie =
+    cookieHeader === undefined ? await getYtCookieHeader() : cookieHeader || "";
   for (const url of urls) {
     if (!url.startsWith("https://www.youtube.com/api/timedtext")) continue;
     try {
@@ -634,12 +718,7 @@ async function fetchTimedtextBody(baseUrl) {
         Accept: "*/*",
         Referer: "https://www.youtube.com/",
       };
-      try {
-        const cookies = await chrome.cookies.getAll({ domain: ".youtube.com" });
-        if (cookies?.length) {
-          headers.Cookie = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-        }
-      } catch (_) {}
+      if (cookie) headers.Cookie = cookie;
       const res = await fetch(url, { headers, cache: "no-store" });
       if (!res.ok) continue;
       const text = await res.text();
