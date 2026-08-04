@@ -1,0 +1,414 @@
+// Watch page in left WKWebView — boring default layout (no cover / fixed / 80vh wars).
+(function () {
+  if (window.__captionStudioInjected) return;
+  window.__captionStudioInjected = true;
+
+  try {
+    var style = document.createElement("style");
+    style.id = "cs-layout-style";
+    style.textContent = `
+      /* Hide native CC only — keep below-player chrome + related / other videos. */
+      .ytp-caption-window-container, .caption-window, .player-timedtext { display: none !important; }
+
+      html, body, ytd-app { background: #121212 !important; }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  } catch (e) {}
+
+  function playerEl() {
+    return document.querySelector("#movie_player") || document.querySelector(".html5-video-player");
+  }
+  function mainVideo() {
+    return document.querySelector("#movie_player video.html5-main-video")
+      || document.querySelector("#movie_player video");
+  }
+
+  window.__csSeek = function (sec) {
+    var v = mainVideo();
+    if (!v) return false;
+    try { v.currentTime = Number(sec) || 0; } catch (e) { return false; }
+    postTime();
+    return true;
+  };
+
+  // Soft smoke: player present, not fixed, native chrome exists. No 80% fill requirement.
+  window.__csLayoutSmoke = function () {
+    var p = playerEl();
+    var pr = p ? p.getBoundingClientRect() : null;
+    var vh = window.innerHeight || 1;
+    var ratio = pr ? pr.height / vh : 0;
+    var pos = p ? getComputedStyle(p).position : "";
+    var v = mainVideo();
+    var vs = v ? getComputedStyle(v) : null;
+    var vv = v ? v.getBoundingClientRect() : null;
+    var vc = v ? v.closest(".html5-video-container") : null;
+    var vcs = vc ? getComputedStyle(vc) : null;
+    var vr = vc ? vc.getBoundingClientRect() : null;
+    // Scroll-transform trap diagnostics: YT shifts/shrinks the player via transform
+    // on this chain (scroll-driven). A transformed ancestor turns position:fixed
+    // into "fixed to that box" — the pinned video lifts off the viewport.
+    var wf = document.querySelector("ytd-watch-flexy");
+    var wfs = wf ? getComputedStyle(wf) : null;
+    var pl = document.querySelector("#player");
+    var pls = pl ? getComputedStyle(pl) : null;
+    var yp = document.querySelector("ytd-player");
+    var yps = yp ? getComputedStyle(yp) : null;
+    var mps = p ? getComputedStyle(p) : null;
+    // Miniplayer trap diagnostics: YT's miniplayer RE-PARENTS #movie_player into
+    // ytd-miniplayer (a fixed, transformed, bottom-right box). A pinned fullscreen
+    // video inside a transformed ancestor anchors to that box — not the viewport.
+    var mp = document.querySelector("ytd-miniplayer");
+    var mpr = mp ? mp.getBoundingClientRect() : null;
+    var mps2 = mp ? getComputedStyle(mp) : null;
+    return {
+      ok80: true,
+      ratio: Math.round(ratio * 1000) / 1000,
+      noCover: true,
+      objectFit: (v && vs && vs.objectFit) || "",
+      hasBottomChrome: !!document.querySelector(".ytp-chrome-bottom"),
+      hasTopChrome: !!document.querySelector(".ytp-chrome-top"),
+      noFixedPlayer: pos !== "fixed",
+      playerH: pr ? Math.round(pr.height) : 0,
+      vh: Math.round(vh),
+      // In-page fill diagnostics (2026-08-04) — what the video actually looks like.
+      csAppFull: !!window.__csAppFull,
+      fsClassOn: document.documentElement.classList.contains("cs-app-full"),
+      playerRect: pr ? [pr.left | 0, pr.top | 0, pr.width | 0, pr.height | 0] : null,
+      scrollY: Math.round(window.scrollY || 0),
+      docHeight: Math.round(document.documentElement.scrollHeight || 0),
+      maxScroll: Math.round(Math.max(0, (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0))),
+      containerRect: vr ? [vr.left | 0, vr.top | 0, vr.width | 0, vr.height | 0] : null,
+      containerPos: vcs ? vcs.position : "",
+      containerTransform: vcs && vcs.transform !== "none" ? vcs.transform : "",
+      videoRect: vv ? [vv.left | 0, vv.top | 0, vv.width | 0, vv.height | 0] : null,
+      videoDisplay: vs ? vs.display : "",
+      videoVisibility: vs ? vs.visibility : "",
+      videoOpacity: vs ? vs.opacity : "",
+      videoTransform: vs && vs.transform !== "none" ? vs.transform : "",
+      videoIntrinsic: v ? [v.videoWidth, v.videoHeight] : null,
+      videoReady: v ? v.readyState : -1,
+      videoPaused: v ? !!v.paused : null,
+      miniPlayerOn: wf ? wf.classList.contains("miniplayer") : false,
+      watchFlexyTransform: wfs && wfs.transform !== "none" ? wfs.transform : "",
+      playerTransform: pls && pls.transform !== "none" ? pls.transform : "",
+      ytdPlayerTransform: yps && yps.transform !== "none" ? yps.transform : "",
+      moviePlayerTransform: mps && mps.transform !== "none" ? mps.transform : "",
+      inMiniPlayer: p ? !!p.closest("ytd-miniplayer") : false,
+      playerParentTag: p && p.parentElement ? p.parentElement.tagName + ">" + (p.parentElement.parentElement ? p.parentElement.parentElement.tagName : "") : "",
+      miniPlayerExists: !!mp,
+      miniPlayerRect: mpr ? [mpr.left | 0, mpr.top | 0, mpr.width | 0, mpr.height | 0] : null,
+      miniPlayerTransform: mps2 && mps2.transform !== "none" ? mps2.transform : "",
+      miniPlayerDom: mp ? mp.outerHTML.replace(/\s+/g, " ").slice(0, 320) : "",
+      miniToggleBtn: (function () {
+        if (document.querySelector(".ytp-miniplayer-button")) return "ytp-miniplayer-button";
+        var found = Array.prototype.slice.call(document.querySelectorAll("ytd-toggle-button-renderer, ytd-button-renderer"))
+          .find(function (b) { return /[Mm]iniplayer/.test((b.getAttribute("aria-label") || "") + " " + b.textContent); });
+        return found ? "found-renderer" : "none";
+      })(),
+      // Leak diagnostics: YT inline-sizes the video (px) to fill the pinned player;
+      // on class-off exit the inline size may stay at 1376x980 → video overlaps page.
+      vw: Math.round(window.innerWidth || 0),
+      savedVideoSize: window.__csSavedVideoSize
+        ? [window.__csSavedVideoSize.w, window.__csSavedVideoSize.h] : null,
+      videoPos: vs ? vs.position : "",
+      videoInline: v ? (v.getAttribute("style") || "").slice(0, 160) : "",
+      videoWAttr: v ? v.getAttribute("width") || "" : "",
+      playerInline: p ? (p.getAttribute("style") || "").slice(0, 160) : "",
+      playerClass: p ? String(p.className || "").slice(0, 160) : "",
+      containerInline: vc ? (vc.getAttribute("style") || "").slice(0, 160) : "",
+      // Containing-block hunt: a fixed child anchors to the NEAREST ancestor with
+      // non-none transform/will-change/filter — walk the whole chain up to html.
+      ancChain: (function () {
+        var out = [];
+        var cur = v ? v.parentElement : null;
+        while (cur && out.length < 10) {
+          var cs = getComputedStyle(cur);
+          out.push((cur.id ? "#" + cur.id : cur.tagName)
+            + "{t:" + (cs.transform !== "none" ? cs.transform.slice(0, 24) : "-")
+            + ",wc:" + (cs.willChange !== "auto" ? cs.willChange.slice(0, 16) : "-")
+            + ",fl:" + (cs.filter !== "none" ? cs.filter.slice(0, 16) : "-")
+            + ",pos:" + cs.position + "}");
+          cur = cur.parentElement;
+        }
+        return out.join("|");
+      })()
+    };
+  };
+
+  // ponytail: bridge storms heat the device — ~8Hz + skip unchanged pause/time
+  var __csLastPostT = -1;
+  var __csLastPostPaused = null;
+  var __csLastPostAt = 0;
+  function postTime(force) {
+    if (window !== window.top) return;
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.timeHandler)) return;
+    var video = mainVideo();
+    if (!video) return;
+    var t = Number(video.currentTime);
+    if (!isFinite(t)) return;
+    var p = playerEl();
+    if (p && typeof p.getCurrentTime === "function") {
+      try {
+        var apiT = p.getCurrentTime();
+        if (typeof apiT === "number" && isFinite(apiT)) t = apiT;
+      } catch (e) {}
+    }
+    var d = Number(video.duration);
+    if (!isFinite(d)) d = 0;
+    var paused = !!video.paused;
+    var now = Date.now();
+    if (!force) {
+      if (paused === __csLastPostPaused && Math.abs(t - __csLastPostT) < 0.05 && now - __csLastPostAt < 120) return;
+      if (now - __csLastPostAt < 100) return;
+    }
+    __csLastPostT = t;
+    __csLastPostPaused = paused;
+    __csLastPostAt = now;
+    window.webkit.messageHandlers.timeHandler.postMessage({
+      type: "TIME_UPDATE", currentTime: t, duration: d, paused: paused
+    });
+  }
+
+  // ponytail: YT web may still block background; Premium ≠ WKWebView
+  var __csWantPlay = false;
+  function resumeIfWanted() {
+    if (!__csWantPlay) return;
+    var v = mainVideo();
+    if (!v) return;
+    try {
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") resumeIfWanted();
+  });
+  document.addEventListener("pagehide", resumeIfWanted);
+
+  function postFullscreenActive(active, mode) {
+    if (window !== window.top) return;
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler)) return;
+    try {
+      window.webkit.messageHandlers.fullscreenHandler.postMessage({
+        active: !!active,
+        mode: mode || (window.__csAppFull ? "app" : "os")
+      });
+    } catch (e) {}
+  }
+  // App maximize only — never webkitEnterFullscreen (system FS layer covers the overlay).
+  // Safety net: any OS video/element fullscreen is force-killed and converted to app mode.
+  function killOsFullscreen() {
+    var v = mainVideo();
+    if (v && v.webkitDisplayingFullscreen) {
+      try { if (typeof v.webkitExitFullscreen === "function") v.webkitExitFullscreen(); } catch (e) {}
+    }
+    var de = document.fullscreenElement || document.webkitFullscreenElement;
+    if (de) {
+      try {
+        if (document.exitFullscreen && typeof document.exitFullscreen === "function") document.exitFullscreen();
+        else if (document.webkitExitFullscreen && typeof document.webkitExitFullscreen === "function") document.webkitExitFullscreen();
+      } catch (e) {}
+    }
+  }
+  var __csFsKillTimer = null;
+  // YT inline-sizes the video (px) while pinned; on class-off exit the inline
+  // size STAYS at 1376x980 → a 1376x980 video box overlaps the page below.
+  // Save the pre-fullscreen inline size at ENTER, restore it on EXIT.
+  var __csSavedVideoSize = null;
+  function restoreVideoSize() {
+    var v = mainVideo();
+    if (!v || !__csSavedVideoSize) return;
+    var s = __csSavedVideoSize;
+    v.style.width = s.w;
+    v.style.height = s.h;
+    v.style.left = s.left || "0px";
+    v.style.top = s.top || "0px";
+  }
+  // In-page fullscreen: fixed #movie_player fills the webview so the video truly
+  // covers the screen (app-maximize alone only hides app chrome). Scope via
+  // html.cs-app-full — YT watch layout untouched outside fullscreen.
+  var __csFsStyleEl = null;
+  function applyInPageFullscreen(on) {
+    var docEl = document.documentElement;
+    if (!__csFsStyleEl) {
+      __csFsStyleEl = document.createElement("style");
+      __csFsStyleEl.id = "cs-fs-style";
+      // Hide watch chrome only under cs-app-full — #movie_player z-index is
+      // trapped in #primary's stacking context, so #secondary paints over it.
+      __csFsStyleEl.textContent = [
+        "html.cs-app-full, html.cs-app-full body, html.cs-app-full ytd-app { overflow: hidden !important; }",
+        "html.cs-app-full #masthead-container,",
+        "html.cs-app-full #secondary,",
+        "html.cs-app-full #related,",
+        "html.cs-app-full #below { display: none !important; }",
+        "html.cs-app-full #movie_player {",
+        "  position: fixed !important; top: 0 !important; left: 0 !important;",
+        "  width: 100vw !important; height: 100vh !important;",
+        "  z-index: 2147483646 !important;",
+        "  background: #000 !important;",
+        "}",
+        // The .html5-video-container chain has 0 height (YT sizes the video by
+        // inline px) — %-height on the video would collapse to 0. Pin the video
+        // to the viewport itself; object-fit letterboxes 16:9.
+        "html.cs-app-full #movie_player video {",
+        "  position: fixed !important; top: 0 !important; left: 0 !important;",
+        "  width: 100vw !important; height: 100vh !important;",
+        "  object-fit: contain !important;",
+        "  background: #000 !important;",
+        "}"
+      ].join("\n");
+      (document.head || docEl).appendChild(__csFsStyleEl);
+    }
+    docEl.classList.toggle("cs-app-full", !!on);
+  }
+  function forceAppFullscreen() {
+    // Capture BEFORE pinning — YT rewrites the video's inline px to the pinned
+    // size while fullscreen; restoreVideoSize() undoes that on exit.
+    var v = mainVideo();
+    // Only the FIRST entry captures — a re-entrant force (safety path) while
+    // already full would save the pinned 1376x980 size and defeat the restore.
+    if (v && !window.__csAppFull) {
+      __csSavedVideoSize = {
+        w: v.style.width,
+        h: v.style.height,
+        left: v.style.left,
+        top: v.style.top
+      };
+    }
+    window.__csAppFull = true;
+    killOsFullscreen();
+    applyInPageFullscreen(true);
+    postLayout();
+    postFullscreenActive(true, "app");
+    // ponytail: exit is async — if its end event never fires, re-kill once.
+    clearTimeout(__csFsKillTimer);
+    __csFsKillTimer = setTimeout(function () {
+      var v = mainVideo();
+      if ((v && v.webkitDisplayingFullscreen) || !!(document.fullscreenElement || document.webkitFullscreenElement)) {
+        killOsFullscreen();
+      }
+    }, 400);
+  }
+  function postFullscreen() {
+    var v = mainVideo();
+    if ((v && v.webkitDisplayingFullscreen) || !!(document.fullscreenElement || document.webkitFullscreenElement)) {
+      forceAppFullscreen();
+      return;
+    }
+    postFullscreenActive(!!window.__csAppFull, "app");
+  }
+  ["fullscreenchange", "webkitfullscreenchange"].forEach(function (ev) {
+    document.addEventListener(ev, postFullscreen);
+  });
+
+  window.__csToggleFull = function () {
+    if (window.__csAppFull) {
+      window.__csAppFull = false;
+      applyInPageFullscreen(false);
+      restoreVideoSize();
+      postLayout();
+      postFullscreenActive(false, "app");
+      return;
+    }
+    forceAppFullscreen();
+  };
+
+  // Intercept YT FS button — block unsupported tooltip; same path as full pill.
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest(".ytp-fullscreen-button");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+    window.__csToggleFull();
+  }, true);
+
+  function bindVideo(video) {
+    if (!video || video.__captionStudioBound) return;
+    video.__captionStudioBound = true;
+    video.setAttribute("playsinline", "1");
+    video.addEventListener("play", function () { __csWantPlay = true; });
+    video.addEventListener("pause", function () {
+      if (document.visibilityState !== "hidden") __csWantPlay = false;
+    });
+    ["timeupdate", "play", "pause", "seeking", "seeked"].forEach(function (ev) {
+      video.addEventListener(ev, function () {
+        postTime(ev === "play" || ev === "pause" || ev === "seeked" || ev === "seeking");
+      });
+    });
+    if (!video.__csFsBound) {
+      video.__csFsBound = true;
+      video.addEventListener("webkitbeginfullscreen", postFullscreen);
+      video.addEventListener("webkitendfullscreen", postFullscreen);
+    }
+    postTime(true);
+  }
+
+  var __csLastRect = "";
+  function postVideoRect() {
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.rectHandler)) return;
+    if (window !== window.top) return;
+    var el = playerEl() || mainVideo();
+    if (!el) return;
+    var r = el.getBoundingClientRect();
+    if (r.width < 80 || r.height < 60) return;
+    // Integer CSS px — skip bridge when layout hasn't moved.
+    var key = [r.left|0, r.top|0, r.width|0, r.height|0, window.innerWidth|0, window.innerHeight|0].join(",");
+    if (key === __csLastRect) return;
+    __csLastRect = key;
+    window.webkit.messageHandlers.rectHandler.postMessage({
+      type: "VIDEO_RECT",
+      x: r.left, y: r.top, w: r.width, h: r.height,
+      vw: window.innerWidth || 1, vh: window.innerHeight || 1
+    });
+  }
+
+  function postLayout() {
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.layoutHandler)) return;
+    try {
+      window.webkit.messageHandlers.layoutHandler.postMessage(
+        Object.assign({ type: "LAYOUT_CHECK" }, window.__csLayoutSmoke())
+      );
+    } catch (e) {}
+  }
+  // Autotest: force a fresh layout dump (shot copies lag the 5s interval otherwise).
+  window.__csPostLayout = postLayout;
+
+  // Match desktop: only watch?v=… is a caption session; home/search → no overlay/panel.
+  function videoIdFromUrl() {
+    try {
+      return new URLSearchParams(location.search).get("v") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+  function postNav() {
+    if (window !== window.top) return;
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.navHandler)) return;
+    try {
+      window.webkit.messageHandlers.navHandler.postMessage({
+        type: "PAGE_NAV",
+        videoId: videoIdFromUrl(),
+        url: String(location.href || "")
+      });
+    } catch (e) {}
+  }
+  document.addEventListener("yt-navigate-finish", postNav);
+  postNav();
+  setTimeout(postNav, 800);
+
+  setTimeout(postLayout, 2500);
+
+  setInterval(function () {
+    if (window !== window.top) return;
+    var v = mainVideo();
+    if (v) bindVideo(v);
+    // Fallback only — timeupdate already posts while playing.
+    postTime(false);
+    postVideoRect();
+  }, 500);
+
+  setInterval(postLayout, 5000);
+})();

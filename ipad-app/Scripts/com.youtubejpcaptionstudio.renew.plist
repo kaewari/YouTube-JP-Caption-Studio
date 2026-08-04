@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.youtubejpcaptionstudio.renew</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/hoangson/Documents/YouTube JP Caption Studio/ipad-app/scripts/renew-ipad-signing.sh</string>
+	</array>
+	<!-- Set before load, or edit here: -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DEVICE_UDID</key>
+		<string>REPLACE_WITH_IPAD_UDID</string>
+		<key>TEAM</key>
+		<string>REPLACE_WITH_TEAM_ID</string>
+	</dict>
+	<!-- Every 12 hours -->
+	<key>StartInterval</key>
+	<integer>43200</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/hoangson/Library/Logs/YouTubeJPCaptionStudio-renew.launchd.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/hoangson/Library/Logs/YouTubeJPCaptionStudio-renew.launchd.err.log</string>
+</dict>
+</plist>

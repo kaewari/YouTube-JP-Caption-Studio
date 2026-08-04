@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube JP Caption Studio",
+  "version": "0.9.11",
+  "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
+  "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "http://127.0.0.1:3000/*",
+    "http://localhost:3000/*",
+    "https://www.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/drive"]
+  },
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "action": {
+    "default_title": "YT Caption — Saved Items / Cài đặt",
+    "default_popup": "popup/popup.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": ["injected/page_capture.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": [
+        "shared/vocab_style.js",
+        "content/normalize_cues.js",
+        "content/cue_timing.js",
+        "content/fill_yt_secondary.js",
+        "content/content.js"
+      ],
+      "css": ["styles/panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected/page_capture.js"],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"]
+    }
+  ]
+}

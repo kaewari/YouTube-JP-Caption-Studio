@@ -1,0 +1,163 @@
+==============================================================================
+BÁO CÁO CODE REVIEW + KẾ HOẠCH SỬA — app-ipad (YouTube JP Caption Studio)
+Ngày: 2026-08-04
+==============================================================================
+
+TỔNG QUAN KIẾN TRÚC
+-------------------
+App SwiftUI + SwiftData, target iPadOS 17, dùng XcodeGen (project.yml).
+- Models: VideoScript/ScriptCue (phụ đề), Vocabulary (từ vựng)
+- Services: 14 file — tải caption YouTube (Innertube), từ điển SQLite (143MB),
+  OAuth Drive + đồng bộ theo folder video (Lamport rev), backup, vocab/settings
+  sync, NLP tokenizer
+- Views: 6 file — player WKWebView + overlay hardsub + side panel + cue editor
+
+Điểm mạnh: đồng bộ Drive dùng Lamport clock thay vì wall-clock (đúng đắn),
+patch-merge giữ nguyên field PC (tokens/mt_locked/translation_source), smoke
+test trong DEBUG, chú thích tradeoff rõ ràng.
+
+==============================================================================
+🔴 BUG THỰC SỰ (ưu tiên sửa trước)
+==============================================================================
+
+1. Lưu từ vựng trùng -> THẤT BẠI ÂM THẦM (mất dữ liệu)
+   - File: Models/VocabStore.swift, Views/DictPopupView.swift
+   - Nguyên nhân: @Attribute(.unique) var word nhưng DictPopupView/DictPopupHost
+     luôn context.insert không kiểm tra trùng. save() throw nhưng bị nuốt bởi
+     try? trong saveAndScheduleBackup -> từ hiện trên UI nhưng không persist,
+     mất sau khi thoát app.
+   - Thêm: frequencyCount không bao giờ được tăng (dead field).
+   - Sửa: upsert theo word (fetch-then-update, tăng frequencyCount) hoặc bỏ
+     @Attribute(.unique).
+
+2. Backup/restore mất rev và deviceId -> phá vỡ xung đột Lamport
+   - File: Services/BackupService.swift (ScriptDTO)
+   - Nguyên nhân: ScriptDTO chỉ lưu videoId/title/owned/cues, KHÔNG có
+     rev/deviceId. Sau restore (kể cả autoRestoreIfEmpty) mọi script có rev=0.
+     DriveScriptsService.needsPull thấy driveRev > 0 -> pull Drive và ghi đè dữ
+     liệu vừa restore (có thể mới hơn).
+   - Sửa: thêm rev/deviceId vào ScriptDTO (optional để tương thích wire), gán
+     lại sau apply.
+
+3. VocabSync và BackupService ghi đè lẫn nhau cùng file caption-studio-backup.json
+   - File: Services/VocabSync.swift, Services/BackupService.swift
+   - Nguyên nhân: cùng file, cùng Drive folder. VocabSync push luôn scripts:[]
+     (chỉ vocab); BackupService ghi snapshot đầy đủ (scripts+vocab). Mỗi hệ dùng
+     UserDefaults key lastApplied riêng -> 2 đồng hồ LWW không khớp, clobber
+     lẫn nhau.
+   - Sửa: dùng chung 1 key LWW + 1 schema, hoặc tách tên file
+     (VD caption-studio-backup-vocab.json).
+
+4. ID cue sinh có thể trùng -> crash ForEach duplicate identifier
+   - File: Models/ScriptStore.swift (addCueAtPlayhead / addCue(after:))
+   - Nguyên nhân: id = "\(Int(start))-\(Int(now*1000) % 100_000)-user". Hai cue
+     thêm cùng playhead trong cửa sổ 100s -> cùng ID. ContentView.subtitlesList
+     dùng ForEach(...).id(cue.id) -> duplicate id gây lỗi runtime/crash.
+   - Sửa: thêm UUID hoặc counter vào id.
+
+5. project.yml thiếu key trong Info.plist — xcodegen tái sinh sẽ mất cấu hình
+   - File: project.yml, Info.plist
+   - Nguyên nhân: Info.plist có LSSupportsOpeningDocumentsInPlace: true (cần cho
+     security-scoped bookmark của Files picker) nhưng project.yml info.properties
+     KHÔNG có. Chạy xcodegen generate sẽ mất key -> Backup/Restore qua Files hỏng.
+   - Thêm: project.yml bundle toàn bộ thư mục Scripts/ làm resources -> .app chứa
+     COMMANDS.md, FIRST_RUN.md, deploy-ipad.sh, renew-ipad-signing.sh,
+     com.youtubejpcaptionstudio.renew.plist (đã xác nhận trong .pbxproj).
+   - Sửa: đưa hết key vào project.yml; chỉ bundle user_script.js.
+
+==============================================================================
+🟠 ĐIỂM CẦN CẢI THIỆN (robustness / dữ liệu)
+==============================================================================
+
+6. 143MB dict.sqlite đóng vào bundle -> app ~150MB. Cân nhắc nén/trim bảng
+   hoặc tải về lần đầu thay vì ship.
+
+7. SubtitleParser.activeCue là code chết trùng lặp với ScriptCue.active — chỉ
+   dùng trong smoke test. Hai hàm đã LỆCH logic: ScriptCue.active là
+   last-match-wins, SubtitleParser.activeCue là first-match. Khi cue bị user
+   sửa chồng lấn, overlay và smoke cho kết quả khác nhau. Nên xoá bản chết
+   hoặc thống nhất.
+
+8. Data-loss edge: DriveScriptsService.syncThrowing — nếu Drive có rev cao hơn
+   nhưng cues.json chỉ JA (không MT), iPad vẫn pull và ghi đè bản dịch EN/VI
+   local. Đúng LWW nhưng cần guard/cảnh báo nếu muốn bảo vệ bản dịch thủ công.
+
+9. CueEditorRow.onSave rebuild toàn bộ list (~300 row VStack) mỗi lần
+   debounced keystroke (currentCues = ScriptCue.load(...)). Tốn CPU + nguy cơ
+   mất focus/giật khi gõ. Nên chỉ cập nhật đối tượng thay đổi.
+
+10. Import replace-mode: nếu file import có 2 row trùng id -> duplicate id
+    trong next -> crash ForEach. Nên dedupe.
+
+11. SettingsSync lắng nghe mọi UserDefaults.didChangeNotification (mọi key,
+    kể cả drag overlay) -> debounce push Drive vô nghĩa sau mỗi cử chỉ. Nên
+    lọc key hoặc chỉ push khi key thuộc danh sách map.
+
+12. Không có timeout cho URLSession ở CaptionService/DriveAPIClient -> spinner
+    "Đang tải" có thể treo 60s mặc định.
+
+13. BackupFolderPicker.normalizeSyncRoot chỉ walk-up 3 cấp — cây folder sâu
+    hơn sẽ trả nhầm root.
+
+14. Caches DictionaryService (64) và NLPTagger (256) là full-wipe dù comment
+    ghi "LRU if thrash grows" — dễ thrash với script 300 cue. Implement LRU
+    thật hoặc sửa comment.
+
+15. NSAllowsArbitraryLoads: true — rủi ro bị từ chối khi lên App Store; nên
+    giới hạn exception domain nếu được.
+
+16. Phiên bản app hardcode 1.0/1 trong Info.plist; không có build number tự
+    động — khó trace bản cài trên iPad.
+
+17. Smoke tests chạy đồng bộ trong App.init (DEBUG) — bất kỳ assert fail đều
+    crash app ngay khi launch debug. Nên đổi thành async/report-only.
+
+==============================================================================
+🟡 NHỎ / CHẤT LƯỢNG
+==============================================================================
+
+18. user_script.js: setInterval(postLayout, 5000) + polling postTime/
+    postVideoRect 500ms chạy mãi -> hao pin/webview dù không phát. Chỉ poll
+    khi cần.
+
+19. VideoScript.title luôn = videoId (không lấy metadata từ YouTube).
+
+20. Timer refreshActiveCueId chạy 0.125s kể cả khi pause (chỉ guard
+    scenePhase).
+
+21. HardsubOverlayView: ScrollView bên trong thanh có drag-gesture — vuốt trên
+    chữ có thể scroll thay vì kéo thanh.
+
+22. parseExportTime không xử lý h:mm:ss; decodeEntities thiếu entity số
+    (&#12354;).
+
+23. CueEditorRow.copyToastBanner overlay .topTrailing có thể che nội dung.
+
+24. Vocabulary.savedAt được set sau context.insert trong applyVocabOnly/
+    BackupService.apply — hoạt động nhưng không thống nhất với init.
+
+==============================================================================
+KẾ HOẠCH SỬA ĐỀ XUẤT
+==============================================================================
+Ưu tiên 1 (mất dữ liệu — sửa ngay):
+  [ ] Bug #1 — upsert Vocabulary theo word (tăng frequencyCount)
+  [ ] Bug #2 — thêm rev/deviceId vào ScriptDTO + gán lại sau restore
+  [ ] Bug #3 — thống nhất key LWW / tách file cho VocabSync vs BackupService
+  [ ] Bug #4 — ID cue thêm UUID hoặc counter chống trùng
+
+Ưu tiên 2 (cấu hình/build):
+  [ ] Bug #5 — đồng bộ project.yml với Info.plist; chỉ bundle user_script.js
+  [ ] #16 — version/build number tự động
+
+Ưu tiên 3 (robustness):
+  [ ] #7 — xoá/thống nhất SubtitleParser.activeCue
+  [ ] #8 — guard ghi đè JA-only khi pull
+  [ ] #10 — dedupe id khi import replace
+  [ ] #12 — timeout URLSession
+  [ ] #17 — smoke tests không crash launch
+
+Ưu tiên 4 (perf/UX):
+  [ ] #9 — CueEditorRow không rebuild toàn bộ list
+  [ ] #11 — SettingsSync chỉ push key liên quan
+  [ ] #18 — giảm polling user_script.js
+==============================================================================
