@@ -308,6 +308,10 @@ struct ContentView: View {
                     if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
                         let payload = "ok=\(layoutOK)\n\(layoutNote ?? "")\n"
                         try? payload.write(to: dir.appendingPathComponent("layout_smoke.txt"), atomically: true, encoding: .utf8)
+                        if let json = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+                           let jsonString = String(data: json, encoding: .utf8) {
+                            try? jsonString.write(to: dir.appendingPathComponent("layout_smoke.json"), atomically: true, encoding: .utf8)
+                        }
                     }
                     #if DEBUG
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
@@ -553,6 +557,17 @@ struct ContentView: View {
         try? FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
         let url = sub.appendingPathComponent(String(format: "autotest-%02d.png", index))
         try? data.write(to: url)
+        // Pair each shot with the latest layout smoke dump for DOM ground truth.
+        if let smoke = try? String(contentsOf: dir.appendingPathComponent("layout_smoke.txt"), encoding: .utf8) {
+            try? smoke.write(
+                to: sub.appendingPathComponent(String(format: "smoke-%02d.txt", index)),
+                atomically: true, encoding: .utf8)
+        }
+        if let json = try? String(contentsOf: dir.appendingPathComponent("layout_smoke.json"), encoding: .utf8) {
+            try? json.write(
+                to: sub.appendingPathComponent(String(format: "smoke-%02d.json", index)),
+                atomically: true, encoding: .utf8)
+        }
         print("[Autotest] shot \(url.lastPathComponent) ovl=\(overlayShown) full=\(isPlayerFullscreen)")
     }
     #endif

@@ -38,16 +38,38 @@
     var vh = window.innerHeight || 1;
     var ratio = pr ? pr.height / vh : 0;
     var pos = p ? getComputedStyle(p).position : "";
+    var v = mainVideo();
+    var vs = v ? getComputedStyle(v) : null;
+    var vv = v ? v.getBoundingClientRect() : null;
+    var vc = v ? v.closest(".html5-video-container") : null;
+    var vcs = vc ? getComputedStyle(vc) : null;
+    var vr = vc ? vc.getBoundingClientRect() : null;
     return {
       ok80: true,
       ratio: Math.round(ratio * 1000) / 1000,
       noCover: true,
-      objectFit: (mainVideo() && getComputedStyle(mainVideo()).objectFit) || "",
+      objectFit: (v && vs && vs.objectFit) || "",
       hasBottomChrome: !!document.querySelector(".ytp-chrome-bottom"),
       hasTopChrome: !!document.querySelector(".ytp-chrome-top"),
       noFixedPlayer: pos !== "fixed",
       playerH: pr ? Math.round(pr.height) : 0,
-      vh: Math.round(vh)
+      vh: Math.round(vh),
+      // In-page fill diagnostics (2026-08-04) — what the video actually looks like.
+      csAppFull: !!window.__csAppFull,
+      fsClassOn: document.documentElement.classList.contains("cs-app-full"),
+      playerRect: pr ? [pr.left | 0, pr.top | 0, pr.width | 0, pr.height | 0] : null,
+      scrollY: Math.round(window.scrollY || 0),
+      containerRect: vr ? [vr.left | 0, vr.top | 0, vr.width | 0, vr.height | 0] : null,
+      containerPos: vcs ? vcs.position : "",
+      containerTransform: vcs && vcs.transform !== "none" ? vcs.transform : "",
+      videoRect: vv ? [vv.left | 0, vv.top | 0, vv.width | 0, vv.height | 0] : null,
+      videoDisplay: vs ? vs.display : "",
+      videoVisibility: vs ? vs.visibility : "",
+      videoOpacity: vs ? vs.opacity : "",
+      videoTransform: vs && vs.transform !== "none" ? vs.transform : "",
+      videoIntrinsic: v ? [v.videoWidth, v.videoHeight] : null,
+      videoReady: v ? v.readyState : -1,
+      videoPaused: v ? !!v.paused : null
     };
   };
 
@@ -127,9 +149,40 @@
     }
   }
   var __csFsKillTimer = null;
+  // In-page fullscreen: fixed #movie_player fills the webview so the video truly
+  // covers the screen (app-maximize alone only hides app chrome). Scope via
+  // html.cs-app-full — YT watch layout untouched outside fullscreen.
+  var __csFsStyleEl = null;
+  function applyInPageFullscreen(on) {
+    var docEl = document.documentElement;
+    if (!__csFsStyleEl) {
+      __csFsStyleEl = document.createElement("style");
+      __csFsStyleEl.id = "cs-fs-style";
+      __csFsStyleEl.textContent = [
+        "html.cs-app-full, html.cs-app-full body, html.cs-app-full ytd-app { overflow: hidden !important; }",
+        "html.cs-app-full #movie_player {",
+        "  position: fixed !important; top: 0 !important; left: 0 !important;",
+        "  width: 100vw !important; height: 100vh !important;",
+        "  z-index: 2147483646 !important;",
+        "}",
+        // The .html5-video-container chain has 0 height (YT sizes the video by
+        // inline px) — %-height on the video would collapse to 0. Pin the video
+        // to the viewport itself; object-fit letterboxes 16:9.
+        "html.cs-app-full #movie_player video {",
+        "  position: fixed !important; top: 0 !important; left: 0 !important;",
+        "  width: 100vw !important; height: 100vh !important;",
+        "  object-fit: contain !important;",
+        "}"
+      ].join("\n");
+      (document.head || docEl).appendChild(__csFsStyleEl);
+    }
+    docEl.classList.toggle("cs-app-full", !!on);
+  }
   function forceAppFullscreen() {
     window.__csAppFull = true;
     killOsFullscreen();
+    applyInPageFullscreen(true);
+    postLayout();
     postFullscreenActive(true, "app");
     // ponytail: exit is async — if its end event never fires, re-kill once.
     clearTimeout(__csFsKillTimer);
@@ -155,6 +208,8 @@
   window.__csToggleFull = function () {
     if (window.__csAppFull) {
       window.__csAppFull = false;
+      applyInPageFullscreen(false);
+      postLayout();
       postFullscreenActive(false, "app");
       return;
     }
