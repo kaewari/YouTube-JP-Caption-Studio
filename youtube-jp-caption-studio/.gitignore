@@ -22,6 +22,7 @@ data/dict/gloss_en_vi_cache.json
 data/dict/*.sqlite*
 data/subtitles/*/
 data/config/extension_state.json
+data/config/device_id.txt
 *.egg-info/
 .nodegraph/
 Không có tiêu đề/
