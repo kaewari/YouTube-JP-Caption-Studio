@@ -14,7 +14,7 @@ Tài liệu này được viết dưới góc nhìn của một chuyên gia IT (
 Thư mục này chứa mã nguồn ứng dụng iPad hoàn chỉnh được viết bằng Swift/SwiftUI. Nó là một ứng dụng độc lập (standalone) bám sát tính năng Desktop (hardsub, side panel, tokenize, dict popup, import/export) mà không cần server Python. Một số tính năng Desktop vẫn chưa có trên iPad (đánh dấu Known/Learning/Ignore theo trạng thái user, Auto IME).
 - **`Views/`**:
   - `ContentView.swift`: Layout Video + Side Panel; address-bar Back/Forward (WKWebView history); toggle **Theo timeline**; overlay JA/EN/VI/furigana.
-  - `YouTubePlayerView.swift`: WKWebView YouTube + JS inject (media time, chặn phụ đề); `goBack`/`goForward` theo `canGoBack`/`canGoForward`.
+  - `YouTubePlayerView.swift`: WKWebView YouTube + JS inject (media time, chặn phụ đề); `goBack`/`goForward` theo `canGoBack`/`canGoForward`; full = app maximize (`fullscreenHandler` + `__csToggleFull`, `isElementFullscreenEnabled = false` — xem §3.7).
   - `HardsubOverlayView.swift`: Hardsub đè lên video — tokenize JA theo màu JLPT, tap từ → dict popup, hiện EN/VI theo settings (default bật).
   - `TokenizedJAView.swift`: Render từng token (furigana + màu N5→N1 / unknown); dùng chung overlay và side panel.
   - `DictPopupView.swift`: Popup tra từ — gloss VI + EN, khối dịch câu (VI/EN của cue), nút Lưu từ vào SwiftData.
@@ -179,6 +179,16 @@ Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
 
 - **Back/Forward** (chevron cạnh ô URL): lịch sử `WKWebView` (`goBack`/`goForward`) — không phải seek cue. Thử: mở YouTube → vào watch → Back về home; Forward khi có history.
 - **Theo timeline** (toggle side panel): cue list = `ScrollView` + `VStack` (không còn `List` — `scrollTo` no-op khi row đã visible). Advance: soft-scroll, anchor `.top` — **ĐANG PHÁT** sát dưới tab Phụ đề/Từ vựng. Load / bật lại follow (`force`): jump instant, không animate từ đầu list. Cue ngắn (1–2 chữ): `scrollAnimInFlight` + `pendingScrollId` coalesce — tránh chồng animation. Kéo list / sửa cue → tắt follow. Label **ĐANG PHÁT** luôn chiếm chỗ (ẩn bằng opacity). Extension mirror: `scrollIntoView({ block: "start", behavior: smooth|instant })`. Thử: bật Theo timeline → play qua vài cue (kể cả dòng ngắn) → ĐANG PHÁT luôn sát dưới tab, scroll mượt.
+
+### 3.7. Fullscreen — app maximize only (iPad, cùng path iPhone)
+
+**Full = app maximize, không bao giờ OS video/element fullscreen**: bỏ `webkitEnterFullscreen()` — lớp OS native FS đè lên window → overlay ẩn (2026-08-03, B10); rework dùng nó + overlay window level 3000 → bấm zoom đơ toàn app (2026-08-04, revert về path này, xem INCIDENTS).
+
+- Vào full: topBar pill hoặc nút fullscreen của YouTube (intercept `.ytp-fullscreen-button`) → `window.__csToggleFull()` → `forceAppFullscreen()`: set `__csAppFull`, `killOsFullscreen()` (ép `webkitExitFullscreen`/`exitFullscreen`), post `active:true, mode:"app"` → Swift `applyPlayerFullscreen(true)`: lưu `sidePanelBeforeFullscreen`, side panel off, `topBar` ẩn, video chiếm hết pane, **overlay giữ nguyên** (cùng window — OS layer không thể đè).
+- Safety net: `webkitbeginfullscreen`/`webkitendfullscreen` + `fullscreenchange` → `postFullscreen` thấy OS FS đang mở → ép về app maximize; timer 400ms re-kill nếu end-event không bắn. `isElementFullscreenEnabled = false` (chặn element fullscreen iOS 15.4+).
+- Thoát: exit pill nổi (topTrailing) hoặc bấm full lần 2 → `applyPlayerFullscreen(false)` restore topBar + side panel (theo `sidePanelBeforeFullscreen`). Overlay pill trong chrome nổi bật/tắt được ngay khi đang full.
+- In-page fill (2026-08-04, `applyInPageFullscreen`): ngoài app maximize, CSS scoped `html.cs-app-full` ghim `#movie_player` + video `position:fixed` full viewport (100vw×100vh) — video thật phủ màn hình chứ không chỉ pane. **Cấm `height:100%` trên video**: `.html5-video-container` có height 0 (YT size video bằng inline px) → %-height collapse → video rect 0 → mất hình (2026-08-04, đã fix — xem INCIDENTS). Video ghim thẳng viewport `object-fit:contain` (16:9 letterbox). Under `html.cs-app-full` only: hide `#masthead-container` / `#secondary` / `#related` / `#below` (player z-index bị kẹt trong stacking context `#primary` → related đè lên video — 2026-08-04). Diagnostic: `postLayout()` ngay trong toggle paths + `layout_smoke.json` (payload đầy đủ) + `smoke-%02d.json` kèm mỗi autotest shot.
+- Thử: mở watch, bật overlay → full: topBar ẩn, chữ vẫn trên video; thoát → panel về đúng trạng thái cũ.
 
 ---
 
