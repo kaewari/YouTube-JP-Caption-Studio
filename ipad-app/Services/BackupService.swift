@@ -280,7 +280,8 @@ final class BackupService: ObservableObject {
     private func apply(_ snap: Snapshot, to context: ModelContext) throws {
         for s in (try context.fetch(FetchDescriptor<VideoScript>())) { context.delete(s) }
         for v in (try context.fetch(FetchDescriptor<Vocabulary>())) { context.delete(v) }
-        try context.save()
+        // Single save at the end: a mid-insert failure must not permanently wipe
+        // the existing data (wipe and insert are one transaction on the next save).
 
         for sd in snap.scripts {
             let script = VideoScript(videoId: sd.videoId, title: sd.title, owned: sd.owned)

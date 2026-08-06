@@ -319,7 +319,11 @@ struct CueEditorRow: View {
         saveTask = Task {
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled else { return }
-            await MainActor.run { onSave() }
+            await MainActor.run {
+                // Text edits are local-first — keep them winning over a newer Drive.
+                if let videoId = cue.video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [cue.id]) }
+                onSave()
+            }
         }
     }
 }

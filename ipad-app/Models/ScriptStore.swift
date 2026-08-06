@@ -118,14 +118,19 @@ extension ScriptCue {
     
     func softDelete() {
         self.isDeleted = true
+        // Tombstone must win over Drive on the next merge — never resurrect locally-deleted cues.
+        if let videoId = video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [id]) }
     }
 
     @MainActor
     static func clearTranslations(videoId: String, context: ModelContext) {
-        for cue in load(videoId: videoId, context: context) where !cue.isDeleted {
+        let live = load(videoId: videoId, context: context).filter { !$0.isDeleted }
+        for cue in live {
             cue.textEN = nil
             cue.textVI = nil
         }
+        // Cleared MT is a local edit — Drive must not re-fill it on next sync.
+        DriveDirty.mark(videoId: videoId, cueIds: live.map(\.id))
         context.saveAndScheduleBackup()
     }
 
@@ -151,6 +156,7 @@ extension ScriptCue {
         let cue = ScriptCue(id: id, startTime: applied.start, duration: applied.duration, textJA: "")
         cue.video = script
         context.insert(cue)
+        DriveDirty.mark(videoId: videoId, cueIds: [id])
         context.saveAndScheduleBackup()
         return cue
     }
@@ -175,6 +181,7 @@ extension ScriptCue {
         let cue = ScriptCue(id: id, startTime: applied.start, duration: applied.duration, textJA: "")
         cue.video = script
         context.insert(cue)
+        DriveDirty.mark(videoId: videoId, cueIds: [id])
         context.saveAndScheduleBackup()
         return cue
     }
@@ -203,6 +210,8 @@ extension ScriptCue {
         startTime = applied.start
         duration = applied.duration
         video?.owned = true
+        // Timing edits are local-first — keep them winning over a newer Drive.
+        if let videoId = video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [id]) }
     }
 
     func copyText(format: String) -> String {
@@ -322,6 +331,8 @@ extension ScriptCue {
             result.updated = next.count
             result.replaced = next.count
             result.cues = next
+            // Full import is a local edit — every imported id wins over Drive on next merge.
+            DriveDirty.mark(videoId: videoId, cueIds: next.map(\.id))
             context.saveAndScheduleBackup()
             return result
         }
@@ -534,6 +545,29 @@ extension ScriptCue {
         let parts = s.split(separator: ":")
         guard parts.count == 2, let m = Double(parts[0]), let sec = Double(parts[1]) else { return 0 }
         return m * 60 + sec
+    }
+}
+
+/// Per-cue dirty tracking for Drive sync (UserDefaults — not SwiftData, so it survives
+/// any restore/import that rebuilds cue rows). Local edits win over a newer Drive during
+/// merge; cleared only after a successful push.
+enum DriveDirty {
+    private static func key(_ videoId: String) -> String { "drive-dirty-cues-\(videoId)" }
+
+    static func mark(videoId: String, cueIds: [String]) {
+        guard !videoId.isEmpty, !cueIds.isEmpty else { return }
+        var ids = dirtyIds(videoId: videoId)
+        ids.formUnion(cueIds)
+        UserDefaults.standard.set(Array(ids), forKey: key(videoId))
+    }
+
+    static func dirtyIds(videoId: String) -> Set<String> {
+        guard !videoId.isEmpty else { return [] }
+        return Set(UserDefaults.standard.stringArray(forKey: key(videoId)) ?? [])
+    }
+
+    static func clear(videoId: String) {
+        UserDefaults.standard.removeObject(forKey: key(videoId))
     }
 }
 
