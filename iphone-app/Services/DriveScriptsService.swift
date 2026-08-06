@@ -78,7 +78,7 @@ enum DriveScriptsService {
             return SyncResult(changed: false, message: "Drive: cues.json lỗi (\(videoId))")
         }
 
-        var meta: [String: Any]
+        let meta: [String: Any]
         if let metaId = children["meta.json"],
            let metaText = try? await DriveAPIClient.getText(fileId: metaId),
            let metaData = metaText.data(using: .utf8),
@@ -90,21 +90,70 @@ enum DriveScriptsService {
         let driveRev = DriveAPIClient.parseRev(meta)
         let driveArr = (cuesRoot["cues"] as? [[String: Any]]) ?? []
         let driveCueCount = driveArr.count
-        let driveTranslated = driveArr.filter { hasMT($0["en"] as? String, $0["vi"] as? String) }.count
         let script = fetchScript(videoId: videoId, context: context)
-        let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
+        let allLocal = ScriptCue.load(videoId: videoId, context: context)
+        let live = allLocal.filter { !$0.isDeleted }
         let liveCount = live.count
-        let localTranslated = live.filter { hasMT($0.textEN, $0.textVI) }.count
-        // Rev alone is not enough: YouTube JA cache (unowned) / stuck owned JA-only
-        // must not block Drive EN/VI — else "đã đồng bộ" shows 338 cue with empty MT.
+        let dirty = DriveDirty.dirtyIds(videoId: videoId)
+
+        // ── Local edits exist: dirty cues win per cue, then push (merge or patch). ──
+        if !dirty.isEmpty, let script, script.owned, liveCount > 0 {
+            if needsPull(
+                driveRev: driveRev, localRev: script.rev, localLiveCount: liveCount,
+                driveCueCount: driveCueCount
+            ) {
+                // Drive base + dirty local overlay (incl. tombstones); non-dirty keep Drive.
+                guard let merged = mergedCues(original: cuesRoot, dirty: dirty, local: allLocal) else {
+                    // Every dirty id already matches Drive — nothing to protect or push.
+                    DriveDirty.clear(videoId: videoId)
+                    return SyncResult(
+                        changed: false,
+                        message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(driveRev))",
+                        cues: live.isEmpty ? nil : live
+                    )
+                }
+                let rows = encode(merged).map { ScriptCue.parseImportRows(String(data: $0, encoding: .utf8) ?? "") } ?? []
+                guard !rows.isEmpty else {
+                    return SyncResult(changed: false, message: "Drive: merge lỗi (\(videoId))")
+                }
+                let applied = ScriptCue.importRows(
+                    videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context
+                )
+                let rev = try await push(
+                    videoId: videoId, folderId: folderId, cuesFileId: cuesFileId,
+                    metaFileId: children["meta.json"], root: merged, script: script, context: context
+                )
+                return SyncResult(
+                    changed: true,
+                    message: "Drive: đã merge \(videoId) (\(applied.cues.count) cue · rev \(rev))",
+                    cues: applied.cues
+                )
+            }
+            // Drive not ahead — push local edits as a patch, then clear dirty.
+            guard let livePushed = liveCues(videoId: videoId, context: context),
+                  let patched = patchedCues(original: cuesRoot, cues: livePushed)
+            else {
+                // Owned but nothing differs — dirty is stale (edit undone); drop it.
+                DriveDirty.clear(videoId: videoId)
+                return SyncResult(
+                    changed: false,
+                    message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script.rev))",
+                    cues: live.isEmpty ? nil : live
+                )
+            }
+            let rev = try await push(
+                videoId: videoId, folderId: folderId, cuesFileId: cuesFileId,
+                metaFileId: children["meta.json"], root: patched, script: script, context: context
+            )
+            return SyncResult(changed: false, message: "Drive: đã đẩy \(videoId) (rev \(rev))")
+        }
+
         if needsPull(
             driveRev: driveRev,
             localRev: script?.rev ?? 0,
             localLiveCount: liveCount,
             driveCueCount: driveCueCount,
-            localOwned: script?.owned == true,
-            localTranslated: localTranslated,
-            driveTranslated: driveTranslated
+            localOwned: script?.owned == true
         ) {
             // Prefer script.txt; cues.json only if TXT missing or parse empty.
             // TXT has no tokens — stamp cue ids from cues.json (PC `_cues_from_txt` parity)
@@ -135,7 +184,7 @@ enum DriveScriptsService {
         // Unowned YouTube cache must never patch/push over Drive.
         guard let script, script.owned,
               let live = liveCues(videoId: videoId, context: context),
-              var patched = patchedCues(original: cuesRoot, cues: live)
+              let patched = patchedCues(original: cuesRoot, cues: live)
         else {
             let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
             return SyncResult(
@@ -144,32 +193,48 @@ enum DriveScriptsService {
                 cues: live.isEmpty ? nil : live
             )
         }
+        // No dirty marks but local differs from Drive (unwired edit path) — push it so
+        // nothing local is lost. Unchanged scripts stop here via patchedCues == nil.
+        let rev = try await push(
+            videoId: videoId, folderId: folderId, cuesFileId: cuesFileId,
+            metaFileId: children["meta.json"], root: patched, script: script, context: context
+        )
+        return SyncResult(changed: false, message: "Drive: đã đẩy \(videoId) (rev \(rev))")
+    }
 
-        let rev = max(driveRev, script.rev) + 1
+    /// Bump `rev`, write cues.json + meta.json, stamp local rev, clear dirty.
+    /// Throws on Drive failure — caller keeps dirty for the next retry.
+    private static func push(
+        videoId: String, folderId: String, cuesFileId: String, metaFileId: String?,
+        root: [String: Any], script: VideoScript, context: ModelContext
+    ) async throws -> Int {
+        let rev = max(DriveAPIClient.parseRev((root["meta"] as? [String: Any]) ?? [:]), script.rev) + 1
+        var meta = (root["meta"] as? [String: Any]) ?? [:]
         meta["video_id"] = videoId
         meta["rev"] = rev
         meta["deviceId"] = deviceId
         meta["updated_at"] = bridgeTimestamp(Date())
-        meta["cue_count"] = live.count
+        meta["cue_count"] = (root["cues"] as? [[String: Any]])?.count ?? 0
         meta["owned"] = true
-        patched["meta"] = meta
-        guard let cuesOut = encode(patched), let metaOut = encode(meta),
+        var out = root
+        out["meta"] = meta
+        guard let cuesOut = encode(out), let metaOut = encode(meta),
               let cuesStr = String(data: cuesOut, encoding: .utf8),
               let metaStr = String(data: metaOut, encoding: .utf8)
         else {
-            return SyncResult(changed: false, message: "Drive: không encode được patch (\(videoId))")
+            throw DriveScriptsError.encodeFailed(videoId)
         }
-
         _ = try await DriveAPIClient.putText(
             folderId: folderId, name: "cues.json", text: cuesStr, fileId: cuesFileId
         )
         _ = try await DriveAPIClient.putText(
-            folderId: folderId, name: "meta.json", text: metaStr, fileId: children["meta.json"]
+            folderId: folderId, name: "meta.json", text: metaStr, fileId: metaFileId
         )
         script.rev = rev
         script.deviceId = deviceId
         try? context.save()
-        return SyncResult(changed: false, message: "Drive: đã đẩy \(videoId) (rev \(rev))")
+        DriveDirty.clear(videoId: videoId)
+        return rev
     }
 
     private static func pull(
@@ -187,6 +252,9 @@ enum DriveScriptsService {
             if let title = meta["title"] as? String, !title.isEmpty { script.title = title }
             try? context.save()
         }
+        // Replace import marks every row dirty — a full pull replaces local with Drive
+        // state, so those marks are stale; next sync would merge old local over Drive.
+        DriveDirty.clear(videoId: videoId)
         // Prefer import's inserted array — relationship reload can still be empty.
         let live = result.cues.filter { !$0.isDeleted }
         let out = live.isEmpty
@@ -276,24 +344,106 @@ enum DriveScriptsService {
         return root
     }
 
+    // MARK: - Cue merge
+
+    /// Drive base + dirty local overlay (incl. tombstones). Non-dirty cues keep their
+    /// Drive rows untouched — another machine's edits survive. Dirty ids win per cue
+    /// (LWW); soft-deleted dirty ids drop the Drive row; local-only dirty ids append in
+    /// start order. Returns nil when nothing differs — no push, no rev bump.
+    static func mergedCues(original: [String: Any], dirty: Set<String>, local: [ScriptCue]) -> [String: Any]? {
+        let driveRows = (original["cues"] as? [[String: Any]]) ?? []
+        var byId: [String: [String: Any]] = [:]
+        for row in driveRows {
+            if let id = row["id"] as? String, !id.isEmpty { byId[id] = row }
+        }
+        let localsById: [String: ScriptCue] = Dictionary(
+            local.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }
+        )
+        var out: [[String: Any]] = []
+        var changed = false
+        for row in driveRows {
+            guard let id = row["id"] as? String,
+                  let local = localsById[id], dirty.contains(id)
+            else {
+                out.append(row)
+                continue
+            }
+            if local.isDeleted {
+                changed = true      // tombstone drops the Drive row
+                continue
+            }
+            out.append(mergeRow(base: row, cue: local))
+            changed = true
+        }
+        // Local-only dirty adds append after Drive rows (start order).
+        let driveIds = Set(byId.keys)
+        let added = local
+            .filter { !$0.isDeleted && dirty.contains($0.id) && !driveIds.contains($0.id) }
+            .sorted { $0.startTime < $1.startTime }
+        for cue in added {
+            out.append(mergeRow(base: nil, cue: cue))
+            changed = true
+        }
+        guard changed else { return nil }
+        var root = original
+        root["cues"] = out
+        return root
+    }
+
+    /// Local values overlaid on the Drive row — PC-only fields (tokens, mt_locked,
+    /// translation_source, text_source) ride along untouched. `base` nil for local-only cues.
+    private static func mergeRow(base: [String: Any]?, cue: ScriptCue) -> [String: Any] {
+        let startSec = cue.startTime / 1000
+        let endSec = (cue.startTime + max(cue.duration, 0)) / 1000
+        let en = cue.textEN ?? ""
+        let vi = cue.textVI ?? ""
+        guard var row = base else {
+            return [
+                "id": cue.id,
+                "start_media_time": startSec,
+                "end_media_time": endSec,
+                "source": cue.textJA,
+                "en": en,
+                "vi": vi,
+                "tokens": [],
+                "translated": !(en.isEmpty && vi.isEmpty),
+                "text_source": "manual",
+                "mt_locked": false,
+                "translation_source": "",
+            ]
+        }
+        row["start_media_time"] = startSec
+        row["end_media_time"] = endSec
+        row["source"] = cue.textJA
+        row["en"] = en
+        row["vi"] = vi
+        row["translated"] = !(en.isEmpty && vi.isEmpty)
+        return row
+    }
+
     // MARK: - Helpers
 
-    /// Pull when Drive is ahead, local is empty, unowned YouTube, or owned-but-0-MT while Drive has MT.
+    enum DriveScriptsError: LocalizedError {
+        case encodeFailed(String)
+        var errorDescription: String? {
+            switch self {
+            case .encodeFailed(let videoId): return "không encode được patch (\(videoId))"
+            }
+        }
+    }
+
+    /// Pull when Drive is ahead, local is empty, or unowned YouTube cache.
     static func needsPull(
         driveRev: Int,
         localRev: Int,
         localLiveCount: Int,
         driveCueCount: Int,
-        localOwned: Bool = true,
-        localTranslated: Int = 0,
-        driveTranslated: Int = 0
+        localOwned: Bool = true
     ) -> Bool {
         if driveRev > localRev { return true }
         if localLiveCount == 0 && driveCueCount > 0 { return true }
         // Unowned YouTube merge must not fake "đã đồng bộ" over Drive EN/VI.
         if !localOwned && driveCueCount > 0 { return true }
-        // Stuck owned JA-only (false-owned cache) while Drive cues.json has translations.
-        if localOwned && localTranslated == 0 && driveTranslated > 0 { return true }
         return false
     }
 
@@ -393,16 +543,45 @@ enum DriveScriptsSmoke {
         ), "unowned YouTube must not block Drive script")
         assert(!DriveScriptsService.needsPull(
             driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338, localOwned: true
-        ), "owned stays put when revs match and no Drive MT signal")
-        // Stuck owned JA-only while Drive has translations → recover.
-        assert(DriveScriptsService.needsPull(
-            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338,
-            localOwned: true, localTranslated: 0, driveTranslated: 337
-        ), "owned JA-only must pull when Drive has MT")
-        assert(!DriveScriptsService.needsPull(
-            driveRev: 0, localRev: 0, localLiveCount: 338, driveCueCount: 338,
-            localOwned: true, localTranslated: 300, driveTranslated: 337
-        ), "owned+synced with local MT stays put")
+        ), "owned stays put when revs match")
+
+        // Cue merge: dirty local cue B wins; non-dirty Drive cue A untouched.
+        let merged = DriveScriptsService.mergedCues(
+            original: root,
+            dirty: ["b"],
+            local: [cue("a", 599, 2000, "あ", "A", ""), cue("b", 3000, 4000, "い", "B-en", "B-vi")]
+        )
+        let mergedCues = merged?["cues"] as? [[String: Any]]
+        assert(mergedCues?.count == 2, "merge keeps both cues")
+        assert(mergedCues?[0]["vi"] as? String == "", "non-dirty Drive cue untouched")
+        assert((mergedCues?[0]["tokens"] as? [Any])?.count == 1, "non-dirty Drive tokens preserved")
+        assert(mergedCues?[0]["mt_locked"] as? Bool == true, "non-dirty Drive mt_locked preserved")
+        assert(mergedCues?[1]["en"] as? String == "B-en", "dirty local en wins")
+        assert(mergedCues?[1]["vi"] as? String == "B-vi", "dirty local vi wins")
+        assert(mergedCues?[1]["mt_locked"] as? Bool == false, "dirty row keeps Drive mt_locked")
+        assert(abs(DriveScriptsService.double(mergedCues?[1]["start_media_time"]) - 3.0) < 1e-9,
+               "dirty local timing wins")
+
+        // Tombstone: soft-deleted dirty cue must not resurrect from Drive.
+        var tomb = cue("a", 599, 2000, "あ", "A", "")
+        tomb.isDeleted = true
+        let tombstoned = DriveScriptsService.mergedCues(original: root, dirty: ["a"], local: [tomb])
+        let tombCues = tombstoned?["cues"] as? [[String: Any]]
+        assert(tombCues?.count == 1 && tombCues?[0]["id"] as? String == "b", "tombstone drops the Drive row")
+
+        // Local-only dirty add appends in start order.
+        let withAdd = DriveScriptsService.mergedCues(
+            original: root,
+            dirty: ["new"],
+            local: [cue("a", 599, 2000, "あ", "A", ""), cue("b", 3000, 4000, "い", "", ""),
+                    cue("new", 5000, 6000, "う", nil, nil)]
+        )
+        let addCues = withAdd?["cues"] as? [[String: Any]]
+        assert(addCues?.count == 3 && addCues?[2]["id"] as? String == "new", "local-only dirty cue appended")
+
+        // Nothing differs → nil: no push, no rev bump.
+        assert(DriveScriptsService.mergedCues(original: root, dirty: ["zz"], local: []) == nil,
+               "unknown dirty id merges to nil")
 
         // Pull imports prefer script.txt; parse → import → load.count == replaced.
         let scriptTxt = """
@@ -465,9 +644,9 @@ enum DriveScriptsSmoke {
         // Skip on device/sim without repo checkout — try! here crashed app launch.
         let moiDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Services
-            .deletingLastPathComponent() // ipad-app
+            .deletingLastPathComponent() // iphone-app
             .deletingLastPathComponent() // repo root
-            .appendingPathComponent("youtube-jp-caption-studio/data/subtitles/MOIbaNe4Pmw")
+            .appendingPathComponent("data/subtitles/MOIbaNe4Pmw")
         let moiCuesURL = moiDir.appendingPathComponent("cues.json")
         guard let moiCuesText = try? String(contentsOf: moiCuesURL, encoding: .utf8) else {
             fputs("[DriveScriptsSmoke] skip MOI file (missing \(moiCuesURL.path))\n", stderr)
@@ -503,8 +682,7 @@ enum DriveScriptsSmoke {
                "seed must be JA-only")
         assert(DriveScriptsService.needsPull(
             driveRev: 0, localRev: 0, localLiveCount: seeded.cues.count,
-            driveCueCount: moiJSONRows.count, localOwned: false,
-            localTranslated: 0, driveTranslated: moiJSONMT
+            driveCueCount: moiJSONRows.count, localOwned: false
         ), "unowned MOI seed must needsPull")
 
         let pulledMOI = ScriptCue.importRows(
