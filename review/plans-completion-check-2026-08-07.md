@@ -13,7 +13,7 @@ Disk wins. Spot-checked symbols/files; updated stale plan frontmatter where code
 | `flatten-repo-layout-2026-08-05` | **done** | Flat `extension/` `local-bridge/` …; execute review 08-05; bottom checklist ticked |
 | `p0-data-loss-fixes-2026-08-04` | **done** | `Vocabulary.upsert`, `ScriptDTO.rev/deviceId`, `caption-studio-vocab.json`, UUID cue ids, `project.yml` |
 | `p0-data-loss-fixes-2026-08-05` | **done** | `DriveScriptsService.mergedCues` + dirty; Backup single-save; `DRIVE_RESTORED` rev guard |
-| `auto-dich-sau-edit-2026-07-28` | **done** | todos completed; tombstones / Enter-only / autoOpen in `content.js` |
+| `auto-dich-sau-edit-2026-07-28` | **partial** | Ownership / Enter-only / autoOpen / tombstones live. **Gap:** JA Enter → `enrichTokensAfterImport` (`/tokenize_batch`) only — no `/translate` / `/translate_segment` on bridge; NLLB path absent on disk |
 | `drive-folder-mirror-2026-08-02` | **done** | `mirrorToDrive`; iPad `DriveScriptsService` |
 | `overlay-multi-sub-2026-08-02` | **done** | `setShowOnVideo` OFF no longer closes panel; `enCues`/`viCues` fill |
 | `timeline-yt-multi-sub-2026-08-02` | **done** | todos completed; secondary enrich + scroll parity |
