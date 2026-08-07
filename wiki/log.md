@@ -2,6 +2,33 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
+## [2026-08-08] ingest | Plan: sub load + furigana/level ≤ 100 ms
+
+`plan/sub-load-furigana-100ms-2026-08-08.md` filed (plan-only, no code). Baseline:
+Sudachi 0.1 ms/cue — bottleneck là chuỗi RTT tuần tự (waitForPageBridge 2.5 s
+trước SW pack), render furigana 2 phase + hydrate RTT riêng, sidepanel full
+DOM rebuild. Todos T1–T5. Topic: `wiki/topics/sub-load-furigana-100ms.md`.
+
+## [2026-08-07] ingest | Codebase review closed — C1/H1–H8/M1–M10 fixed
+
+All findings from `review/codebase-review-2026-08-07.md` resolved: C1 (compose
+loopback-only publish), H1 (postMessage `ev.source` guard x2), H8
+(`BRIDGE_ALLOWLIST`), M1 (CORS no-credentials), M2 (per-video save lock), M4
+(governor `_governed()` 503), M5 (finite/range model validator), M6 (manual
+timing clamp), M7 (OAuth state + ATS local-only + WebView YT-only, both apps),
+M8 (macOS stop owns-process-only). H2/H3/H7/M3 + H4–H6/M9/M10 were already in
+the working tree from prior sessions. Verified: iPad/iPhone/macOS builds,
+web check, bridge smoke tests green. Topic updated:
+`wiki/topics/codebase-review-2026-08-07.md` → **closed**; `index.md` Active
+table + Open gaps pruned.
+
+## [2026-08-07] ingest | Full codebase review
+
+Source: `review/codebase-review-2026-08-07.md` — verified current findings across
+extension, bridge, iPad/iPhone, web and macOS bridge. Highest priority is empty
+script/tombstone data loss and unauthenticated bridge exposure. Topic:
+`wiki/topics/codebase-review-2026-08-07.md`.
+
 ## [2026-08-05] lint | bootstrap
 
 Scaffolded Karpathy LLM-wiki over `plan/` + `review/`. Created `wiki/index.md`, this log, and topic `p0-data-loss`.

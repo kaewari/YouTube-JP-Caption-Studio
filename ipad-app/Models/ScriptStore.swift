@@ -81,7 +81,11 @@ extension ScriptCue {
     @MainActor
     static func mergeWithLocal(videoId: String, youtubeCues: [Cue], context: ModelContext) -> [ScriptCue] {
         let localCues = load(videoId: videoId, context: context)
-        let localMap = Dictionary(uniqueKeysWithValues: localCues.map { ($0.id, $0) })
+        // Duplicate ids (e.g. YT JSON3 events sharing a tStartMs) must not trap —
+        // first row wins, later duplicates keep their own rows.
+        let localMap = Dictionary(
+            localCues.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }
+        )
         
         var script: VideoScript?
         let videoDescriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
@@ -311,10 +315,19 @@ extension ScriptCue {
             script.owned = true
 
             var next: [ScriptCue] = []
+            var usedIds = Set<String>()
             for (index, row) in validRows {
                 let start = row.startMs.isFinite ? row.startMs : 0
+                // Duplicate caller-supplied ids would break SwiftUI ForEach identity.
+                var id = row.id.isEmpty ? "\(Int(start))-import-\(index)" : row.id
+                if usedIds.contains(id) {
+                    var n = 1
+                    while usedIds.contains("\(id)-\(n)") { n += 1 }
+                    id = "\(id)-\(n)"
+                }
+                usedIds.insert(id)
                 let cue = ScriptCue(
-                    id: row.id.isEmpty ? "\(Int(start))-import-\(index)" : row.id,
+                    id: id,
                     startTime: start,
                     duration: row.endMs.isFinite ? row.endMs - start : .nan,
                     textJA: row.ja,

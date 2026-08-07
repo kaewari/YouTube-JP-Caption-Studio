@@ -4,6 +4,7 @@
  */
 const path = require("path");
 const {
+  applyManualTimes,
   clampCueEndsToNextStart,
   GAP,
   MIN_DUR,
@@ -70,6 +71,20 @@ assert(
 assert(clean[1].end === 3.5, "last end kept");
 
 assert(typeof GAP === "number" && typeof MIN_DUR === "number", "exports GAP/MIN_DUR");
+
+// applyManualTimes: valid inputs untouched; impossible start must not overlap next.
+const manual = { start_media_time: 1, end_media_time: 2, source: "x" };
+applyManualTimes(manual, 1, 2, { nextCue: { start_media_time: 5 } });
+assert(
+  manual.start_media_time === 1 && manual.end_media_time === 2,
+  "manual times kept when they fit"
+);
+const clash = { start_media_time: 6, end_media_time: 7, source: "y" };
+applyManualTimes(clash, 6.5, 7, { nextCue: { start_media_time: 6.5 } });
+assert(
+  clash.end_media_time <= 6.5 && clash.end_media_time >= clash.start_media_time,
+  `fallback never overlaps next cue (got ${clash.start_media_time}→${clash.end_media_time})`
+);
 
 if (process.exitCode) {
   console.error("cue_timing sanity FAILED");

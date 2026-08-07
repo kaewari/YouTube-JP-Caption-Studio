@@ -72,6 +72,8 @@ final class BridgeController: ObservableObject {
     @Published private(set) var statusDetail = "Đang tìm local-bridge…"
 
     private var process: Process?
+    /// True only while this app owns the bridge — gates the port sweep in stop().
+    private var bridgeProcessOwned = false
     private var healthTimer: Timer?
     private let bridgeRoot: URL?
     private let logURL: URL
@@ -129,6 +131,7 @@ final class BridgeController: ObservableObject {
         do {
             try proc.run()
             process = proc
+            bridgeProcessOwned = true
             isRunning = true
             statusDetail = "Đang khởi động bridge…"
             startHealthPoll()
@@ -144,15 +147,26 @@ final class BridgeController: ObservableObject {
 
         if let proc = process, proc.isRunning {
             let pid = proc.processIdentifier
-            // Kill process group if bash is session leader; also sweep ports.
+            // Kill the bash process AND its children (uvicorn, saved-items) — plain
+            // kill(pid) leaves the tree running.
+            let tree = Process()
+            tree.executableURL = URL(fileURLWithPath: "/bin/pkill")
+            tree.arguments = ["-TERM", "-P", String(pid)]
+            try? tree.run()
+            tree.waitUntilExit()
             kill(pid, SIGTERM)
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
                 kill(pid, SIGKILL)
             }
+            // Port sweep only when this app started the bridge — never kill a
+            // process another tool (or the user's Terminal) owns.
+            if bridgeProcessOwned {
+                Self.killPort(8765)
+                Self.killPort(3000)
+            }
         }
+        bridgeProcessOwned = false
         process = nil
-        Self.killPort(8765)
-        Self.killPort(3000)
         if let root = bridgeRoot {
             let savedPid = root.appendingPathComponent(".saved-items.pid")
             if let text = try? String(contentsOf: savedPid, encoding: .utf8),

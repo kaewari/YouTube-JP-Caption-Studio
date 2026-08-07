@@ -7,6 +7,7 @@ import ssl
 import sys
 import threading
 import urllib.request
+import uuid
 from pathlib import Path
 
 from app.schemas.models import BootstrapProgress
@@ -46,13 +47,21 @@ def _ssl_context() -> ssl.SSLContext:
 
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # Write to a unique temp then atomically replace — an interrupted download
+    # must never leave a truncated file at the final path (bootstrap would be
+    # stuck on the next run because "exists" suppresses retry).
+    tmp = dest.with_name(f"{dest.name}.{uuid.uuid4().hex}.part")
     ctx = _ssl_context()
-    with urllib.request.urlopen(url, context=ctx, timeout=300) as resp, open(dest, "wb") as out:
-        while True:
-            chunk = resp.read(1024 * 1024)
-            if not chunk:
-                break
-            out.write(chunk)
+    try:
+        with urllib.request.urlopen(url, context=ctx, timeout=300) as resp, open(tmp, "wb") as out:
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        tmp.replace(dest)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def bootstrap_async() -> None:

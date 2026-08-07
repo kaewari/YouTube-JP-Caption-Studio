@@ -263,7 +263,16 @@ struct YouTubePlayerView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            decisionHandler(.allow)
+            // Player pane is a YouTube-only shell — external sites must not navigate
+            // the WKWebView (open them in the system browser instead).
+            let host = navigationAction.request.url?.host?.lowercased() ?? ""
+            if host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "youtu.be" {
+                decisionHandler(.allow)
+            } else if navigationAction.navigationType == .other && navigationAction.request.url == nil {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.cancel)
+            }
         }
     }
 }

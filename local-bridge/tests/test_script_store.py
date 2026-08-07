@@ -301,6 +301,26 @@ def test_load_script_txt_rescues_inline_tokens(root: Path) -> None:
     assert load_tokens(vid) == {"keep-me": TOKENS}, "TXT prefer dropped inline tokens"
 
 
+def test_save_sanitizes_non_finite_times(root: Path) -> None:
+    """NaN/Inf/None times must never reach cues.json (breaks JSON parse on clients)."""
+    vid = "nanSafe1234"
+    save_script(
+        vid,
+        [
+            {"id": "a", "start_media_time": float("nan"), "end_media_time": float("inf"), "source": "あ"},
+            {"id": "b", "start_media_time": None, "end_media_time": "oops", "source": "い"},
+            {"id": "c", "start_media_time": 1.5, "end_media_time": 2.5, "source": "う"},
+        ],
+    )
+    on_disk = json.loads((root / vid / "cues.json").read_text(encoding="utf-8"))
+    times = [(c["start_media_time"], c["end_media_time"]) for c in on_disk["cues"]]
+    assert times[0] == (0.0, 0.0), f"NaN/Inf coerced, got {times[0]}"
+    assert times[1] == (0.0, 0.0), f"None/junk coerced, got {times[1]}"
+    assert times[2] == (1.5, 2.5), f"valid times kept, got {times[2]}"
+    loaded = load_script(vid)
+    assert loaded is not None and loaded["meta"]["rev"] >= 1
+
+
 def test_read_files_keeps_existing_script_txt(root: Path) -> None:
     vid = "keepTxt1234"
     folder = root / vid
@@ -349,6 +369,7 @@ def main() -> None:
         test_files_mirror_roundtrip,
         test_load_prefers_script_txt_over_garbage_cues,
         test_load_script_txt_rescues_inline_tokens,
+        test_save_sanitizes_non_finite_times,
         test_read_files_keeps_existing_script_txt,
     ):
         with tempfile.TemporaryDirectory() as tmp:

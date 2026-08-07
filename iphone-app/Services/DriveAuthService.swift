@@ -61,6 +61,8 @@ final class DriveAuthService: NSObject {
 
     private func authorize() async throws -> Tokens {
         let pkce = Self.makePKCE()
+        // CSRF guard: Google echoes `state` back — reject callbacks without it.
+        let state = Self.randomToken(16)
         var comps = URLComponents(url: DriveOAuthConfig.authURL, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "client_id", value: DriveOAuthConfig.clientId),
@@ -71,6 +73,7 @@ final class DriveAuthService: NSObject {
             URLQueryItem(name: "prompt", value: "consent"),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "state", value: state),
         ]
         guard let url = comps.url else { throw DriveAuthError.badURL }
 
@@ -102,6 +105,9 @@ final class DriveAuthService: NSObject {
             let desc = items.first(where: { $0.name == "error_description" })?.value
             throw DriveAuthError.oauthError(oauthErr, desc)
         }
+        // CSRF: the callback must carry the exact state we issued.
+        guard items.first(where: { $0.name == "state" })?.value == state
+        else { throw DriveAuthError.stateMismatch }
         guard let code = items.first(where: { $0.name == "code" })?.value
         else { throw DriveAuthError.noCode }
 
@@ -169,6 +175,13 @@ final class DriveAuthService: NSObject {
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URLEncoded
         assert(!challenge.contains("+") && !challenge.contains("/") && !challenge.contains("="))
         return (verifier, challenge)
+    }
+
+    /// Random hex token for OAuth `state` (CSRF).
+    private static func randomToken(_ bytes: Int) -> String {
+        var buf = [UInt8](repeating: 0, count: bytes)
+        _ = SecRandomCopyBytes(kSecRandomDefault, buf.count, &buf)
+        return buf.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Keychain
@@ -248,6 +261,7 @@ enum DriveAuthError: LocalizedError {
     case noToken
     case cancelled
     case noCode
+    case stateMismatch
     case badURL
     case badTokenJSON
     case tokenHTTP(Int, String)
@@ -268,6 +282,8 @@ enum DriveAuthError: LocalizedError {
             return "Đã huỷ OAuth"
         case .noCode:
             return "OAuth không có code"
+        case .stateMismatch:
+            return "OAuth state không khớp (CSRF?)"
         case .badURL:
             return "OAuth URL lỗi"
         case .badTokenJSON:

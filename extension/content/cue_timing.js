@@ -29,10 +29,16 @@
       : Infinity;
 
     start = Math.max(0, Math.max(minStart, start));
+    // Start typed past the next cue must not overlap it — clamp back to the gap.
+    if (Number.isFinite(maxEnd) && start > maxEnd) start = maxEnd;
     if (Number.isFinite(maxEnd)) {
       end = Math.min(maxEnd, end);
     }
     if (end <= start) end = start + MIN_DUR;
+    // Fallback must never overlap the next cue — clamp to maxEnd (0-dur when
+    // start itself is past the neighbor; that cue stays invisible instead of
+    // stepping on the next one).
+    if (Number.isFinite(maxEnd) && end > maxEnd) end = Math.max(start, maxEnd);
 
     cue.start_media_time = start;
     cue.end_media_time = end;

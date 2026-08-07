@@ -13,6 +13,8 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/p0-data-loss.md](topics/p0-data-loss.md) | Drive cue-merge + backup + extension rev guard — **done** (2026-08-05) |
 | [topics/local-bridge-audit.md](topics/local-bridge-audit.md) | Bridge audit 2026-08-06 — **10/10 findings còn ALIVE, chưa fix** |
 | [topics/plans-completion.md](topics/plans-completion.md) | Inventory 17 plans — **product plans done / YAGNI cancelled** (2026-08-07) |
+| [topics/codebase-review-2026-08-07.md](topics/codebase-review-2026-08-07.md) | Full source review — **closed** (2026-08-07): C1/H1–H8/M1–M10 all fixed |
+| [topics/sub-load-furigana-100ms.md](topics/sub-load-furigana-100ms.md) | Sub load nhanh + furigana/level ≤100 ms — **plan filed, chưa làm** (2026-08-08) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
@@ -21,6 +23,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 |--------|-------|------|--------|
 | done | Plans completion inventory | all `plan/*.md` | [review/plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md) |
 | open | Local-bridge audit (10/10 ALIVE, chưa fix — no plan) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
+| done | Full codebase review 2026-08-07 (C1, H1–H8, M1–M10 fixed) | — | [review/codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md) |
 | done | Flatten repo layout | [plan/flatten-repo-layout-2026-08-05.md](../plan/flatten-repo-layout-2026-08-05.md) | [review/flatten-repo-layout-execute-2026-08-05.md](../review/flatten-repo-layout-execute-2026-08-05.md) |
 | done | P0 data-loss (cue-merge) | [plan/p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md) | [review/p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md) |
 | done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
@@ -65,12 +68,11 @@ Do not rewrite these from the wiki. Link only.
 - [flatten-repo-layout-execute-2026-08-05.md](../review/flatten-repo-layout-execute-2026-08-05.md)
 - [local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md)
 - [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
+- [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
 
 ## Open gaps (from Fable review, not in closed P0)
 
 Tracked lightly until ingested into their own topic pages:
 
 - Extension cue-merge (only rev-skip today)
-- `try? context.save()` silent fail after Drive push
 - iPhone fullscreen pinning drift
-- postMessage / OAuth state / ATS / cue-id Dictionary crash

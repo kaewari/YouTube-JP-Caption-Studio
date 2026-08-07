@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Token(BaseModel):
@@ -129,6 +130,17 @@ class ScriptCue(BaseModel):
     # User/import owns EN/VI (token enrich OK).
     mt_locked: bool = False
     translation_source: str = ""  # "" | "user" | "import"
+
+    @model_validator(mode="after")
+    def _times_sane(self) -> ScriptCue:
+        # NaN/Inf/-∞ break JSON, sort order and the player; reject at the boundary.
+        for name in ("start_media_time", "end_media_time"):
+            v = getattr(self, name)
+            if not math.isfinite(v) or v < 0:
+                raise ValueError(f"{name} must be finite and >= 0, got {v!r}")
+        if self.end_media_time < self.start_media_time:
+            raise ValueError("end_media_time must not be before start_media_time")
+        return self
 
 
 class ScriptCueIn(ScriptCue):

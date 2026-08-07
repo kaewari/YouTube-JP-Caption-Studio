@@ -1021,6 +1021,8 @@
   };
 
   window.__hardsubPageMsgHandler = (ev) => {
+    // Commands may only come from the extension's own content script (same window).
+    if (ev.source !== window) return;
     if (!ev.data || ev.data.source !== "hardsub-ocr-ext") return;
     const { type, requestId, payload } = ev.data;
 

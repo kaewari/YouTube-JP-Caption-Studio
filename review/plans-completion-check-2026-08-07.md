@@ -24,7 +24,7 @@ Disk wins. Spot-checked symbols/files; updated stale plan frontmatter where code
 | `ipad-build-run-signing-2026-08-02` | **done** (ops) | renew/backup/UI done; first Xcode Trust = manual (`FIRST_RUN.md`) |
 | `bridge-ram-sqlite-2026-08-01` | **done** | Was pending in YAML — code already: SQLite `dictionary.py`, `build_dict_sqlite.py`, passive `/health`, lazy Sudachi, `mem_limit: 512m`. Smoke: `PYTHONPATH=. python tests/test_sqlite_parity.py` ✅ |
 | `ipad-mvp-feature-parity-2026-08-02` | **done** | Was pending — watch-page clock/`__csSeek`, SFX normalize, `scheduleSave`, bundled `dict.sqlite` + UI lookup |
-| `master-caption-translate-2026-07-28` | **core done / backlog cancelled** | Remaining = YAGNI (edits.jsonl, undo, skills-meta ceremony) |
+| `master-caption-translate-2026-07-28` | **partial** | Caption pipeline / overlay / ownership live. Nice-to-haves cancelled (YAGNI). **Open gap:** planned MT queue (`POST /translate_segment`, `translate.py`) not in flat bridge — same as auto-dịch |
 | `multi-agent-review-plan-2026-07-29` | **obsolete** | Process-only; reviews under `review/*-2026-07-29.md`; `.agents/` removed |
 | `ipad-app-review-and-fix-plan-2026-08-04` | **P0 done / polish open** | #1–#5 via P0 08-04; #6–#24 polish left (YAGNI this pass) |
 

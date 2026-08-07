@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */; };
 		03DA3614A1137ED2D5E8DEAC /* YouTubeURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC06CACB5E21ED0F45E33D4 /* YouTubeURL.swift */; };
+		078EE95A5297B8C801411979 /* YouTubePlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */; };
 		07FF03F6EFBA414BDFF2961E /* FreqService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792772A0D58934B45726519D /* FreqService.swift */; };
 		1345ED45A537400D06B9D298 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */; };
 		3EA303D952E882591535A41E /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */; };
@@ -63,6 +64,7 @@
 		C54B4D3B1832D25F787C0D11 /* DriveAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveAuthService.swift; sourceTree = "<group>"; };
 		C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidePanelToolbar.swift; sourceTree = "<group>"; };
 		CAD0F18A8DD82CBFAFACA7FA /* VocabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStore.swift; sourceTree = "<group>"; };
+		D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerView.swift; sourceTree = "<group>"; };
 		DAF29E3058D31465754DE87B /* DictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryService.swift; sourceTree = "<group>"; };
 		DBC06CACB5E21ED0F45E33D4 /* YouTubeURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeURL.swift; sourceTree = "<group>"; };
 		DCC1DBCA2D2F8F701DFA6F41 /* SubtitleParserSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleParserSmoke.swift; sourceTree = "<group>"; };
@@ -96,6 +98,7 @@
 				641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */,
 				C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */,
 				0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */,
+				D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -242,6 +245,7 @@
 				E6A65BC7CFC4EC7EB5DE96F5 /* VocabStore.swift in Sources */,
 				DDCC72026A8BF06C9C42C7E6 /* VocabStyle.swift in Sources */,
 				91E1A20C9C7A7256E09478F3 /* VocabSync.swift in Sources */,
+				078EE95A5297B8C801411979 /* YouTubePlayerView.swift in Sources */,
 				03DA3614A1137ED2D5E8DEAC /* YouTubeURL.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

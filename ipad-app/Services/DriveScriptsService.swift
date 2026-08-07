@@ -97,7 +97,12 @@ enum DriveScriptsService {
         let dirty = DriveDirty.dirtyIds(videoId: videoId)
 
         // ── Local edits exist: dirty cues win per cue, then push (merge or patch). ──
-        if !dirty.isEmpty, let script, script.owned, liveCount > 0 {
+        // liveCount may be 0 when every cue is soft-deleted — tombstones must still
+        // reach Drive (intentional wipe), so the branch runs without a live guard.
+        if !dirty.isEmpty, let script, script.owned {
+            let allTombstones = dirty.allSatisfy { id in
+                allLocal.first { $0.id == id }?.isDeleted == true
+            }
             if needsPull(
                 driveRev: driveRev, localRev: script.rev, localLiveCount: liveCount,
                 driveCueCount: driveCueCount
@@ -113,8 +118,21 @@ enum DriveScriptsService {
                     )
                 }
                 let rows = encode(merged).map { ScriptCue.parseImportRows(String(data: $0, encoding: .utf8) ?? "") } ?? []
-                guard !rows.isEmpty else {
-                    return SyncResult(changed: false, message: "Drive: merge lỗi (\(videoId))")
+                if rows.isEmpty {
+                    // Merging tombstones onto Drive left no rows — that's an intentional
+                    // delete-all: push the empty script (rev bump) instead of blocking.
+                    guard allTombstones else {
+                        return SyncResult(changed: false, message: "Drive: merge lỗi (\(videoId))")
+                    }
+                    let rev = try await push(
+                        videoId: videoId, folderId: folderId, cuesFileId: cuesFileId,
+                        metaFileId: children["meta.json"], root: merged, script: script, context: context
+                    )
+                    return SyncResult(
+                        changed: true,
+                        message: "Drive: đã xóa \(videoId) (rev \(rev))",
+                        cues: []
+                    )
                 }
                 let applied = ScriptCue.importRows(
                     videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context
@@ -130,9 +148,29 @@ enum DriveScriptsService {
                 )
             }
             // Drive not ahead — push local edits as a patch, then clear dirty.
-            guard let livePushed = liveCues(videoId: videoId, context: context),
-                  let patched = patchedCues(original: cuesRoot, cues: livePushed)
-            else {
+            let livePushed = liveCues(videoId: videoId, context: context)
+            if livePushed == nil {
+                // All cues deleted — push the empty script so the wipe reaches Drive.
+                guard allTombstones,
+                      let patched = patchedCues(original: cuesRoot, cues: []) else {
+                    DriveDirty.clear(videoId: videoId)
+                    return SyncResult(
+                        changed: false,
+                        message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script.rev))",
+                        cues: nil
+                    )
+                }
+                let rev = try await push(
+                    videoId: videoId, folderId: folderId, cuesFileId: cuesFileId,
+                    metaFileId: children["meta.json"], root: patched, script: script, context: context
+                )
+                return SyncResult(
+                    changed: true,
+                    message: "Drive: đã xóa \(videoId) (rev \(rev))",
+                    cues: []
+                )
+            }
+            guard let patched = patchedCues(original: cuesRoot, cues: livePushed ?? []) else {
                 // Owned but nothing differs — dirty is stale (edit undone); drop it.
                 DriveDirty.clear(videoId: videoId)
                 return SyncResult(
@@ -170,7 +208,7 @@ enum DriveScriptsService {
             if rows.isEmpty {
                 rows = cuesRows
             }
-            let pulled = pull(videoId: videoId, rows: rows, meta: meta, rev: driveRev, context: context)
+            let pulled = try pull(videoId: videoId, rows: rows, meta: meta, rev: driveRev, context: context)
             guard !pulled.isEmpty else {
                 return SyncResult(changed: false, message: "Drive: cues/script trống (\(videoId))")
             }
@@ -232,7 +270,7 @@ enum DriveScriptsService {
         )
         script.rev = rev
         script.deviceId = deviceId
-        try? context.save()
+        try context.save()
         DriveDirty.clear(videoId: videoId)
         return rev
     }
@@ -243,14 +281,14 @@ enum DriveScriptsService {
         meta: [String: Any],
         rev: Int,
         context: ModelContext
-    ) -> [ScriptCue] {
+    ) throws -> [ScriptCue] {
         guard !rows.isEmpty else { return [] }
         let result = ScriptCue.importRows(videoId: videoId, rows: rows, mode: .replace, includeJA: true, context: context)
         if let script = fetchScript(videoId: videoId, context: context) {
             script.rev = rev
             script.deviceId = meta["deviceId"] as? String ?? ""
             if let title = meta["title"] as? String, !title.isEmpty { script.title = title }
-            try? context.save()
+            try context.save()
         }
         // Replace import marks every row dirty — a full pull replaces local with Drive
         // state, so those marks are stale; next sync would merge old local over Drive.

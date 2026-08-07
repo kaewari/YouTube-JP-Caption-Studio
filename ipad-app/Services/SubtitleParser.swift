@@ -10,6 +10,20 @@ struct Cue: Identifiable, Codable {
 
 enum SubtitleParser {
 
+    /// YT JSON3/XML commonly emits several events with the same tStartMs — ids must
+    /// stay unique or SwiftData/UI breaks. First occurrence keeps the bare id so
+    /// previously cached cues still match; later ones get a suffix.
+    private static func uniqueId(_ base: String, used: inout Set<String>) -> String {
+        var id = base
+        var n = 1
+        while used.contains(id) {
+            id = "\(base)-\(n)"
+            n += 1
+        }
+        used.insert(id)
+        return id
+    }
+
     /// Auto-detect JSON3 or timedtext XML.
     static func parseTimedtext(body: String) -> [Cue] {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,6 +36,7 @@ enum SubtitleParser {
     static func parseJSON3(payload: String) -> [Cue] {
         guard let data = payload.data(using: .utf8) else { return [] }
         var cues: [Cue] = []
+        var usedIds = Set<String>()
 
         do {
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -40,7 +55,7 @@ enum SubtitleParser {
                 if text.isEmpty { continue }
 
                 cues.append(Cue(
-                    id: "\(Int(tStartMs))",
+                    id: uniqueId("\(Int(tStartMs))", used: &usedIds),
                     startTime: tStartMs,
                     duration: dDurationMs,
                     text: text
@@ -57,6 +72,7 @@ enum SubtitleParser {
     /// timedtext format=3: `<p t="ms" d="ms">…</p>` (and legacy `<text start dur>`).
     static func parseXML(_ xml: String) -> [Cue] {
         var cues: [Cue] = []
+        var usedIds = Set<String>()
 
         let pRe = try! NSRegularExpression(pattern: #"<p\s+([^>]*)>([\s\S]*?)</p>"#, options: [.caseInsensitive])
         let range = NSRange(xml.startIndex..., in: xml)
@@ -72,7 +88,7 @@ enum SubtitleParser {
                 .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty { return }
-            cues.append(Cue(id: "\(Int(t))", startTime: t, duration: d, text: text))
+            cues.append(Cue(id: uniqueId("\(Int(t))", used: &usedIds), startTime: t, duration: d, text: text))
         }
 
         if cues.isEmpty {
@@ -88,7 +104,7 @@ enum SubtitleParser {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if text.isEmpty { return }
                 let startMs = startSec * 1000
-                cues.append(Cue(id: "\(Int(startMs))", startTime: startMs, duration: durSec * 1000, text: text))
+                cues.append(Cue(id: uniqueId("\(Int(startMs))", used: &usedIds), startTime: startMs, duration: durSec * 1000, text: text))
             }
         }
 

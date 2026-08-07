@@ -6,9 +6,11 @@ import json
 import logging
 import threading
 import time
+import uuid
+from contextlib import contextmanager
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +63,21 @@ from app.services.vocab_freq import sample_preview_text
 _ERRORS_LOG = Path(__file__).resolve().parent.parent / "errors.log"
 
 
+class BusyError(HTTPException):
+    pass
+
+
+@contextmanager
+def _governed() -> Iterator[None]:
+    """Governor slot for heavy endpoints (Sudachi tokenize / dict) — 503 when saturated."""
+    if not governor.try_acquire():
+        raise BusyError(status_code=503, detail="bridge busy")
+    try:
+        yield
+    finally:
+        governor.release()
+
+
 def _append_errors_log(level: str, message: str) -> None:
     try:
         with _ERRORS_LOG.open("a", encoding="utf-8") as f:
@@ -75,7 +92,9 @@ app = FastAPI(title="YouTube JP Caption Studio Bridge", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^(chrome-extension://[a-z0-9]{32}|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
-    allow_credentials=True,
+    # No cookies/sessions — credentials would let any localhost page send
+    # credentialed mutation requests; auth is per-request (or loopback-only).
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -115,10 +134,15 @@ def _load_ext_state_disk() -> None:
 def _save_ext_state_disk() -> None:
     try:
         _EXT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _EXT_STATE_PATH.write_text(
-            json.dumps(_ext_state, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        tmp = _EXT_STATE_PATH.with_name(f"{_EXT_STATE_PATH.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(
+                json.dumps(_ext_state, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            tmp.replace(_EXT_STATE_PATH)
+        finally:
+            tmp.unlink(missing_ok=True)
     except Exception:
         logger.exception("Failed to save extension_state.json")
 
@@ -199,37 +223,40 @@ def client_log(body: dict[str, Any]) -> dict[str, bool]:
 @app.post("/tokenize", response_model=TokenizeResponse)
 def tokenize_text(body: TokenizeRequest) -> TokenizeResponse:
     """Furigana + JLPT/freq tokens only."""
-    text = (body.text or "").strip()
-    if not text:
-        return TokenizeResponse(source="", tokens=[])
-    if not sudachi_loaded():
-        load_tokenizer()
-    return TokenizeResponse(source=text, tokens=tokenize(text))
+    with _governed():
+        text = (body.text or "").strip()
+        if not text:
+            return TokenizeResponse(source="", tokens=[])
+        if not sudachi_loaded():
+            load_tokenizer()
+        return TokenizeResponse(source=text, tokens=tokenize(text))
 
 
 @app.post("/tokenize_batch", response_model=TokenizeBatchResponse)
 def tokenize_batch(body: TokenizeBatchRequest) -> TokenizeBatchResponse:
     """Batch Sudachi tokenize for post-import enrich."""
-    if not sudachi_loaded():
-        load_tokenizer()
-    results: list[TokenizeBatchItem] = []
-    for cue in body.cues or []:
-        src = (cue.text or "").strip()
-        results.append(
-            TokenizeBatchItem(
-                id=cue.id or "",
-                source=src,
-                tokens=tokenize(src) if src else [],
+    with _governed():
+        if not sudachi_loaded():
+            load_tokenizer()
+        results: list[TokenizeBatchItem] = []
+        for cue in body.cues or []:
+            src = (cue.text or "").strip()
+            results.append(
+                TokenizeBatchItem(
+                    id=cue.id or "",
+                    source=src,
+                    tokens=tokenize(src) if src else [],
+                )
             )
-        )
-    return TokenizeBatchResponse(results=results)
+        return TokenizeBatchResponse(results=results)
 
 
 @app.post("/dict", response_model=DictResponse)
 def dict_lookup(body: DictRequest) -> DictResponse:
-    if not dict_loaded():
-        load_dictionary()
-    return lookup(body.surface, lemma=body.lemma or "")
+    with _governed():
+        if not dict_loaded():
+            load_dictionary()
+        return lookup(body.surface, lemma=body.lemma or "")
 
 
 @app.post("/scripts/save", response_model=ScriptSaveResponse)

@@ -574,6 +574,9 @@
   }
 
   window.addEventListener("message", (ev) => {
+    // Only the page script we inject (same window) may answer — a cross-origin
+    // iframe or page-world script could otherwise forge caption results.
+    if (ev.source !== window) return;
     if (!ev.data || ev.data.source !== "hardsub-ocr-page") return;
     const { requestId, result } = ev.data;
     const resolve = pending.get(requestId);
@@ -1116,7 +1119,9 @@
   }
 
   async function saveTranscriptToDisk(payload) {
-    if (!currentVideoId || !payload?.length) return;
+    if (!currentVideoId) return;
+    // Empty payload is an intentional wipe only when the script is owned (delete-all).
+    if (!payload?.length && !transcriptMeta.owned) return;
     const videoId = currentVideoId;
     try {
       const res = await bridgeFetch("/scripts/save", {
@@ -1151,7 +1156,9 @@
     if (!currentVideoId) return;
     const force = !!opts.force;
     const key = `transcript:${currentVideoId}`;
-    const payload = cues.slice(0, settings.maxSentences).map((c) => ({
+    // Persist the full cue list — display limits (settings.maxSentences) apply at
+    // render only, never here (a truncated save would drop owned cues on reload).
+    const payload = cues.map((c) => ({
       id: c.id,
       start_media_time: c.start_media_time,
       end_media_time: c.end_media_time,

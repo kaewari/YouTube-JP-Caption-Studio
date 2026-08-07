@@ -28,13 +28,14 @@ import {
 type AppView = Extract<NavId, "saved" | "settings">;
 
 export function SavedItemsApp() {
-  /** Sidebar open (labels visible) by default — user can collapse via chevron. */
-  const [collapsed, setCollapsed] = useState(false);
-  const [isExt, setIsExt] = useState(false);
+  /** Sidebar open (labels visible) by default — collapsed on first render in the popup. */
+  const [collapsed, setCollapsed] = useState(() => isExtensionPage());
+  const isExt = useMemo(() => isExtensionPage(), []);
   const [view, setView] = useState<AppView>("saved");
   const [tab, setTab] = useState<SavedItemsTab>("saved-words");
   const [words, setWords] = useState<SavedWord[]>([]);
   const wordsRef = useRef<SavedWord[]>([]);
+  const persistChain = useRef<Promise<void>>(Promise.resolve());
   const [source, setSource] = useState<DataSource>("mock");
   const [note, setNote] = useState("");
   const [query, setQuery] = useState("");
@@ -46,13 +47,10 @@ export function SavedItemsApp() {
   }, [words]);
 
   useEffect(() => {
-    const ext = isExtensionPage();
-    setIsExt(ext);
-    if (ext) {
+    if (isExt) {
       document.documentElement.classList.add("hs-ext-popup");
-      setCollapsed(true);
     }
-  }, []);
+  }, [isExt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,14 +114,18 @@ export function SavedItemsApp() {
   function handleStatus(lemma: string, status: VocabStatus | null) {
     setWords((prev) => {
       const next = setWordStatus(prev, lemma, status);
-      void persistWordsAsync(next).then((src) => {
-        setSource(src);
-        setNote(
-          src === "chrome.storage"
-            ? "Đã ghi chrome.storage · userVocab"
-            : "Đã lưu localStorage + bridge",
-        );
-      });
+      // Serialize writes — rapid clicks must persist in order, never out of date.
+      persistChain.current = persistChain.current
+        .then(() => persistWordsAsync(next))
+        .then((src) => {
+          setSource(src);
+          setNote(
+            src === "chrome.storage"
+              ? "Đã ghi chrome.storage · userVocab"
+              : "Đã lưu localStorage + bridge",
+          );
+        })
+        .catch(() => {});
       return next;
     });
   }

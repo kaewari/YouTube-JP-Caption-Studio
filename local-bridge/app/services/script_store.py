@@ -14,6 +14,7 @@ import logging
 import math
 import re
 import shutil
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -34,6 +35,15 @@ _HEAD_RE = re.compile(
     rf"^\[(\d+(?:-\d+)?)\]\s+({_TIME_TOKEN})(?:\s*(?:→|->|–|—|-)\s*({_TIME_TOKEN}))?"
 )
 _device_id: str = ""
+
+
+def _finite_time(value: Any, fallback: float = 0.0) -> float:
+    """Coerce cue times to a finite float — NaN/Inf/None break JSON and sort order."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = fallback
+    return v if math.isfinite(v) else fallback
 
 
 def scripts_root() -> Path:
@@ -229,8 +239,8 @@ def _cues_from_txt(
     """Normalize TXT rows to cues.json shape; keep old ids by index when possible."""
     cleaned: list[dict[str, Any]] = []
     for i, c in enumerate(parsed):
-        start = float(c.get("start_media_time") or 0)
-        end = float(c.get("end_media_time") or start)
+        start = _finite_time(c.get("start_media_time") or 0)
+        end = _finite_time(c.get("end_media_time") or start, start)
         source = str(c.get("source") or "").strip()
         en = str(c.get("en") or "")
         vi = str(c.get("vi") or "")
@@ -302,6 +312,21 @@ def merge_tokens(
     return cues
 
 
+# Per-video serialization: concurrent saves (extension + app) must not interleave
+# cues.json/tokens.json/meta.json/script.txt writes into mixed revisions.
+_video_locks: dict[str, threading.Lock] = {}
+_video_locks_guard = threading.Lock()
+
+
+def _video_lock(video_id: str) -> threading.Lock:
+    vid = _safe_video_id(video_id)
+    with _video_locks_guard:
+        lock = _video_locks.get(vid)
+        if lock is None:
+            lock = _video_locks[vid] = threading.Lock()
+        return lock
+
+
 def save_script(
     video_id: str,
     cues: list[dict[str, Any]],
@@ -312,13 +337,28 @@ def save_script(
     rev: int | None = None,
 ) -> dict[str, Any]:
     vid = _safe_video_id(video_id)
+    with _video_lock(vid):
+        return _save_script_locked(
+            vid, cues, url=url, title=title, owned=owned, rev=rev
+        )
+
+
+def _save_script_locked(
+    vid: str,
+    cues: list[dict[str, Any]],
+    *,
+    url: str = "",
+    title: str = "",
+    owned: bool | None = None,
+    rev: int | None = None,
+) -> dict[str, Any]:
     folder = video_dir(vid)
     cleaned: list[dict[str, Any]] = []
     for c in cues or []:
         if not isinstance(c, dict):
             continue
-        start = float(c.get("start_media_time") or c.get("start") or 0)
-        end = float(c.get("end_media_time") or c.get("end") or start)
+        start = _finite_time(c.get("start_media_time") or c.get("start") or 0)
+        end = _finite_time(c.get("end_media_time") or c.get("end") or start, start)
         source = str(c.get("source") or c.get("text") or "").strip()
         cue_id = str(c.get("id") or "").strip()
         text_source = str(c.get("text_source") or "yt")

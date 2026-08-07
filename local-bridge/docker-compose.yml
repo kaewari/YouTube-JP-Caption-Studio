@@ -12,7 +12,8 @@ services:
     image: yt-caption-bridge:local
     container_name: yt-caption-bridge
     ports:
-      - "8765:8765"
+      # Host loopback only — LAN devices must not reach the destructive API.
+      - "127.0.0.1:8765:8765"
     volumes:
       - ../data:/app/data
       - ../tools:/app/tools
@@ -24,8 +25,7 @@ services:
     mem_limit: 512m
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]
-      interval: 15s
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]      interval: 15s
       timeout: 5s
       retries: 3
       start_period: 90s

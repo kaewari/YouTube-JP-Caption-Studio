@@ -60,13 +60,17 @@ export function toUserVocabMap(words: SavedWord[]): UserVocabMap {
   return map;
 }
 
-/** Merge chrome.storage `userVocab` map into rich SavedWord rows (keep glosses). */
+/** Merge chrome.storage `userVocab` map into rich SavedWord rows (keep glosses).
+ *  Demo words appear only when there is no real vocabulary anywhere yet. */
 export function mergeUserVocabMap(
   prev: SavedWord[],
   map: UserVocabMap,
 ): SavedWord[] {
   const byLemma = new Map<string, SavedWord>();
-  for (const w of MOCK_SAVED_WORDS) byLemma.set(w.lemma, w);
+  const hasRealData = Object.keys(map).length > 0 || prev.length > 0;
+  if (!hasRealData) {
+    for (const w of MOCK_SAVED_WORDS) byLemma.set(w.lemma, w);
+  }
   for (const w of prev) byLemma.set(w.lemma, w);
 
   const next: SavedWord[] = [];
@@ -85,10 +89,6 @@ export function mergeUserVocabMap(
     }
   }
   return next;
-}
-
-function wordsFromUserVocabMap(map: UserVocabMap): SavedWord[] {
-  return mergeUserVocabMap([], map);
 }
 
 async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
@@ -167,7 +167,10 @@ export async function loadWordsAsync(): Promise<LoadResult> {
         return {
           words,
           source: "chrome.storage",
-          note: "chrome.storage.local · userVocab (live sync với dict / side panel)",
+          note:
+            words.length && Object.keys(map).length
+              ? "chrome.storage.local · userVocab (live sync với dict / side panel)"
+              : "Chưa có từ thật — demo seed (mock).",
         };
       }
       if (localRich.length) {

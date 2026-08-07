@@ -383,8 +383,26 @@ void loadSwState().then(() => {
   void pullExtensionStateFromBridge();
 });
 
+// Only endpoints the extension actually calls may go through this proxy — a
+// content-script bug must never reach delete/import/IME/backup routes.
+const BRIDGE_ALLOWLIST = [
+  { re: /^\/health$/, methods: ["GET"] },
+  { re: /^\/log$/, methods: ["POST"] },
+  { re: /^\/bootstrap$/, methods: ["POST"] },
+  { re: /^\/tokenize$/, methods: ["POST"] },
+  { re: /^\/tokenize_batch$/, methods: ["POST"] },
+  { re: /^\/dict$/, methods: ["POST"] },
+  { re: /^\/scripts\/save$/, methods: ["POST"] },
+  { re: /^\/scripts\/[A-Za-z0-9_-]{4,64}\/(meta|tokens)$/, methods: ["GET"] },
+  { re: /^\/scripts\/[A-Za-z0-9_-]{4,64}$/, methods: ["GET", "DELETE"] },
+];
+
 async function handleBridgeFetch(msg) {
   const { path, method = "GET", body, isForm } = msg;
+  const rule = BRIDGE_ALLOWLIST.find(
+    (r) => r.re.test(path) && r.methods.includes(method),
+  );
+  if (!rule) return { ok: false, error: "bridge_path_denied" };
   const url = `${BRIDGE}${path}`;
   const opts = { method };
   if (isForm && body) {
