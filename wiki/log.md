@@ -125,3 +125,12 @@ Sources:
 Wiki: [topics/plans-completion.md](topics/plans-completion.md), [index.md](index.md).
 
 Verdict: **product plans done**; polish + local-bridge audit remain open (no plan to execute audit).
+
+## [2026-08-08] lint | Codebase review topic audit
+
+Verified `wiki/topics/codebase-review-2026-08-07.md` claims on disk (AGENTS §2):
+H1/H2/H3/H6/H8, M1/M2/M3/M5/M6/M8, M9/M10 all present in source; bridge
+`python -m tests.test_script_store` passes; pytest fixture error on
+`test_script_store` confirmed pre-existing (matches Known open). No stale
+active rows; `sub-load-furigana-100ms` topic matches raw plan. Proceeded to
+implement T1–T5.
