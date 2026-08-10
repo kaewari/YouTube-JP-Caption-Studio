@@ -98,6 +98,13 @@
   /** Chrome blocked sidePanel.open — retry on next player gesture. */
   let pendingOpenSidePanel = false;
   let gestureOpenBound = false;
+  /** Performance: cached sorted cues + last index hint for O(1) amortized lookup */
+  let sortedCuesCache = null;
+  let sortedCuesGen = -1;
+  let lastCueIndex = 0;
+  /** Performance: dynamic tick interval based on playback state */
+  let tickIntervalMs = 250;
+  let isPlaying = false;
 
   /**
    * @typedef {{
@@ -399,6 +406,10 @@
       if (gen !== navigateGen || currentVideoId !== vid) return;
       transcriptMeta = emptyMeta();
       cues = mergeCache(normalized, [], transcriptMeta);
+      // Invalidate sorted cache on cues change
+      sortedCuesGen = -1;
+      sortedCuesCache = null;
+      lastCueIndex = 0;
       applyYtSecondaryFill(opts);
       listDirty = true;
       await syncToPlayhead();
@@ -423,6 +434,10 @@
       // Heal previously saved rolling-ASR overlaps (cache still had long ends).
       cues = CueTiming.clampCueEndsToNextStart(merged);
     }
+    // Invalidate sorted cache on cues change
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     applyYtSecondaryFill(opts);
     listDirty = true;
     // Align list/overlay to current playhead before first publish (mid-video open).
@@ -1342,6 +1357,10 @@
     captionsStatus = "ok";
     captionsInfo = `${reason} · ${fromScript.length} cues`;
     cues = fromScript;
+    // Invalidate sorted cache on script restore
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     listDirty = true;
     await syncToPlayhead();
     if (gen !== navigateGen || currentVideoId !== vid) return false;
@@ -2448,6 +2467,10 @@
       captionsStatus = "none";
       captionsInfo = "no_video_id";
       cues = [];
+      // Invalidate sorted cache on clear
+      sortedCuesGen = -1;
+      sortedCuesCache = null;
+      lastCueIndex = 0;
       listDirty = true;
       renderList(true);
       updateCaptionStatusLine();
@@ -2664,6 +2687,10 @@
     if (stale()) return;
 
     cues = [];
+    // Invalidate sorted cache on clear
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     listDirty = true;
     renderList(true);
     updateCaptionStatusLine();
@@ -3063,27 +3090,70 @@
   /**
    * Playhead match — hold through gaps until next cue starts (YT durations often end early).
    * Last cue: +150ms grace past end. Last match wins on ties. (iPad ScriptCue.active)
+   * OPTIMIZED: Uses cached sorted cues + binary search + index hint for O(log n) lookup.
    */
   function findActiveCue(mediaTime) {
     const t = Number(mediaTime) || 0;
     const grace = 0.15;
-    const live = cues
-      .slice()
-      .sort(
-        (a, b) =>
-          (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
+    
+    // Invalidate cache if cues changed
+    if (sortedCuesGen !== navigateGen || !sortedCuesCache) {
+      sortedCuesCache = cues.slice().sort(
+        (a, b) => (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
       );
-    let hit = null;
-    for (let i = 0; i < live.length; i++) {
-      const c = live[i];
+      sortedCuesGen = navigateGen;
+      lastCueIndex = 0;
+    }
+    
+    const live = sortedCuesCache;
+    if (!live.length) return null;
+    
+    // Fast path: check last active cue first (amortized O(1) for continuous playback)
+    if (lastCueIndex >= 0 && lastCueIndex < live.length) {
+      const c = live[lastCueIndex];
       const start = Number(c.start_media_time) || 0;
       const end = Number(c.end_media_time) || start;
-      const holdEnd =
-        i + 1 < live.length
-          ? Number(live[i + 1].start_media_time) || 0
-          : end + grace;
-      if (t >= start && t < holdEnd) hit = c;
+      const next = live[lastCueIndex + 1];
+      const holdEnd = next ? (Number(next.start_media_time) || 0) : end + grace;
+      if (t >= start && t < holdEnd) return c;
     }
+    
+    // Binary search for insertion point (find rightmost cue where start <= t)
+    let lo = 0, hi = live.length - 1;
+    let hit = null;
+    let bestIdx = -1;
+    
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const c = live[mid];
+      const start = Number(c.start_media_time) || 0;
+      
+      if (start <= t) {
+        bestIdx = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    
+    // Check candidate and neighbors for hold-through-gap logic
+    const candidates = [];
+    if (bestIdx >= 0) candidates.push(bestIdx);
+    if (bestIdx > 0) candidates.push(bestIdx - 1);
+    if (bestIdx + 1 < live.length) candidates.push(bestIdx + 1);
+    
+    for (const idx of candidates) {
+      const c = live[idx];
+      const start = Number(c.start_media_time) || 0;
+      const end = Number(c.end_media_time) || start;
+      const next = live[idx + 1];
+      const holdEnd = next ? (Number(next.start_media_time) || 0) : end + grace;
+      if (t >= start && t < holdEnd) {
+        hit = c;
+        lastCueIndex = idx;
+      }
+    }
+    
     return hit;
   }
 
@@ -3238,6 +3308,10 @@
       /* bridge offline — chrome.storage already cleared */
     }
     cues = [];
+    // Invalidate sorted cache on wipe
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     activeCueId = "";
     listDirty = true;
     updateBar(null);
@@ -3389,6 +3463,10 @@
 
     translatingIds.clear();
     cues = next;
+    // Invalidate sorted cache on import replace
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     activeCueId = null;
     transcriptMeta.tombstones = [];
     await markScriptOwned();
@@ -3622,6 +3700,20 @@
     const mediaTime = Number(mtRes?.mediaTime);
     if (!Number.isFinite(mediaTime)) return;
 
+    // Detect playback state for dynamic tick interval
+    const playerState = mtRes?.playerState || "";
+    const wasPlaying = isPlaying;
+    isPlaying = playerState === "playing" || playerState === "buffering";
+    
+    // Adjust tick interval based on playback state
+    // Paused: 1000ms (save CPU), Playing: 250ms (responsive), Buffering: 500ms
+    const targetInterval = !isPlaying ? 1000 : wasPlaying === isPlaying ? tickIntervalMs : 250;
+    if (targetInterval !== tickIntervalMs && loopTimer) {
+      tickIntervalMs = targetInterval;
+      clearInterval(loopTimer);
+      loopTimer = setInterval(tick, tickIntervalMs);
+    }
+
     const active = findActiveCue(mediaTime);
     const nextId = active?.id || "";
     if (nextId !== activeCueId) {
@@ -3640,7 +3732,8 @@
 
   function startLoop() {
     stopLoop();
-    loopTimer = setInterval(tick, 250);
+    // Start with default interval; dynamic adjustment happens in tick based on playback
+    loopTimer = setInterval(tick, tickIntervalMs);
     healthTimer = setInterval(syncHealth, 5000);
     syncHealth();
   }
@@ -3656,6 +3749,10 @@
     const gen = ++navigateGen;
     currentVideoId = videoIdFromUrl();
     cues = [];
+    // Invalidate sorted cache on navigate
+    sortedCuesGen = -1;
+    sortedCuesCache = null;
+    lastCueIndex = 0;
     activeCueId = "";
     translatingIds.clear();
     transcriptMeta = emptyMeta();

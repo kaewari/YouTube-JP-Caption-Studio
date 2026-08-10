@@ -1,29 +1,56 @@
-# OS / editor
+```
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+target/
+.gradle/
+
+# OS generated files
 .DS_Store
-.cursor/plans/
+Thumbs.db
 
-# Local verify / agent build dumps
-.tmp-*/
-.tmp-*.log
-.build-check/
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
 
-# Xcode
-ipad-app/build/
-iphone-app/build/
-**/xcuserdata/
-**/DerivedData/
-*.xcuserstate
-
-# Stray root bridge copy (canonical: youtube-jp-caption-studio/local-bridge/)
-/local-bridge/
-
-# macOS bridge app build product
-youtube-jp-caption-studio/macos-bridge-app/dist/
-
-# Bridge runtime noise
-youtube-jp-caption-studio/local-bridge/errors.log
-**/local-bridge/.bridge*.log
-**/local-bridge/.bridge.pid*
-
-# Local-only device / machine config
-youtube-jp-caption-studio/data/config/device_id.txt
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+```
