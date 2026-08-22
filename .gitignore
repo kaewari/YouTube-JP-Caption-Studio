@@ -79,6 +79,9 @@ scripts/*/
 web/saved-items/out/
 web/saved-items/.next/
 
+# Extension popup build output (built via `npm run build:extension` in web/saved-items/, copied — never commit)
+extension/popup/_next/
+
 # Temporary scripts and agent output
 patch_*.py
 rewrite_parsers.py

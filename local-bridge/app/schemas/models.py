@@ -54,6 +54,7 @@ class HealthResponse(BaseModel):
     caps: Caps = Field(default_factory=Caps)
     pressure: Literal["low", "high"] = "low"
     latency_p50_ms: float = 0.0
+    tokenize_batch_p95_ms: float = 0.0
     bootstrap: Optional[dict[str, Any]] = None
 
 

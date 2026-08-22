@@ -15,9 +15,9 @@
 <a id="english"></a>
 # 🇬🇧 English
 
-**YouTube JP Caption Studio** is a Language Reactor-style tool tailored for learning Japanese via YouTube. It is available as a **Chrome Extension** (Desktop) and **Native iPad / iPhone Apps**. It features Japanese timedtext interception, video overlays, a dedicated side panel for editing, furigana generation (via Sudachi on Desktop or Apple NaturalLanguage on iOS), JMdict dictionary integration (EN + VI glosses), JLPT-colored tokens, and manual EN–VI subtitle import/editing.
+**YouTube JP Caption Studio** is a Language Reactor-style tool tailored for learning Japanese via YouTube, ABEMA, and Netflix. It is available as a **Chrome Extension** (Desktop) and **Native iPad / iPhone Apps**. It features Japanese timedtext interception, video overlays, a dedicated side panel for editing, furigana generation (via Sudachi on Desktop or Apple NaturalLanguage on iOS), JMdict dictionary integration (EN + VI glosses), JLPT-colored tokens, and manual EN–VI subtitle import/editing.
 
-**No** OCR. **No** machine translation (NLLB / Opus / Gemini). Translations come from YouTube EN/VI tracks when available, Import, or manual edit — never auto-generated MT.
+**No** OCR. **No** machine translation (NLLB / Opus / Gemini). Translations come from YouTube/Netflix EN/VI tracks when available, Import, or manual edit — never auto-generated MT.
 
 ## 🌟 Key Features
 1. **Smart Captions**: Intercepts Japanese timedtext directly from YouTube, displaying them as an overlay on the video and in the Side Panel (JA / EN / VI toggles; EN+VI on by default). When the video also has EN/VI YouTube tracks, they are union-merged into cue rows (±0.35s; unmatched lines become orphan cues; Import/manual edits are never overwritten).
@@ -37,7 +37,7 @@ The project supports two completely different stacks to cover both Desktop and M
 Utilizes a decoupled architecture to bypass Chrome Extension limits and offload heavy NLP tasks.
 * **Chrome Extension (MV3)**: Handles YouTube DOM manipulation, timedtext interception, UI rendering, and state sync.
 * **Local Bridge (FastAPI `:8765`)**: The core engine written in Python. It handles NLP tokenization (Sudachi), dictionary lookups, local file I/O for subtitle storage, and macOS IME control.
-* **Next.js Web App (`:3000`)**: A dedicated application for managing saved items and vocabulary, exported as a static popup for the extension.
+* **Next.js Web App (`:3000`)**: A dedicated application for managing saved items and vocabulary, exported as a static popup for the extension. Settings (incl. JLPT level colors) open in a full tab from the side panel ⚙.
 
 ### 2. iPad / iPhone Architecture (Standalone SwiftUI)
 Native iOS apps (`ipad-app/`, sibling `iphone-app/`) providing core Desktop flows without a backend. Separate Bundle IDs so both can install side by side; dict/freq assets are symlinked from iPad Resources.
@@ -52,8 +52,8 @@ Native iOS apps (`ipad-app/`, sibling `iphone-app/`) providing core Desktop flow
 
 **1. Clone the repository**
 ```bash
-git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
-cd Translate-realtime-OCR-youtube-video
+git clone https://github.com/kaewari/YouTube-JP-Caption-Studio.git
+cd YouTube-JP-Caption-Studio
 ```
 
 **2. Start the Local Bridge**
@@ -128,8 +128,8 @@ OCR **不使用**。機械翻訳 **不使用**。翻訳は YouTube の EN/VI ト
 
 **1. リポジトリのクローン**
 ```bash
-git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
-cd Translate-realtime-OCR-youtube-video
+git clone https://github.com/kaewari/YouTube-JP-Caption-Studio.git
+cd YouTube-JP-Caption-Studio
 ```
 
 **2. ローカルブリッジの起動**
@@ -169,10 +169,10 @@ curl -s http://127.0.0.1:8765/health
 
 **YouTube JP Caption Studio** là công cụ học tiếng Nhật qua YouTube kiểu Language Reactor. Nền tảng: **Chrome Extension** (Desktop) và **Native iPad / iPhone App**. Hỗ trợ bắt timedtext JA, overlay, Side Panel, furigana (Sudachi / NaturalLanguage), từ điển JMdict (gloss **EN + VI**), tô màu theo JLPT, import/export EN–VI thủ công.
 
-**Không** dùng OCR. **Không** dùng dịch máy (NLLB / Opus / Gemini). Bản dịch lấy từ track EN/VI trên YouTube (nếu có), Import, hoặc sửa tay.
+**Không** dùng OCR. **Không** dùng dịch máy (NLLB / Opus / Gemini). Bản dịch lấy từ track EN/VI trên YouTube (nếu có), Import, hoặc sửa tay. Trên Desktop, extension cũng đọc phụ đề native của **ABEMA** và các web video khác (qua `<track>`/WebVTT/textTracks) — mọi tính năng còn lại giữ nguyên.
 
 ## 🌟 Tính năng chính
-1. **Phụ đề thông minh**: Bắt timedtext JA từ YouTube → overlay + Side Panel (toggle JA/EN/VI; EN+VI mặc định bật). Nếu video có track EN/VI trên YT thì union-merge (±0,35s; orphan thành cue mới; không ghi đè Import/sửa tay).
+1. **Phụ đề thông minh**: Bắt timedtext JA từ YouTube (và phụ đề native từ ABEMA / web video khác qua textTrack/WebVTT) → overlay + Side Panel (toggle JA/EN/VI; EN+VI mặc định bật). Nếu video có track EN/VI trên YouTube thì union-merge (±0,35s; orphan thành cue mới; không ghi đè Import/sửa tay).
 2. **Furigana & Từ điển**: JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + bridge `/dict`. iPad: `NLTagger` + `dict.sqlite`. Chạm/click từ → popup **VI + EN** và dịch câu của cue.
 3. **Tô màu JLPT / tần suất**: Token màu N5→N1 / unknown từ `freq_ja.json` (chung Desktop và iPad).
 4. **Từ vựng cá nhân**: Desktop đánh dấu Đã biết / Đang học / Bỏ qua / Đặc biệt. iPad: Lưu từ từ popup vào SwiftData (UI đánh dấu trạng thái vẫn ưu tiên Desktop).
@@ -202,8 +202,8 @@ Dự án được xây dựng với hai kiến trúc hoàn toàn khác nhau đ�
 
 **1. Clone Source Code**
 ```bash
-git clone https://github.com/kaewari/Translate-realtime-OCR-youtube-video.git
-cd Translate-realtime-OCR-youtube-video
+git clone https://github.com/kaewari/YouTube-JP-Caption-Studio.git
+cd YouTube-JP-Caption-Studio
 ```
 
 **2. Khởi chạy Local Bridge**

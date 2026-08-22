@@ -24,10 +24,6 @@
   const toastEl = document.getElementById("sp-toast");
   const overlayBtn = document.getElementById("sp-overlay");
   const followBtn = document.getElementById("sp-follow");
-  const levelDrawer = document.getElementById("sp-level-drawer");
-  const levelRowsEl = document.getElementById("sp-level-rows");
-  const levelPreviewEl = document.getElementById("sp-level-preview");
-  const levelEnabledEl = document.getElementById("sp-level-enabled");
 
   let state = {
     videoId: "",
@@ -45,14 +41,14 @@
     userVocab: {},
   };
 
-  /** Local mirror of level color settings (drawer edits → chrome.storage). */
+  /** Fallback mirror of JLPT colors (storage-level settings live in the
+   *  popup settings tab now; content SP_STATE carries the live values). */
   let levelSettings = {
     levelHighlightEnabled: true,
     levelColors: Vocab.normalizeLevelColors(Vocab.DEFAULT_LEVEL_COLORS),
   };
-  let levelSaveTimer = null;
-  let suppressLevelUi = false;
   let tabId = null;
+  let currentActiveTabId = null;
   let listDirty = true;
   /** Last accepted SP_STATE cue-list sequence (drop stale full payloads). */
   let lastCueSeq = 0;
@@ -176,7 +172,7 @@
     if (!hasCues) {
       emptyEl.textContent = state.videoId
         ? `Chưa có caption (${state.status || "…"})\nBấm Reload để tải lại.`
-        : "Mở tab YouTube đang phát video, rồi bấm icon extension để mở panel.";
+        : "Mở tab YouTube / ABEMA / Netflix đang phát video, rồi bấm icon extension để mở panel.";
     }
   }
 
@@ -191,28 +187,46 @@
     }, ms);
   }
 
+  async function syncActiveTab() {
+    try {
+      let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tabs?.length) {
+        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      }
+      const active = tabs?.[0];
+      if (active?.id != null && active.id !== currentActiveTabId) {
+        currentActiveTabId = active.id;
+        tabId = active.id;
+        // Request immediate state from the newly active tab
+        try {
+          await chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" });
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   async function resolveTabId() {
+    try {
+      let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tabs?.length) {
+        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      }
+      const active = tabs?.[0];
+      if (active?.id != null) {
+        currentActiveTabId = active.id;
+        tabId = active.id;
+        return tabId;
+      }
+    } catch (_) {}
+    if (currentActiveTabId != null) return currentActiveTabId;
     if (tabId != null) return tabId;
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const yt = (tabs || []).find((t) => /youtube\.com/.test(t.url || ""));
-    if (yt?.id != null) {
-      tabId = yt.id;
-      return tabId;
-    }
-    const all = await chrome.tabs.query({
-      url: ["https://www.youtube.com/*", "https://youtube.com/*"],
-    });
-    if (all?.[0]?.id != null) {
-      tabId = all[0].id;
-      return tabId;
-    }
     return null;
   }
 
   async function sendCmd(cmd, payload = {}) {
     const id = await resolveTabId();
     if (id == null) {
-      toast("Không thấy tab YouTube");
+      toast("Không thấy tab video (YouTube/ABEMA/Netflix)");
       return null;
     }
     try {
@@ -227,7 +241,7 @@
           payload,
         });
       } catch (e2) {
-        toast("Tab YouTube chưa sẵn — refresh trang");
+        toast("Tab chưa sẵn — refresh trang");
         return null;
       }
     }
@@ -324,7 +338,6 @@
     const hs = highlightSettingsFromState();
     if (Vocab.applyHighlightVars) {
       Vocab.applyHighlightVars(listEl, hs);
-      if (levelPreviewEl) Vocab.applyHighlightVars(levelPreviewEl, levelSettings);
     } else {
       Vocab.applyColorVars?.(listEl, state.vocabColors);
     }
@@ -350,96 +363,6 @@
       .join("");
   }
 
-  function syncLevelUiFromSettings() {
-    suppressLevelUi = true;
-    if (levelEnabledEl) {
-      levelEnabledEl.checked = levelSettings.levelHighlightEnabled !== false;
-    }
-    const colors = Vocab.normalizeLevelColors(levelSettings.levelColors);
-    levelSettings.levelColors = colors;
-    (Vocab.LEVEL_KEYS || []).forEach((key) => {
-      const onEl = document.getElementById(`sp-lvl-on-${key}`);
-      const colorEl = document.getElementById(`sp-lvl-color-${key}`);
-      if (onEl) onEl.checked = colors[key].on !== false;
-      if (colorEl) colorEl.value = colors[key].color;
-    });
-    refreshLevelPreview();
-    suppressLevelUi = false;
-  }
-
-  function refreshLevelPreview() {
-    if (!levelPreviewEl) return;
-    levelPreviewEl.innerHTML = Vocab.renderLevelPreviewHtml?.(true) || "";
-    Vocab.applyHighlightVars?.(levelPreviewEl, levelSettings);
-  }
-
-  function buildLevelRows() {
-    if (!levelRowsEl) return;
-    const labels = Vocab.LEVEL_LABELS || {};
-    const colors = Vocab.normalizeLevelColors(levelSettings.levelColors);
-    levelRowsEl.innerHTML = (Vocab.LEVEL_KEYS || [])
-      .map((key) => {
-        const entry = colors[key];
-        const label = labels[key] || key.toUpperCase();
-        return `
-          <div class="sp-level-row" data-level="${key}">
-            <label class="sp-toggle" title="Bật/tắt">
-              <input type="checkbox" id="sp-lvl-on-${key}" ${entry.on ? "checked" : ""} />
-              <span class="sp-toggle-track"></span>
-            </label>
-            <span class="sp-level-label">${escapeHtml(label)}</span>
-            <input type="color" id="sp-lvl-color-${key}" value="${escapeAttr(entry.color)}" title="Màu" />
-          </div>`;
-      })
-      .join("");
-
-    levelRowsEl.querySelectorAll("input").forEach((inp) => {
-      inp.addEventListener("change", onLevelUiChange);
-      if (inp.type === "color") inp.addEventListener("input", onLevelUiChange);
-    });
-  }
-
-  function readLevelUiIntoSettings() {
-    const colors = {};
-    (Vocab.LEVEL_KEYS || []).forEach((key) => {
-      const onEl = document.getElementById(`sp-lvl-on-${key}`);
-      const colorEl = document.getElementById(`sp-lvl-color-${key}`);
-      colors[key] = {
-        on: onEl ? !!onEl.checked : true,
-        color: colorEl?.value || Vocab.DEFAULT_LEVEL_COLORS?.[key]?.color || "#c5c5d0",
-      };
-    });
-    levelSettings = {
-      levelHighlightEnabled: levelEnabledEl ? !!levelEnabledEl.checked : true,
-      levelColors: Vocab.normalizeLevelColors(colors),
-    };
-  }
-
-  function onLevelUiChange() {
-    if (suppressLevelUi) return;
-    readLevelUiIntoSettings();
-    refreshLevelPreview();
-    scheduleSaveLevelSettings();
-  }
-
-  function scheduleSaveLevelSettings() {
-    clearTimeout(levelSaveTimer);
-    levelSaveTimer = setTimeout(saveLevelSettings, 200);
-  }
-
-  async function saveLevelSettings() {
-    const prev = (await chrome.storage.local.get("hardsubSettings")).hardsubSettings || {};
-    const next = {
-      ...prev,
-      levelHighlightEnabled: levelSettings.levelHighlightEnabled !== false,
-      levelColors: Vocab.normalizeLevelColors(levelSettings.levelColors),
-    };
-    await chrome.storage.local.set({ hardsubSettings: next });
-    state.levelHighlightEnabled = next.levelHighlightEnabled;
-    state.levelColors = next.levelColors;
-    applyListHighlightVars();
-  }
-
   async function loadLevelSettings() {
     const data = await chrome.storage.local.get("hardsubSettings");
     const s = data.hardsubSettings || {};
@@ -451,13 +374,7 @@
     };
     state.levelHighlightEnabled = levelSettings.levelHighlightEnabled;
     state.levelColors = levelSettings.levelColors;
-    syncLevelUiFromSettings();
     applyListHighlightVars();
-  }
-
-  function setLevelDrawerOpen(open) {
-    if (!levelDrawer) return;
-    levelDrawer.hidden = !open;
   }
 
   /** Pin row flush under list top via scrollTop (avoids scrollIntoView ancestor / no-op). */
@@ -689,14 +606,8 @@
       bridgeP = Promise.resolve(requestOsIme("activate"));
     }
     try {
-      const nudge = ensureImeNudge();
-      nudge.focus({ preventScroll: true });
       el.focus({ preventScroll: true });
-    } catch (_) {
-      try {
-        el.focus({ preventScroll: true });
-      } catch (__) {}
-    }
+    } catch (_) {}
     bridgeP.finally(release);
     setTimeout(() => {
       imeActivating = false;
@@ -723,30 +634,43 @@
     editPrevLang = null;
   }
 
-  function bindJaDictHandlers(jaEl) {
-    jaEl.querySelectorAll("ruby, .tok").forEach((tok) => {
-      tok.addEventListener("mouseenter", (e) => {
-        clearSpDictHideTimer();
-        showDict(e, tok);
-      });
-      tok.addEventListener("mouseleave", (e) => {
-        const related = e.relatedTarget;
-        // Moving to another token in the same JA line — let mouseenter take over.
-        if (
-          related &&
-          related.nodeType === 1 &&
-          related.closest?.("ruby, .tok") &&
-          related.closest?.(".sp-ja-view, .sp-ja")
-        ) {
-          return;
-        }
-        scheduleHideDict();
-      });
-      tok.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showDict(e, tok);
-      });
+  function tokenFromEventTarget(target) {
+    const el = target?.nodeType === 1 ? target : target?.parentElement;
+    return el?.closest?.("ruby.tok, ruby, .tok") || null;
+  }
+
+  /** Delegated — survives patchRow innerHTML (per-token listeners do not). */
+  function ensureDictDelegate() {
+    if (listEl.dataset.dictDelegate === "1") return;
+    listEl.dataset.dictDelegate = "1";
+    // mouseover/out bubble; mouseenter/leave do not.
+    listEl.addEventListener("mouseover", (e) => {
+      const tok = tokenFromEventTarget(e.target);
+      if (!tok || !listEl.contains(tok)) return;
+      const from = tokenFromEventTarget(e.relatedTarget);
+      if (from === tok) return;
+      clearSpDictHideTimer();
+      showDict(e, tok);
     });
+    listEl.addEventListener("mouseout", (e) => {
+      const tok = tokenFromEventTarget(e.target);
+      if (!tok || !listEl.contains(tok)) return;
+      const to = tokenFromEventTarget(e.relatedTarget);
+      if (to && listEl.contains(to)) return;
+      scheduleHideDict();
+    });
+    listEl.addEventListener("click", (e) => {
+      const tok = tokenFromEventTarget(e.target);
+      if (!tok || !listEl.contains(tok)) return;
+      e.stopPropagation();
+      showDict(e, tok);
+    });
+  }
+
+  function bindJaDictHandlers(jaEl) {
+    ensureDictDelegate();
+    // no-op keep call sites; delegation on listEl covers all rows.
+    void jaEl;
   }
 
   /** Restore last-committed JA display (plain or ruby) — no MT. */
@@ -879,20 +803,9 @@
     });
     el.addEventListener("compositionend", () => {
       composing = false;
-      // OS IME committed — if Chrome still left Latin syllables, convert them.
-      applyRomajiFallback(el);
-    });
-    el.addEventListener("input", (e) => {
-      if (composing || e.isComposing || el.dataset.skipRomaji === "1") return;
-      applyRomajiFallback(el);
-    });
-    // keyup catches inserts that skipped input composition flags (ABC under JA source).
-    el.addEventListener("keyup", (e) => {
-      if (composing || e.isComposing || e.keyCode === 229) return;
-      applyRomajiFallback(el);
     });
     el.addEventListener("keydown", (e) => {
-      if (e.isComposing || e.keyCode === 229) return;
+      if (e.isComposing || composing || e.keyCode === 229) return;
       if (e.key === "Escape") {
         e.preventDefault();
         commitOnEnter = false;
@@ -901,8 +814,6 @@
       }
       if (e.key !== "Enter") return;
       e.preventDefault();
-      // Flush pending romaji (e.g. trailing "n") before commit.
-      applyRomajiFallback(el);
       commitOnEnter = true;
       commitJaEdit(el);
       restoreIme(el);
@@ -1047,6 +958,136 @@
     if (scroll && !isEditingAny()) scrollActiveIntoView();
   }
 
+  function cueSig(cue, idx) {
+    const toks = cue.tokens || [];
+    // Include jlpt/freq so enrich → colored ruby re-patches (length alone is stale).
+    const tokFp = toks
+      .map((t) => `${t.jlpt ?? ""}:${t.freq_rank ?? ""}`)
+      .join(",");
+    return [
+      cue.id,
+      String(cue.source || ""),
+      toks.length,
+      tokFp,
+      stripStub(cue.en),
+      stripStub(cue.vi),
+      Number(cue.start_media_time) || 0,
+      Number(cue.end_media_time) || 0,
+      idx,
+    ].join("|");
+  }
+
+  function rowTemplate(cue, idx) {
+    const activeId = state.activeCueId;
+    const en = stripStub(cue.en);
+    const vi = stripStub(cue.vi);
+    const t0 = Timing.formatTimeInput(cue.start_media_time);
+    const t1 = Timing.formatTimeInput(cue.end_media_time);
+    const isActive = cue.id === activeId;
+    return `
+      <div class="sp-meta">
+        <button type="button" class="sp-play" data-t="${cue.start_media_time}" title="Play">▶</button>
+        <span class="sp-times" title="Chỉnh timeline — Enter để lưu">
+          <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t0)}" aria-label="Start" />
+          <span class="sp-t-sep">–</span>
+          <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t1)}" aria-label="End" />
+        </span>
+        <button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm cue sau">+</button>
+        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa cue">×</button>
+        <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}">Copy</button>
+        <details class="sp-copy-menu">
+          <summary>⋮</summary>
+          <div>
+            <button type="button" data-copy="ja" data-id="${escapeAttr(cue.id)}">Chỉ JA</button>
+            <button type="button" data-copy="vi" data-id="${escapeAttr(cue.id)}">Chỉ VI</button>
+            <button type="button" data-copy="ja_vi" data-id="${escapeAttr(cue.id)}">JA+VI</button>
+            <button type="button" data-copy="full" data-id="${escapeAttr(cue.id)}">Full</button>
+          </div>
+        </details>
+      </div>
+      <div class="sp-now-playing" aria-hidden="${isActive ? "false" : "true"}">ĐANG PHÁT</div>
+      <div class="sp-ja-wrap" data-idx="${idx}" tabindex="0">
+        <div class="sp-ja-view">${
+          cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)
+        }</div>
+      </div>
+      <div class="sp-vi" contenteditable="true" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="VI">${escapeHtml(vi || "")}</div>
+      <div class="sp-en" contenteditable="true" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="EN">${escapeHtml(en || "")}</div>
+    `;
+  }
+
+  function patchRow(row, cue, idx, sig) {
+    row.dataset.sig = sig;
+    row.dataset.idx = String(idx);
+    row.querySelectorAll("[data-idx]").forEach((el) => {
+      el.dataset.idx = String(idx);
+    });
+    const view = row.querySelector(".sp-ja-view");
+    if (view) {
+      view.innerHTML = cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source);
+      // innerHTML wiped per-token listeners from the previous bind.
+      bindJaDictHandlers(view);
+    }
+    const vi = row.querySelector(".sp-vi");
+    if (vi) vi.innerHTML = escapeHtml(stripStub(cue.vi) || "");
+    const en = row.querySelector(".sp-en");
+    if (en) en.innerHTML = escapeHtml(stripStub(cue.en) || "");
+    const t0 = row.querySelector(".sp-t-start");
+    if (t0) t0.value = Timing.formatTimeInput(cue.start_media_time);
+    const t1 = row.querySelector(".sp-t-end");
+    if (t1) t1.value = Timing.formatTimeInput(cue.end_media_time);
+  }
+
+  function bindRowHandlers(row) {
+    const wrap = row.querySelector(".sp-ja-wrap");
+    if (wrap) bindJaEditHandlers(wrap);
+    const view = row.querySelector(".sp-ja-view");
+    if (view) bindJaDictHandlers(view);
+    const vi = row.querySelector(".sp-vi");
+    if (vi) bindLangEditHandlers(vi, "vi");
+    const en = row.querySelector(".sp-en");
+    if (en) bindLangEditHandlers(en, "en");
+    bindTimelineHandlers(row);
+  }
+
+  let listDelegateBound = false;
+  function ensureListDelegate() {
+    if (listDelegateBound) return;
+    listDelegateBound = true;
+    ensureDictDelegate();
+    listEl.addEventListener("click", (e) => {
+      const btn = e.target.closest(
+        ".sp-play, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del"
+      );
+      if (!btn || !listEl.contains(btn)) return;
+      if (btn.classList.contains("sp-play")) {
+        setFollowTimeline(true);
+        sendCmd("play", { mediaTime: Number(btn.dataset.t) });
+      } else if (btn.classList.contains("sp-copy")) {
+        copyCueById(btn.dataset.id, "full");
+      } else if (btn.matches(".sp-copy-menu button")) {
+        copyCueById(btn.dataset.id, btn.dataset.copy || "full");
+      } else if (btn.classList.contains("sp-add-after")) {
+        void (async () => {
+          const r = await sendCmd("add_cue", { afterId: btn.dataset.id });
+          if (r?.ok && r.id) {
+            toast("Đã thêm cue");
+            // Focus new JA row after next state push.
+            setTimeout(() => {
+              const row = listEl.querySelector(`.sp-sentence[data-id="${CSS.escape(r.id)}"] .sp-ja-wrap`);
+              row?.click();
+            }, 120);
+          }
+        })();
+      } else if (btn.classList.contains("sp-del")) {
+        void (async () => {
+          if (!confirm("Xóa cue này?")) return;
+          await sendCmd("delete_cue", { id: btn.dataset.id });
+        })();
+      }
+    });
+  }
+
   function renderList(force = false) {
     if (isEditingAny()) {
       pendingListRender = true;
@@ -1065,91 +1106,32 @@
     const hadRows = listEl.children.length > 0;
     const activeId = state.activeCueId;
     applyListHighlightVars();
-    listEl.innerHTML = "";
+    ensureListDelegate();
+    const byId = new Map();
+    for (const row of listEl.querySelectorAll(".sp-sentence")) {
+      byId.set(row.dataset.id, row);
+    }
+    const newIds = new Set(cues.map((c) => c.id));
+    for (const [id, row] of byId) {
+      if (!newIds.has(id)) row.remove();
+    }
     cues.forEach((cue, idx) => {
-      const row = document.createElement("div");
-      row.className = "sp-sentence" + (cue.id === activeId ? " active" : "");
-      row.dataset.id = cue.id;
-      row.dataset.idx = String(idx);
-      const en = stripStub(cue.en);
-      const vi = stripStub(cue.vi);
-      const t0 = Timing.formatTimeInput(cue.start_media_time);
-      const t1 = Timing.formatTimeInput(cue.end_media_time);
-      const isActive = cue.id === activeId;
-      row.innerHTML = `
-        <div class="sp-meta">
-          <button type="button" class="sp-play" data-t="${cue.start_media_time}" title="Play">▶</button>
-          <span class="sp-times" title="Chỉnh timeline — Enter để lưu">
-            <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t0)}" aria-label="Start" />
-            <span class="sp-t-sep">–</span>
-            <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t1)}" aria-label="End" />
-          </span>
-          <button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm cue sau">+</button>
-          <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa cue">×</button>
-          <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}">Copy</button>
-          <details class="sp-copy-menu">
-            <summary>⋮</summary>
-            <div>
-              <button type="button" data-copy="ja" data-id="${escapeAttr(cue.id)}">Chỉ JA</button>
-              <button type="button" data-copy="vi" data-id="${escapeAttr(cue.id)}">Chỉ VI</button>
-              <button type="button" data-copy="ja_vi" data-id="${escapeAttr(cue.id)}">JA+VI</button>
-              <button type="button" data-copy="full" data-id="${escapeAttr(cue.id)}">Full</button>
-            </div>
-          </details>
-        </div>
-        <div class="sp-now-playing" aria-hidden="${isActive ? "false" : "true"}">ĐANG PHÁT</div>
-        <div class="sp-ja-wrap" data-idx="${idx}" tabindex="0">
-          <div class="sp-ja-view">${
-            cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)
-          }</div>
-        </div>
-        <div class="sp-vi" contenteditable="true" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="VI">${escapeHtml(vi || "")}</div>
-        <div class="sp-en" contenteditable="true" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="EN">${escapeHtml(en || "")}</div>
-      `;
-      listEl.appendChild(row);
+      const sig = cueSig(cue, idx);
+      const row = byId.get(cue.id);
+      if (row) {
+        if (row.dataset.sig !== sig) patchRow(row, cue, idx, sig);
+        row.classList.toggle("active", cue.id === activeId);
+        return;
+      }
+      const el = document.createElement("div");
+      el.className = "sp-sentence" + (cue.id === activeId ? " active" : "");
+      el.dataset.id = cue.id;
+      el.dataset.idx = String(idx);
+      el.dataset.sig = sig;
+      el.innerHTML = rowTemplate(cue, idx);
+      bindRowHandlers(el);
+      listEl.appendChild(el);
     });
-
-    listEl.querySelectorAll(".sp-play").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        setFollowTimeline(true);
-        sendCmd("play", { mediaTime: Number(btn.dataset.t) });
-      });
-    });
-    listEl.querySelectorAll(".sp-copy").forEach((btn) => {
-      btn.addEventListener("click", () => copyCueById(btn.dataset.id, "full"));
-    });
-    listEl.querySelectorAll(".sp-copy-menu button").forEach((btn) => {
-      btn.addEventListener("click", () =>
-        copyCueById(btn.dataset.id, btn.dataset.copy || "full")
-      );
-    });
-    listEl.querySelectorAll(".sp-add-after").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const r = await sendCmd("add_cue", { afterId: btn.dataset.id });
-        if (r?.ok && r.id) {
-          toast("Đã thêm cue");
-          // Focus new JA row after next state push.
-          setTimeout(() => {
-            const row = listEl.querySelector(`.sp-sentence[data-id="${CSS.escape(r.id)}"] .sp-ja-wrap`);
-            row?.click();
-          }, 120);
-        }
-      });
-    });
-    listEl.querySelectorAll(".sp-del").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        if (!confirm("Xóa cue này?")) return;
-        await sendCmd("delete_cue", { id: btn.dataset.id });
-      });
-    });
-    listEl.querySelectorAll(".sp-ja-wrap").forEach((el) => {
-      bindJaEditHandlers(el);
-      const view = el.querySelector(".sp-ja-view");
-      if (view) bindJaDictHandlers(view);
-    });
-    listEl.querySelectorAll(".sp-vi").forEach((el) => bindLangEditHandlers(el, "vi"));
-    listEl.querySelectorAll(".sp-en").forEach((el) => bindLangEditHandlers(el, "en"));
-    listEl.querySelectorAll(".sp-sentence").forEach((row) => bindTimelineHandlers(row));
 
     ignoreScrollEvent = true;
     listEl.scrollTop = scrollKeep;
@@ -1379,7 +1361,7 @@
   document.getElementById("sp-wipe-script")?.addEventListener("click", async () => {
     if (
       !confirm(
-        "Xóa toàn bộ sub/script đã lưu của video này và tải lại từ YouTube?\n(Mất chỉnh sửa JA/timeline, bản dịch và cache)"
+        "Xóa toàn bộ sub/script đã lưu của video này và tải lại từ nguồn?\n(Mất chỉnh sửa JA/timeline, bản dịch và cache)"
       )
     ) {
       return;
@@ -1524,30 +1506,26 @@
   });
 
   document.getElementById("sp-settings").addEventListener("click", () => {
-    const open = levelDrawer?.hidden !== false;
-    setLevelDrawerOpen(open);
-    if (open) syncLevelUiFromSettings();
-  });
-  document.getElementById("sp-level-close")?.addEventListener("click", () => {
-    setLevelDrawerOpen(false);
-  });
-  levelEnabledEl?.addEventListener("change", onLevelUiChange);
-  document.getElementById("sp-level-reset")?.addEventListener("click", () => {
-    levelSettings = {
-      levelHighlightEnabled: true,
-      levelColors: Vocab.normalizeLevelColors(Vocab.DEFAULT_LEVEL_COLORS),
-    };
-    syncLevelUiFromSettings();
-    scheduleSaveLevelSettings();
-  });
-  document.getElementById("sp-open-popup")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    chrome.tabs.create({ url: chrome.runtime.getURL("popup/popup.html") });
+    // Coloring + settings live in the popup settings tab (full-width page).
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("popup/popup.html") + "?v=settings",
+    });
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "SP_STATE") {
-      if (msg.tabId != null) tabId = msg.tabId;
+      if (currentActiveTabId == null && msg.tabId != null) {
+        currentActiveTabId = msg.tabId;
+        tabId = msg.tabId;
+      }
+      // Drop background tab broadcasts only when both tab IDs are known and mismatched
+      if (msg.tabId != null && currentActiveTabId != null && msg.tabId !== currentActiveTabId) {
+        return;
+      }
+      if (msg.tabId != null) {
+        tabId = msg.tabId;
+        currentActiveTabId = msg.tabId;
+      }
       applyState(msg.payload || {}, { forceList: !!msg.forceList });
     }
     if (msg?.type === "SP_CLOSE") {
@@ -1557,6 +1535,22 @@
     }
     if (msg?.type === "DRIVE_STATUS_CHANGED") {
       setDriveStatus(msg.status || "");
+    }
+  });
+
+  chrome.tabs?.onActivated?.addListener?.(async (activeInfo) => {
+    if (activeInfo?.tabId != null) {
+      currentActiveTabId = activeInfo.tabId;
+      tabId = activeInfo.tabId;
+      try {
+        await chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" });
+      } catch (_) {}
+    }
+  });
+
+  chrome.windows?.onFocusChanged?.addListener?.(async (windowId) => {
+    if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+      await syncActiveTab();
     }
   });
 
@@ -1582,7 +1576,6 @@
     if (s.vocabLevel != null) state.vocabLevel = s.vocabLevel;
     if (typeof s.showKnownGreen === "boolean") state.showKnownGreen = s.showKnownGreen;
     if (typeof s.hideRareWords === "boolean") state.hideRareWords = s.hideRareWords;
-    syncLevelUiFromSettings();
     applyListHighlightVars();
     // Level colors are CSS-var only; re-render when status-class settings change.
     const prev = changes.hardsubSettings.oldValue || {};
@@ -1599,7 +1592,6 @@
   });
 
   syncFollowBtn();
-  buildLevelRows();
 
   // Ask content for current state on open; pull Drive → bridge if newer.
   (async () => {
@@ -1609,13 +1601,13 @@
     setStatus("Đang kết nối…");
     const id = await resolveTabId();
     if (id == null) {
-      setStatus("Chưa có tab YouTube");
+      setStatus("Chưa có tab video hỗ trợ");
       return;
     }
     try {
-      await chrome.tabs.sendMessage(id, { type: "SP_CMD", cmd: "ping" });
+      await chrome.tabs.sendMessage(id, { type: "SP_CMD", cmd: "get_state" });
     } catch {
-      setStatus("Refresh tab YouTube rồi mở lại panel");
+      setStatus("Refresh tab rồi mở lại panel");
     }
   })();
 })();

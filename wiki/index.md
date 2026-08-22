@@ -14,13 +14,17 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/local-bridge-audit.md](topics/local-bridge-audit.md) | Bridge audit 2026-08-06 — **10/10 findings còn ALIVE, chưa fix** |
 | [topics/plans-completion.md](topics/plans-completion.md) | Inventory 17 plans — **product plans done / YAGNI cancelled** (2026-08-07) |
 | [topics/codebase-review-2026-08-07.md](topics/codebase-review-2026-08-07.md) | Full source review — **closed** (2026-08-07): C1/H1–H8/M1–M10 all fixed |
-| [topics/sub-load-furigana-100ms.md](topics/sub-load-furigana-100ms.md) | Sub load nhanh + furigana/level ≤100 ms — **plan filed, chưa làm** (2026-08-08) |
+| [topics/sub-load-furigana-100ms.md](topics/sub-load-furigana-100ms.md) | Sub load nhanh + furigana/level ≤100 ms — **done** (T1–T5 verified 2026-08-20) |
+| [topics/netflix-support.md](topics/netflix-support.md) | Netflix subtitle support (DFXP/TTML + player hooks) — **shipped** (2026-08-19) |
+| [topics/vietnamese-caption-loading.md](topics/vietnamese-caption-loading.md) | VI caption load fixes + Netflix parallel fetch — **shipped code, chờ test thật** (2026-08-21) |
+| [topics/codebase-improvements-2026-08-22.md](topics/codebase-improvements-2026-08-22.md) | Codebase improvement plan (behavior-preserving) — **open** (2026-08-22) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
 
 | Status | Topic | Plan | Review |
 |--------|-------|------|--------|
+| done | Netflix Caption Support & Replay | [plan/netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md) | [review/netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md) |
 | done | Plans completion inventory | all `plan/*.md` | [review/plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md) |
 | open | Local-bridge audit (10/10 ALIVE, chưa fix — no plan) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
 | done | Full codebase review 2026-08-07 (C1, H1–H8, M1–M10 fixed) | — | [review/codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md) |
@@ -28,6 +32,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | done | P0 data-loss (cue-merge) | [plan/p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md) | [review/p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md) |
 | done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
 | source | Full codebase review (Fable) | — | [review/codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md) |
+| open | Codebase improvements 2026-08-22 (behavior-preserving) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
 
 ## Raw catalogs (immutable)
 
@@ -45,6 +50,10 @@ Do not rewrite these from the wiki. Link only.
 - [iphone-app-normalized-2026-08-02.md](../plan/iphone-app-normalized-2026-08-02.md)
 - [master-caption-translate-2026-07-28.md](../plan/master-caption-translate-2026-07-28.md)
 - [multi-agent-review-plan-2026-07-29.md](../plan/multi-agent-review-plan-2026-07-29.md)
+- [netflix-caption-fixes-2026-08-19.md](../plan/netflix-caption-fixes-2026-08-19.md)
+- [netflix-caption-support-2026-08-19.md](../plan/netflix-caption-support-2026-08-19.md)
+- [netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md)
+- [vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
 - [next-prev-settings-drive-2026-08-02.md](../plan/next-prev-settings-drive-2026-08-02.md)
 - [normalize-docs-and-errors-2026-08-02.md](../plan/normalize-docs-and-errors-2026-08-02.md)
 - [overlay-multi-sub-2026-08-02.md](../plan/overlay-multi-sub-2026-08-02.md)
@@ -52,6 +61,7 @@ Do not rewrite these from the wiki. Link only.
 - [p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md)
 - [timeline-yt-multi-sub-2026-08-02.md](../plan/timeline-yt-multi-sub-2026-08-02.md)
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
+- [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
 
 ### Reviews (`review/`)
 
@@ -69,6 +79,7 @@ Do not rewrite these from the wiki. Link only.
 - [local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md)
 - [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
 - [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
+- [netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md)
 
 ## Open gaps (from Fable review, not in closed P0)
 

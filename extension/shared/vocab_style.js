@@ -231,8 +231,11 @@
   function tokensNeedEnrich(cue) {
     const toks = cue?.tokens || [];
     if (!toks.length) return true;
-    // New bridge always sends freq_rank key (null or number) and pos; jlpt optional.
-    return !Object.prototype.hasOwnProperty.call(toks[0], "freq_rank");
+    const content = toks.filter(isContentWord);
+    if (!content.length) return false;
+    // Bootstrap cache: freq_rank key present-but-null + no jlpt → still enrich.
+    // Don't key off toks[0] alone (often a particle with null forever).
+    return content.every((t) => t.freq_rank == null && !t.jlpt);
   }
 
   function escapeHtml(s) {

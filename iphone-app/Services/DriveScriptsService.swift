@@ -343,11 +343,8 @@ enum DriveScriptsService {
                     "source": cue.textJA,
                     "en": en,
                     "vi": vi,
-                    "tokens": [],
                     "translated": !(en.isEmpty && vi.isEmpty),
                     "text_source": "manual",
-                    "mt_locked": false,
-                    "translation_source": "",
                 ])
                 changed = true
                 continue
@@ -443,11 +440,8 @@ enum DriveScriptsService {
                 "source": cue.textJA,
                 "en": en,
                 "vi": vi,
-                "tokens": [],
                 "translated": !(en.isEmpty && vi.isEmpty),
                 "text_source": "manual",
-                "mt_locked": false,
-                "translation_source": "",
             ]
         }
         row["start_media_time"] = startSec
@@ -560,7 +554,9 @@ enum DriveScriptsSmoke {
         assert(cues?[0]["translation_source"] as? String == "import", "translation_source preserved")
         assert(cues?[0]["text_source"] as? String == "yt", "text_source preserved")
         assert(cues?[1]["id"] as? String == "new", "new cue kept in start order")
-        assert((cues?[1]["tokens"] as? [Any])?.isEmpty == true, "new cue gets empty tokens")
+        assert(cues?[1]["tokens"] == nil, "new cue has no tokens")
+        assert(cues?[1]["mt_locked"] == nil, "new cue has no mt_locked")
+        assert(cues?[1]["translation_source"] == nil, "new cue has no translation_source")
         assert(abs(DriveScriptsService.double(cues?[1]["start_media_time"]) - 5.0) < 1e-9, "ms → sec on write")
         assert((patched?["meta"] as? [String: Any])?["rev"] as? Int == 5, "untouched keys ride along")
 

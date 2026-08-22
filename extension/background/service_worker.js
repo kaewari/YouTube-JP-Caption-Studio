@@ -14,38 +14,69 @@ async function ensureBridgePollAlarm() {
   } catch (_) {}
 }
 
-/** Icon click opens Saved Items popup; side panel via DỊCH toggle / OPEN_SIDE_PANEL. */
+/** Icon click opens side panel; Saved Items popup accessible via side panel. */
 chrome.runtime.onInstalled.addListener(async () => {
   try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (_) {}
   await ensureBridgePollAlarm();
 });
 
 chrome.runtime.onStartup?.addListener?.(async () => {
   try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (_) {}
   await ensureBridgePollAlarm();
 });
 
-// Enable side panel on YouTube tabs (Chrome native right panel — does not cover the page).
-chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
-  if (!tab.url) return;
+/** Site families the extension supports (content scripts + side panel gate). */
+function isSupportedUrl(url) {
   try {
-    const url = new URL(tab.url);
-    const onYt = url.hostname === "www.youtube.com" || url.hostname === "youtube.com";
+    const u = new URL(url || "");
+    const h = u.hostname;
+    if (h === "www.youtube.com" || h === "youtube.com") return true;
+    if (h === "abema.tv" || h.endsWith(".abema.tv")) return true;
+    if (h === "www.netflix.com" || h === "netflix.com" || h.endsWith(".netflix.com")) return true;
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Enable side panel only on supported sites; disable (+ close) everywhere else. */
+async function syncSidePanelForTab(tabId, url) {
+  if (tabId == null) return;
+  const onSupported = isSupportedUrl(url);
+  try {
     await chrome.sidePanel.setOptions({
       tabId,
       path: "sidepanel/sidepanel.html",
-      enabled: onYt,
+      enabled: onSupported,
     });
+  } catch (_) {}
+  if (!onSupported) {
+    try {
+      await closeSidePanel(tabId);
+    } catch (_) {}
+  }
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
+  if (!tab.url) return;
+  await syncSidePanelForTab(tabId, tab.url);
+});
+
+// onUpdated misses plain tab switches — close panel when leaving YouTube.
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await syncSidePanelForTab(tabId, tab?.url);
   } catch (_) {}
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "BRIDGE_FETCH") {
-    handleBridgeFetch(msg).then(sendResponse).catch((err) =>
+    handleBridgeFetch(msg, sender).then(sendResponse).catch((err) =>
       sendResponse({ ok: false, error: String(err) })
     );
     return true;
@@ -222,7 +253,7 @@ async function imeViaNative(cmd) {
 }
 
 try {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 } catch (_) {}
 
 /** Mirror chrome.storage → bridge so localhost:3000 Saved Items can poll. */
@@ -263,19 +294,17 @@ async function pushExtensionStateToBridge() {
   if (_applyingBridgeState) return;
   try {
     const data = await chrome.storage.local.get(["userVocab", "hardsubSettings"]);
-    const body = {
-      userVocab:
-        data.userVocab && typeof data.userVocab === "object" ? data.userVocab : {},
-      hardsubSettings:
-        data.hardsubSettings && typeof data.hardsubSettings === "object"
-          ? data.hardsubSettings
-          : null,
-      source: "extension",
-    };
-    const j = JSON.stringify({
-      userVocab: body.userVocab,
-      hardsubSettings: body.hardsubSettings,
-    });
+    const body = {};
+    // Never push a missing key over a non-empty bridge — an empty/fresh local
+    // store must not wipe the bridge's vocab copy (see pull-first at startup).
+    if (data.userVocab && typeof data.userVocab === "object") {
+      body.userVocab = data.userVocab;
+    }
+    if (data.hardsubSettings && typeof data.hardsubSettings === "object") {
+      body.hardsubSettings = data.hardsubSettings;
+    }
+    body.source = "extension";
+    const j = JSON.stringify(body);
     if (j === _lastPushedJson) return;
     const res = await fetch(`${BRIDGE}/extension_state`, {
       method: "POST",
@@ -335,8 +364,8 @@ async function pullExtensionStateFromBridge() {
     try {
       await chrome.storage.local.set(patch);
       _lastPushedJson = JSON.stringify({
-        userVocab: patch.userVocab ?? local.userVocab ?? {},
-        hardsubSettings: patch.hardsubSettings ?? local.hardsubSettings ?? null,
+        ...patch,
+        source: "extension",
       });
       _lastBridgeUpdatedAt = updatedAt;
       await saveSwState();
@@ -379,8 +408,12 @@ if (chrome.alarms?.onAlarm) {
 void ensureBridgePollAlarm();
 
 void loadSwState().then(() => {
-  void pushExtensionStateToBridge();
-  void pullExtensionStateFromBridge();
+  // Pull before push: if local storage is empty/stale, the bridge copy (or the
+  // one the popup/other devices pushed) restores it — a fresh SW must never
+  // overwrite non-empty bridge state with an empty local map.
+  void pullExtensionStateFromBridge().finally(() => {
+    void pushExtensionStateToBridge();
+  });
 });
 
 // Only endpoints the extension actually calls may go through this proxy — a
@@ -397,12 +430,37 @@ const BRIDGE_ALLOWLIST = [
   { re: /^\/scripts\/[A-Za-z0-9_-]{4,64}$/, methods: ["GET", "DELETE"] },
 ];
 
-async function handleBridgeFetch(msg) {
+// DoS guards for BRIDGE_FETCH — per-tab rate limit + body size cap.
+const BRIDGE_FETCH_BODY_CAP = 256 * 1024; // 256 KB
+const BRIDGE_FETCH_RATE_LIMIT = 50; // max requests per tab per second
+const _bridgeRateBuckets = new Map(); // tabId → { count, resetAt }
+function _bridgeRateCheck(tabId) {
+  const now = Date.now();
+  const key = tabId || 0;
+  let bucket = _bridgeRateBuckets.get(key);
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + 1000 };
+    _bridgeRateBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+  if (bucket.count > BRIDGE_FETCH_RATE_LIMIT) {
+    console.debug("bridge.fetch rate limited", { tabId: key, count: bucket.count });
+    return false;
+  }
+  return true;
+}
+
+async function handleBridgeFetch(msg, sender) {
   const { path, method = "GET", body, isForm } = msg;
   const rule = BRIDGE_ALLOWLIST.find(
     (r) => r.re.test(path) && r.methods.includes(method),
   );
   if (!rule) return { ok: false, error: "bridge_path_denied" };
+  // Per-tab rate limit.
+  const tabId = sender?.tab?.id || 0;
+  if (!_bridgeRateCheck(tabId)) {
+    return { ok: false, error: "bridge_rate_limited" };
+  }
   const url = `${BRIDGE}${path}`;
   const opts = { method };
   if (isForm && body) {
@@ -412,18 +470,27 @@ async function handleBridgeFetch(msg) {
     fd.append("meta", body.meta);
     opts.body = fd;
   } else if (body) {
+    const serialized = JSON.stringify(body);
+    if (new TextEncoder().encode(serialized).length > BRIDGE_FETCH_BODY_CAP) {
+      return { ok: false, error: "bridge_body_too_large" };
+    }
     opts.headers = { "Content-Type": "application/json" };
-    opts.body = JSON.stringify(body);
+    opts.body = serialized;
   }
-  const res = await fetch(url, opts);
-  const text = await res.text();
-  let data = null;
   try {
-    data = JSON.parse(text);
-  } catch {
-    data = { raw: text };
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    console.debug("bridge.fetch error", { path, error: String(err) });
+    return { ok: false, error: "bridge_fetch_error" };
   }
-  return { ok: res.ok, status: res.status, data };
 }
 
 async function handleYtFetch(msg) {
@@ -504,16 +571,8 @@ async function handleYtLoadCaptions(msg) {
     pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
   }
 
-  const hasEn = candidates.some((c) =>
-    String(c.lang || "")
-      .toLowerCase()
-      .startsWith("en")
-  );
-  const hasVi = candidates.some((c) =>
-    String(c.lang || "")
-      .toLowerCase()
-      .startsWith("vi")
-  );
+  const hasEn = candidates.some((c) => matchLangFamily(c.lang, "en"));
+  const hasVi = candidates.some((c) => matchLangFamily(c.lang, "vi"));
 
   if (!candidates.length) {
     return { ok: false, reason: "no_tracks", cues: [], via: "none", hasEn, hasVi };
@@ -666,6 +725,31 @@ async function fetchAndroidCaptionTracks(videoId) {
   return [];
 }
 
+/** Lang family aliases: normalized base code → 2-letter family. */
+const LANG_FAMILY_ALIASES = {
+  ja: ["ja", "jpn", "jp"],
+  en: ["en", "eng"],
+  vi: ["vi", "vie", "viet", "vn"],
+};
+
+/**
+ * Match a track lang code (vi, vi-VN, vie, VI, vi_vn, en-US…) to a family
+ * (ja / en / vi). Normalizes case + separators; falls back to 3-letter aliases.
+ */
+function matchLangFamily(lang, family) {
+  const raw = String(lang || "")
+    .toLowerCase()
+    .replace(/_/g, "-")
+    .trim();
+  if (!raw) return false;
+  const base = raw.split("-")[0];
+  const aliases = LANG_FAMILY_ALIASES[family] || [];
+  if (aliases.includes(raw) || aliases.includes(base)) return true;
+  // Compound like "vi-vn" or "en-us": base match covers it above; keep the
+  // family-prefix fallback for exotic forms like "vietnamese-vi".
+  return raw.startsWith(family + "-");
+}
+
 function sortTracks(tracks, preferLang) {
   return [...(tracks || [])].sort(
     (a, b) => scoreTrack(b, preferLang) - scoreTrack(a, preferLang)
@@ -678,11 +762,11 @@ function scoreTrack(track, preferLang) {
   const asr = track.kind === "asr";
   let s = 0;
   if (prefer === "auto") {
-    if (lang.startsWith("ja")) s += 90;
-    else if (lang.startsWith("en")) s += 40;
-  } else if (lang.startsWith(prefer)) {
+    if (matchLangFamily(lang, "ja")) s += 90;
+    else if (matchLangFamily(lang, "en")) s += 40;
+  } else if (matchLangFamily(lang, prefer)) {
     s += 100;
-  } else if (lang.startsWith("ja")) {
+  } else if (matchLangFamily(lang, "ja")) {
     s += 70;
   }
   if (!asr) s += 25;
@@ -696,12 +780,10 @@ function scoreTrack(track, preferLang) {
  */
 async function fetchBestLangPack(candidates, prefix, cookieHeader = "") {
   const ranked = (candidates || [])
-    .filter((x) => x && String(x.lang || "").toLowerCase().startsWith(prefix))
+    .filter((x) => x && matchLangFamily(x.lang, prefix))
     .sort((a, b) => {
-      const sa =
-        (String(a.lang || "").toLowerCase().startsWith(prefix) ? 100 : 0) + (a.asr ? 0 : 25);
-      const sb =
-        (String(b.lang || "").toLowerCase().startsWith(prefix) ? 100 : 0) + (b.asr ? 0 : 25);
+      const sa = (matchLangFamily(a.lang, prefix) ? 100 : 0) + (a.asr ? 0 : 25);
+      const sb = (matchLangFamily(b.lang, prefix) ? 100 : 0) + (b.asr ? 0 : 25);
       return sb - sa;
     });
   for (const x of ranked) {
@@ -1266,7 +1348,14 @@ async function mirrorFromDrive(videoIds, opts = {}) {
 async function notifyDriveRestored(videoIds) {
   try {
     const tabs = await chrome.tabs.query({
-      url: ["https://www.youtube.com/*", "https://youtube.com/*"],
+      url: [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*",
+        "https://abema.tv/*",
+        "https://*.abema.tv/*",
+        "https://www.netflix.com/*",
+        "https://netflix.com/*",
+      ],
     });
     for (const tab of tabs || []) {
       if (tab?.id == null) continue;

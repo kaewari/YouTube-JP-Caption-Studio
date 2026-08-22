@@ -11,6 +11,7 @@ import {
   type HardsubSettings,
   type SettingsPersistSource,
 } from "@/types/settings";
+import { normalizeLevelColors } from "@/lib/level-colors";
 
 export { BRIDGE_BASE };
 
@@ -96,6 +97,10 @@ export function normalizeSettings(raw: unknown): HardsubSettings {
     vocabHighlight: raw.vocabHighlight !== false,
     showKnownGreen: raw.showKnownGreen !== false,
     hideRareWords: bool(raw.hideRareWords, d.hideRareWords),
+    // Always carry the JLPT coloring keys — dropping them here wiped the side
+    // panel's level colors on every popup save (hardsubSettings full replace).
+    levelHighlightEnabled: raw.levelHighlightEnabled !== false,
+    levelColors: normalizeLevelColors(raw.levelColors),
   };
 }
 

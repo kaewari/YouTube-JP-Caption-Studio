@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "YouTube JP Caption Studio",
-  "version": "0.9.11",
-  "description": "Load YouTube captions, manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
+  "version": "0.11.0",
+  "description": "Load captions (YouTube, ABEMA, Netflix, and other video sites), manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
   "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://youtube.com/*",
+    "https://abema.tv/*",
+    "https://*.abema.tv/*",
+    "https://www.netflix.com/*",
+    "https://netflix.com/*",
     "http://127.0.0.1:8765/*",
     "http://localhost:8765/*",
     "http://127.0.0.1:3000/*",
@@ -21,23 +25,37 @@
     "service_worker": "background/service_worker.js"
   },
   "action": {
-    "default_title": "YT Caption — Saved Items / Cài đặt",
-    "default_popup": "popup/popup.html"
+    "default_title": "Caption Studio — Open Side Panel"
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*",
+        "https://abema.tv/*",
+        "https://*.abema.tv/*",
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ],
       "js": ["injected/page_capture.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*",
+        "https://abema.tv/*",
+        "https://*.abema.tv/*",
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ],
       "js": [
         "shared/vocab_style.js",
+        "shared/dfxp_parser.js",
         "content/normalize_cues.js",
         "content/cue_timing.js",
         "content/fill_yt_secondary.js",
@@ -50,7 +68,14 @@
   "web_accessible_resources": [
     {
       "resources": ["injected/page_capture.js"],
-      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"]
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*",
+        "https://abema.tv/*",
+        "https://*.abema.tv/*",
+        "https://www.netflix.com/*",
+        "https://netflix.com/*"
+      ]
     }
   ]
 }

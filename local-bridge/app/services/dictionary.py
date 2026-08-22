@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import sqlite3
+import threading
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -281,21 +282,22 @@ _TAIL_PATTERNS = [
     re.compile(r"(っ[たて]|[いう]$)"),
 ]
 
-_db_conn: sqlite3.Connection | None = None
+_local = threading.local()
 _loaded = False
 _RE_EN_WORD = re.compile(r"[a-zA-Z']+")
 
 
 def _get_db() -> sqlite3.Connection | None:
-    global _db_conn, _loaded
-    if _db_conn is not None:
-        return _db_conn
+    global _loaded
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        return conn
     if SQLITE_DB.is_file():
         try:
-            conn = sqlite3.connect(f"file:{SQLITE_DB}?mode=ro", uri=True, check_same_thread=False)
-            _db_conn = conn
+            conn = sqlite3.connect(f"file:{SQLITE_DB}?mode=ro", uri=True)
+            _local.conn = conn
             _loaded = True
-            return _db_conn
+            return conn
         except Exception as exc:
             logger.warning("Failed opening dict.sqlite: %s", exc)
     return None
@@ -307,13 +309,14 @@ def is_loaded() -> bool:
 
 def close_dictionary() -> None:
     """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
-    global _db_conn, _loaded
-    if _db_conn is not None:
+    global _loaded
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
         try:
-            _db_conn.close()
+            conn.close()
         except Exception:
             pass
-    _db_conn = None
+        _local.conn = None
     _loaded = False
     dict_cache.clear()
 

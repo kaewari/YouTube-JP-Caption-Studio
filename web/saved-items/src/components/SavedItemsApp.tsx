@@ -31,7 +31,15 @@ export function SavedItemsApp() {
   /** Sidebar open (labels visible) by default — collapsed on first render in the popup. */
   const [collapsed, setCollapsed] = useState(() => isExtensionPage());
   const isExt = useMemo(() => isExtensionPage(), []);
-  const [view, setView] = useState<AppView>("saved");
+  const [view, setView] = useState<AppView>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("v") === "settings"
+        ? "settings"
+        : "saved";
+    } catch {
+      return "saved";
+    }
+  });
   const [tab, setTab] = useState<SavedItemsTab>("saved-words");
   const [words, setWords] = useState<SavedWord[]>([]);
   const wordsRef = useRef<SavedWord[]>([]);

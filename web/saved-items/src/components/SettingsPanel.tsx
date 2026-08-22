@@ -4,6 +4,12 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import {
+  DEFAULT_LEVEL_COLORS,
+  LEVEL_KEYS,
+  LEVEL_LABELS,
+  normalizeLevelColors,
+} from "@/lib/level-colors";
+import {
   fetchBridgeHealth,
   loadSettingsAsync,
   persistSettingsAsync,
@@ -240,6 +246,27 @@ export function SettingsPanel() {
     });
   }
 
+  function patchLevel(partial: Partial<HardsubSettings>) {
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      void persistSettingsAsync(next).then((src) => {
+        setSource(src);
+        setNote(
+          src === "chrome.storage"
+            ? "Tô màu live → chrome.storage"
+            : "Tô màu live → localStorage + bridge",
+        );
+      });
+      return next;
+    });
+  }
+
+  function handleResetLevelColors() {
+    patchLevel({ levelColors: normalizeLevelColors(DEFAULT_LEVEL_COLORS) });
+    setMsg("Đã đặt lại màu cấp độ");
+    window.setTimeout(() => setMsg(""), 2000);
+  }
+
   function handleSave() {
     const next = { ...settings, enabled: true };
     setSettings(next);
@@ -412,9 +439,81 @@ export function SettingsPanel() {
             step={500}
             onChange={(v) => patch({ vocabLevel: v || 5000 })}
           />
-          <p className="text-[12px] text-white/40">
-            Hoặc mở Side Panel → Từ vựng / Màu để đánh giá và chỉnh màu.
-          </p>
+        </Fieldset>
+
+        <Fieldset legend="Tô màu theo cấp độ (JLPT)">
+          <ToggleRow
+            id="levelHighlightEnabled"
+            checked={settings.levelHighlightEnabled !== false}
+            onChange={(v) => patchLevel({ levelHighlightEnabled: v })}
+            label="Bật tô màu theo JLPT"
+          />
+          <div className="flex flex-col gap-2">
+            {LEVEL_KEYS.map((key) => {
+              const entry =
+                settings.levelColors?.[key] || DEFAULT_LEVEL_COLORS[key];
+              return (
+                <div key={key} className="flex items-center gap-2.5">
+                  <input
+                    id={`lvl-on-${key}`}
+                    type="checkbox"
+                    checked={entry.on !== false}
+                    onChange={(e) =>
+                      patchLevel({
+                        levelColors: {
+                          ...settings.levelColors,
+                          [key]: { ...entry, on: e.target.checked },
+                        },
+                      })
+                    }
+                    className="size-4 accent-[#9c40bf]"
+                  />
+                  <label
+                    htmlFor={`lvl-on-${key}`}
+                    className="w-24 cursor-pointer text-[13px] text-white/75"
+                  >
+                    {LEVEL_LABELS[key] || key.toUpperCase()}
+                  </label>
+                  <input
+                    type="color"
+                    value={entry.color}
+                    onChange={(e) =>
+                      patchLevel({
+                        levelColors: {
+                          ...settings.levelColors,
+                          [key]: { ...entry, color: e.target.value },
+                        },
+                      })
+                    }
+                    className="h-7 w-12 cursor-pointer rounded border border-white/15 bg-transparent p-0.5"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {LEVEL_KEYS.filter(
+              (k) => settings.levelColors?.[k]?.on !== false,
+            ).map((key) => (
+              <span
+                key={key}
+                className="size-3 rounded-full"
+                style={{
+                  backgroundColor:
+                    settings.levelColors?.[key]?.color ||
+                    DEFAULT_LEVEL_COLORS[key].color,
+                }}
+                title={LEVEL_LABELS[key] || key.toUpperCase()}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleResetLevelColors}
+            className="mt-1 w-fit rounded-md border border-white/15 bg-[#2a2a3a] px-3 py-1.5 text-[13px] text-white/85 hover:bg-[#3a3a50]"
+          >
+            Đặt lại màu mặc định
+          </button>
         </Fieldset>
 
         <SelectField

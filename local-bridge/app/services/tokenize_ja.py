@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 
 from app.schemas.models import Token
 from app.utils.text_utils import _kata_to_hira
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _tokenizer = None
 _loaded = False
+_tokenize_lock = threading.Lock()
 
 
 def is_loaded() -> bool:
@@ -88,7 +90,9 @@ def tokenize(text: str) -> list[Token]:
 
     assert _tokenizer is not None
     tokens: list[Token] = []
-    for m in _tokenizer.tokenize(text):
+    with _tokenize_lock:
+        morphemes = list(_tokenizer.tokenize(text))
+    for m in morphemes:
         surface = m.surface()
         start = m.begin()
         end = m.end()

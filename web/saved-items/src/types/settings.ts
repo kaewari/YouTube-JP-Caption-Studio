@@ -37,6 +37,16 @@ export interface HardsubSettings {
   vocabHighlight: boolean;
   showKnownGreen: boolean;
   hideRareWords: boolean;
+  /** Side panel "Làm nổi bật theo cấp độ" — master JLPT coloring toggle. */
+  levelHighlightEnabled: boolean;
+  /** Per-level colors, mirror of extension/shared/vocab_style.js. */
+  levelColors: Record<string, { on: boolean; color: string }>;
+  /**
+   * Preserved through chrome.storage round-trips (never dropped on save):
+   * status-class colors/categories used by content + side panel.
+   */
+  vocabColors?: Record<string, string>;
+  vocabCats?: Record<string, boolean>;
 }
 
 export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
@@ -63,6 +73,15 @@ export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
   vocabHighlight: true,
   showKnownGreen: true,
   hideRareWords: false,
+  levelHighlightEnabled: true,
+  levelColors: {
+    n5: { on: true, color: "#7fd6a8" },
+    n4: { on: true, color: "#8fd3ff" },
+    n3: { on: true, color: "#f5d76e" },
+    n2: { on: true, color: "#e08a4a" },
+    n1: { on: true, color: "#e74c5c" },
+    unknown: { on: true, color: "#c5c5d0" },
+  },
 };
 
 export type SettingsPersistSource =

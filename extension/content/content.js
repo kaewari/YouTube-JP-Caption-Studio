@@ -51,7 +51,7 @@
     ...Vocab.DEFAULT_VOCAB_SETTINGS,
   };
 
-  const CACHE_MATCH_TOL = 0.35;
+  const CACHE_MATCH_TOL = 0.6;
   const SAVE_DEBOUNCE_MS = 400;
 
   const Normalize = globalThis.HardsubNormalize || {
@@ -81,6 +81,10 @@
   /** @type {Cue[]} */
   let cues = [];
   let currentVideoId = "";
+  /** Video gần nhất đã reset overlay — mỗi video mới luôn bắt đầu tắt overlay. */
+  let lastOverlayResetVideo = "";
+  /** Which site family loaded cues (youtube / abema / web) — cache key namespace. */
+  let currentSource = "youtube";
   /** Bumps on each yt-navigate; stale onNavigate/loadAllCaptions bail out. */
   let navigateGen = 0;
   let bridgeReady = false;
@@ -136,7 +140,12 @@
   }
 
   // Must match page_capture.js API_VER — stale MAIN-world inject lacks FETCH_MULTI_LANG.
-  const PAGE_API_VER = 3;
+  const PAGE_API_VER = 5;
+  let pageBridgeReady = false;
+  // Capability token: per-injection secret the MAIN-world reply must echo back,
+  // so a hostile page script can't forge caption results by spoofing
+  // source:"hardsub-ocr-page" (it never sees this token).
+  let pageCapToken = "";
 
   function injectPageScript(force = false) {
     const existing = document.getElementById("hardsub-ocr-page-script");
@@ -150,12 +159,21 @@
       (document.documentElement || document.head).appendChild(boot);
       boot.remove();
     }
+    // Fresh token on every inject — stale MAIN-world copies hold an invalid cap.
+    try { crypto.getRandomValues(new Uint8Array(16)); } catch (_) {}
+    pageCapToken =
+      (crypto.randomUUID && crypto.randomUUID()) ||
+      Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+        b.toString(16).padStart(2, "0")
+      ).join("");
     const s = document.createElement("script");
     s.id = "hardsub-ocr-page-script";
     s.src =
       chrome.runtime.getURL("injected/page_capture.js") +
       "?v=" +
-      encodeURIComponent(chrome.runtime.getManifest().version);
+      encodeURIComponent(chrome.runtime.getManifest().version) +
+      "&cap=" +
+      encodeURIComponent(pageCapToken);
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -169,7 +187,10 @@
     let forced = false;
     while (Date.now() - t0 < maxMs) {
       const r = await pageCall("PING", {}, 300);
-      if (r?.ok && Number(r.apiVer) === PAGE_API_VER) return true;
+      if (r?.ok && Number(r.apiVer) === PAGE_API_VER) {
+        pageBridgeReady = true;
+        return true;
+      }
       if (r?.ok && Number(r.apiVer) !== PAGE_API_VER && !forced) {
         forced = true;
         injectPageScript(true);
@@ -391,6 +412,7 @@
     const vid = currentVideoId;
     captionsStatus = "ok";
     captionsInfo = info;
+    paintPendingT0 = performance.now();
     const normalized = CueTiming.clampCueEndsToNextStart(
       Normalize.normalizeCues(rawCues)
     );
@@ -401,16 +423,23 @@
       cues = mergeCache(normalized, [], transcriptMeta);
       applyYtSecondaryFill(opts);
       listDirty = true;
+      // T2: start token enrich in parallel, await it (capped) so the first
+      // publish already carries furigana/JLPT — one phase when bridge is warm.
+      const enrichP = enrichTokensAfterImport();
+      await Promise.race([enrichP, sleep(200)]);
+      if (gen !== navigateGen || currentVideoId !== vid) return;
       await syncToPlayhead();
       updateCaptionStatusLine();
-      await saveTranscript({ force: true, awaitDisk: true });
-      // B8: tokenize every video after first JA publish (not only owned).
-      void enrichTokensAfterImport();
+      renderList(true);
+      publishSidePanelState({ forceList: true });
+      if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
+      await saveTranscript({ force: true, awaitDisk: !!transcriptMeta.owned });
       return;
     }
-    const cached = await loadCachedCues(currentVideoId);
-    if (gen !== navigateGen || currentVideoId !== vid) return;
-    const meta = await loadTranscriptMeta(currentVideoId);
+    const [cached, meta] = await Promise.all([
+      loadCachedCues(currentVideoId),
+      loadTranscriptMeta(currentVideoId),
+    ]);
     if (gen !== navigateGen || currentVideoId !== vid) return;
     transcriptMeta = meta;
     const merged = mergeCache(normalized, cached, meta);
@@ -425,17 +454,23 @@
     }
     applyYtSecondaryFill(opts);
     listDirty = true;
+    // T2: enrich in parallel with playhead-align; cap the wait so cold-bridge
+    // still renders JA plain fast (enrich's own publish fills furigana later).
+    const enrichP = enrichTokensAfterImport();
+    await Promise.race([enrichP, sleep(200)]);
+    if (gen !== navigateGen || currentVideoId !== vid) return;
     // Align list/overlay to current playhead before first publish (mid-video open).
     await syncToPlayhead();
     if (gen !== navigateGen || currentVideoId !== vid) return;
     // Status first so the publish includes real cached N/M (not stale 0/0).
     updateCaptionStatusLine();
+    renderList(true);
+    publishSidePanelState({ forceList: true });
+    if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
     // Never auto-save a YT merge that would clobber a richer owned script.
     if (!meta.owned || scriptListScore(cues) >= scriptListScore(cached)) {
       scheduleSaveTranscript();
     }
-    // B8: always enrich when cues lack tokens — remove owned gate.
-    void enrichTokensAfterImport();
   }
 
   /**
@@ -479,10 +514,30 @@
   }
 
   function logYtSecondaryMiss(sw, enN, viN) {
-    const msg = `yt secondary miss video=${currentVideoId || "?"} hasEn=${!!sw?.hasEn} hasVi=${!!sw?.hasVi} en:${enN} vi:${viN}`;
+    const msg = `yt secondary miss video=${currentVideoId || "?"} hasEn=${!!sw?.hasEn} hasVi=${!!sw?.hasVi} en:${enN} vi:${viN} via=${sw?.via || "?"} reason=${sw?.reason || "?"} trackCount=${sw?.trackCount || "?"}`;
     void bridgeFetch("/log", {
       method: "POST",
       body: { level: "WARNING", message: msg },
+    }).catch(() => {});
+  }
+
+  // T5 gate: t0 set when cues arrive; warn once per video when the first
+  // ruby-capable publish took > 150ms (furigana painted target ~100ms).
+  let paintPendingT0 = 0;
+  let furiganaWarnedVideo = "";
+  function markFuriganaPainted() {
+    if (!paintPendingT0) return;
+    const ms = performance.now() - paintPendingT0;
+    paintPendingT0 = 0;
+    if (ms <= 150) return;
+    if (furiganaWarnedVideo === currentVideoId) return;
+    furiganaWarnedVideo = currentVideoId || "?";
+    void bridgeFetch("/log", {
+      method: "POST",
+      body: {
+        level: "WARNING",
+        message: `furigana painted slow=${Math.round(ms)}ms video=${currentVideoId || "?"}`,
+      },
     }).catch(() => {});
   }
 
@@ -579,6 +634,9 @@
     if (ev.source !== window) return;
     if (!ev.data || ev.data.source !== "hardsub-ocr-page") return;
     const { requestId, result } = ev.data;
+    // Capability token gate: a hostile MAIN-world script can spoof the source
+    // field but never knows the cap embedded only in our injected <script> src.
+    if (!pageCapToken || result?.cap !== pageCapToken) return;
     const resolve = pending.get(requestId);
     if (resolve) {
       pending.delete(requestId);
@@ -611,7 +669,7 @@
             ) {
               return;
             }
-            await chrome.storage.local.remove([`transcript:${currentVideoId}`]);
+            await chrome.storage.local.remove([`transcript:${tabPrefix()}${currentVideoId}`]);
           }
           const restored = await tryApplySavedScript("drive", { quiet: true });
           if (!restored) {
@@ -634,8 +692,8 @@
 
   async function handleSidePanelCmd(msg) {
     const cmd = msg.cmd;
-    if (cmd === "ping") {
-      // Side panel open / reconnect must always receive the full cue list.
+    if (cmd === "ping" || cmd === "get_state") {
+      // Side panel open / reconnect / tab switch must always receive the full cue list.
       publishSidePanelState({ forceList: true });
       return { ok: true, videoId: currentVideoId, count: cues.length };
     }
@@ -745,12 +803,65 @@
     });
   }
 
-  function videoIdFromUrl() {
+  /** Site family this tab belongs to — controls which caption engine runs. */
+  function sourceFromHost() {
     try {
-      return new URLSearchParams(location.search).get("v") || "";
+      const h = location.hostname;
+      if (h === "www.youtube.com" || h === "youtube.com" || h.endsWith("youtube-nocookie.com")) {
+        return "youtube";
+      }
+      if (h === "abema.tv" || h.endsWith(".abema.tv")) return "abema";
+      if (h === "netflix.com" || h.endsWith(".netflix.com")) return "netflix";
+      return "web";
     } catch {
-      return "";
+      return "web";
     }
+  }
+
+  /**
+   * Source-scoped storage key for captions/scripts/tokens/tombstones.
+   * YouTube keeps its bare videoId (existing data stays intact); other sites
+   * get a "<source>__<pathId>" key, scrubbed to [A-Za-z0-9_-]{6,64} (fits the
+   * bridge script-store regex, Drive folder names, and the SW allowlist).
+   */
+  function videoIdFromUrl() {
+    const source = sourceFromHost();
+    if (source === "youtube") {
+      try {
+        return new URLSearchParams(location.search).get("v") || "";
+      } catch {
+        return "";
+      }
+    }
+    if (source === "netflix") {
+      try {
+        const m = location.pathname.match(/\/(?:watch|title)\/(\d+)/);
+        if (m && m[1]) return `netflix__${m[1]}`;
+      } catch (_) {}
+    }
+    const rawPath = String(location.pathname || "").replace(/\/+$/, "");
+    const pathId = rawPath.split("/").filter(Boolean).pop() || "";
+    const fallback = source === "abema" ? "top" : "page";
+    const raw = `${source}__${pathId || fallback}`;
+    const key = raw.replace(/[^A-Za-z0-9_-]/g, "_");
+    return key.length > 64 ? key.slice(0, 64) : key;
+  }
+
+  function sourceLabel() {
+    if (currentSource === "abema") return "ABEMA";
+    if (currentSource === "netflix") return "Netflix";
+    if (currentSource === "youtube") return "YT";
+    if (currentSource === "web") return "Web";
+    return String(currentSource || "YT").toUpperCase();
+  }
+
+  /** SPA fires no yt-navigate on ABEMA — poll for URL/source change cheaply. */
+  let pageWatchKey = "";
+  function checkPageWatch() {
+    const key = `${currentSource}|${location.href}`;
+    if (key === pageWatchKey) return;
+    pageWatchKey = key;
+    void onNavigate();
   }
 
   async function loadSettings() {
@@ -918,8 +1029,13 @@
     return cacheCueKey(c);
   }
 
+  /** Tab namespace so multiple tabs can't overwrite each other's cache/meta/tokens. */
+  function tabPrefix() {
+    return contentTabId != null ? `t${contentTabId}:` : "";
+  }
+
   function metaStorageKey(videoId) {
-    return `transcriptMeta:${videoId}`;
+    return `transcriptMeta:${tabPrefix()}${videoId}`;
   }
 
   /** Cheap freshness probe (~113 B) — compare rev before pulling a 144 KB body. */
@@ -1032,7 +1148,7 @@
   /** Sole gate every load path goes through (navigate / restore / YT merge). */
   async function loadCachedCues(videoId) {
     if (!videoId) return [];
-    const key = `transcript:${videoId}`;
+    const key = `transcript:${tabPrefix()}${videoId}`;
     const mKey = metaStorageKey(videoId);
     const data = await chrome.storage.local.get([key, mKey]);
     const local = flattenCached(data[key] || []);
@@ -1075,21 +1191,34 @@
     return hydrateTokens(videoId, disk.length ? disk : local);
   }
 
-  /** cues.json / chrome.storage carry no tokens — refill from tokens.json for furigana. */
+  /** cues.json / chrome.storage carry no tokens — refill from tokens cache, bridge only on miss. */
   async function hydrateTokens(videoId, list) {
     if (!list.length) return list;
     // Fill only cues still missing tokens (partial in-memory tokens must not skip the rest).
+    if (list.every((c) => !String(c.source || "").trim() || c.tokens?.length)) return list;
+    const cacheKey = `tokens:${tabPrefix()}${videoId}`;
+    const fill = (map) => {
+      if (!map) return;
+      for (const c of list) {
+        if (c.tokens?.length) continue;
+        const t = map[c.id];
+        if (Array.isArray(t) && t.length) c.tokens = t;
+      }
+    };
+    try {
+      const cached = await chrome.storage.local.get([cacheKey]);
+      fill(cached[cacheKey]);
+    } catch (_) {}
     if (list.every((c) => !String(c.source || "").trim() || c.tokens?.length)) return list;
     try {
       const res = await bridgeFetch(`/scripts/${encodeURIComponent(videoId)}/tokens`, {
         method: "GET",
       });
       const map = res?.ok && res.data && typeof res.data === "object" ? res.data : null;
-      if (!map) return list;
-      for (const c of list) {
-        if (c.tokens?.length) continue;
-        const t = map[c.id];
-        if (Array.isArray(t) && t.length) c.tokens = t;
+      fill(map);
+      if (map && Object.keys(map).length) {
+        // T3: keep chrome.storage copy fresh so reloads skip this bridge RTT.
+        void chrome.storage.local.set({ [cacheKey]: map }).catch(() => {});
       }
     } catch (_) {}
     return list;
@@ -1116,6 +1245,33 @@
     } catch {
       return "";
     }
+  }
+
+  /** Non-YouTube: fetch native cues (textTracks / <track> VTT) via page world. */
+  async function loadPageCues(force = false) {
+    if (!pageBridgeReady) {
+      const ready = await waitForPageBridge(1500);
+      if (!ready) {
+        captionsStatus = "none";
+        captionsInfo = "page_bridge_timeout";
+        return;
+      }
+      await pageCall("BIND", {}, 300);
+    }
+    const pc = await pageCall(
+      "FETCH_CAPTIONS",
+      { force: !!force },
+      3500
+    );
+    if (Array.isArray(pc?.cues) && pc.cues.length) {
+      await applyLoadedCues(pc.cues, `${pc.via || "page"} · ${pc.count || pc.cues.length} cues`, {
+        enCues: pc.enCues,
+        viCues: pc.viCues,
+      });
+      return;
+    }
+    captionsStatus = "none";
+    captionsInfo = pc?.reason || "no_cues";
   }
 
   async function saveTranscriptToDisk(payload) {
@@ -1155,7 +1311,7 @@
   async function saveTranscript(opts = {}) {
     if (!currentVideoId) return;
     const force = !!opts.force;
-    const key = `transcript:${currentVideoId}`;
+    const key = `transcript:${tabPrefix()}${currentVideoId}`;
     // Persist the full cue list — display limits (settings.maxSentences) apply at
     // render only, never here (a truncated save would drop owned cues on reload).
     const payload = cues.map((c) => ({
@@ -1363,12 +1519,17 @@
     captionsInfo = `${reason} · ${fromScript.length} cues`;
     cues = fromScript;
     listDirty = true;
+    // T2: enrich alongside playhead-align; first publish carries tokens if warm.
+    const enrichP = enrichTokensAfterImport();
+    await Promise.race([enrichP, sleep(200)]);
+    if (gen !== navigateGen || currentVideoId !== vid) return false;
     await syncToPlayhead();
     if (gen !== navigateGen || currentVideoId !== vid) return false;
     updateCaptionStatusLine();
+    renderList(true);
+    publishSidePanelState({ forceList: true });
     scheduleSaveTranscript();
-    // B8: tokenize whenever cues lack tokens (owned or YT).
-    void enrichTokensAfterImport();
+    if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
     if (!opts.quiet) toast(`Đã tải script đã lưu (${fromScript.length} câu)`);
     return true;
   }
@@ -1393,6 +1554,11 @@
       document.querySelector("#player-container"),
       document.querySelector("ytd-player"),
     ];
+    if (currentSource !== "youtube") {
+      // Generic players (ABEMA / hls.js / shaka): the <video> itself is the anchor.
+      const v = document.querySelector("video");
+      if (v) candidates.unshift(v);
+    }
     for (const el of candidates) {
       if (!el) continue;
       const r = el.getBoundingClientRect();
@@ -1413,6 +1579,8 @@
     const observeTarget =
       document.querySelector("#movie_player") ||
       document.querySelector("ytd-player") ||
+      document.querySelector(".watch-video") ||
+      document.querySelector(".NFPlayer") ||
       document.querySelector("#player-container") ||
       document.body;
     if (typeof ResizeObserver !== "undefined" && observeTarget) {
@@ -1989,10 +2157,18 @@
     place();
 
     const seq = ++dictReqSeq;
-    const res = await bridgeFetch("/dict", {
+    let res = await bridgeFetch("/dict", {
       method: "POST",
       body: { surface, lemma, sentence_id: "" },
     });
+    if (!res?.ok) {
+      await sleep(100);
+      if (seq !== dictReqSeq) return;
+      res = await bridgeFetch("/dict", {
+        method: "POST",
+        body: { surface, lemma, sentence_id: "" },
+      });
+    }
     if (seq !== dictReqSeq) return;
     if (!res?.ok) {
       dictEl.innerHTML = `<div class="dict-top">
@@ -2090,7 +2266,7 @@
     const st = cacheStats();
     const status =
       lastStatusText ||
-      `YT · cached ${st.cached}/${st.n}${bridgeReady ? "" : " · bridge?"}`;
+      `${sourceLabel()} · cached ${st.cached}/${st.n}${bridgeReady ? "" : " · bridge?"}`;
     const seq = ++spPublishSeq;
     const forceCues = !!extra.forceList || listDirty;
     const payload = {
@@ -2285,24 +2461,13 @@
     });
   }
 
-  /** Compact DỊCH ON/OFF pill in `.ytp-left-controls` (after time display). */
-  function ensurePlayerToggle() {
-    const left = document.querySelector(
-      "#movie_player .ytp-left-controls, ytd-player .ytp-left-controls, .ytp-left-controls"
-    );
-    if (!left) return false;
-
-    let btn = document.getElementById(PLAYER_TOGGLE_ID);
-    if (btn && left.contains(btn)) {
-      syncPlayerToggle();
-      return true;
-    }
-    if (btn) btn.remove();
-
-    btn = document.createElement("button");
+  function createPlayerToggleButton(isFloating = false) {
+    const btn = document.createElement("button");
     btn.id = PLAYER_TOGGLE_ID;
     btn.type = "button";
-    btn.className = "ytp-button hardsub-ytp-toggle";
+    btn.className = isFloating
+      ? "hardsub-generic-toggle hardsub-ytp-toggle"
+      : "ytp-button hardsub-ytp-toggle";
     btn.setAttribute("aria-label", "Bật/tắt overlay dịch");
     btn.innerHTML =
       '<span class="hardsub-ytp-toggle__pill" aria-hidden="true">' +
@@ -2312,30 +2477,126 @@
     btn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Overlay visibility; ON also opens side panel (OFF leaves panel open).
       await toggleShowOnVideo();
     });
     btn.addEventListener("mousedown", stopBubble);
     btn.addEventListener("mouseup", stopBubble);
     btn.addEventListener("pointerdown", stopBubble);
+    return btn;
+  }
 
-    const timeDisplay = left.querySelector(".ytp-time-display");
-    if (timeDisplay) timeDisplay.insertAdjacentElement("afterend", btn);
-    else left.appendChild(btn);
+  let toggleActivityTimer = null;
+  function pingToggleActivity() {
+    const btn = document.getElementById(PLAYER_TOGGLE_ID);
+    if (!btn || !btn.classList.contains("hardsub-generic-toggle")) return;
+    btn.classList.add("force-visible");
+    if (toggleActivityTimer) clearTimeout(toggleActivityTimer);
+    toggleActivityTimer = setTimeout(() => {
+      btn.classList.remove("force-visible");
+    }, 2800);
+  }
+
+  /** Compact DỊCH ON/OFF pill in player controls or floating over video player. */
+  function ensurePlayerToggle() {
+    let btn = document.getElementById(PLAYER_TOGGLE_ID);
+
+    // 1. YouTube player left controls
+    const ytLeft = document.querySelector(
+      "#movie_player .ytp-left-controls, ytd-player .ytp-left-controls, .ytp-left-controls"
+    );
+    if (ytLeft) {
+      if (btn && ytLeft.contains(btn) && !btn.classList.contains("hardsub-generic-toggle")) {
+        syncPlayerToggle();
+        return true;
+      }
+      if (btn) btn.remove();
+      btn = createPlayerToggleButton(false);
+      const timeDisplay = ytLeft.querySelector(".ytp-time-display");
+      if (timeDisplay) timeDisplay.insertAdjacentElement("afterend", btn);
+      else ytLeft.appendChild(btn);
+      syncPlayerToggle();
+      return true;
+    }
+
+    // 2. Non-YouTube: Netflix / ABEMA / generic HTML5 video (Language Reactor style floating left toggle)
+    const video =
+      document.querySelector("video.html5-main-video") || document.querySelector("video");
+    if (!video) return false;
+
+    const container =
+      document.querySelector(".watch-video") ||
+      document.querySelector(".NFPlayer") ||
+      document.querySelector("[class*='player-container']") ||
+      document.querySelector("[class*='com-vod-']") ||
+      video.parentElement ||
+      document.body;
+
+    if (!container) return false;
+
+    if (btn && container.contains(btn) && btn.classList.contains("hardsub-generic-toggle")) {
+      // Netflix: bám sát nút report mỗi lần đồng bộ (layout có thể thay đổi).
+      if (currentSource === "netflix") positionNetflixToggleNextToReport(btn, container);
+      syncPlayerToggle();
+      return true;
+    }
+    if (btn) btn.remove();
+
+    btn = createPlayerToggleButton(true); // Always generic floating toggle on non-YouTube
+    if (currentSource === "netflix") {
+      // Nút DỊCH ở vùng đen phía trên video, cạnh nút report (top-right).
+      btn.classList.add("hardsub-generic-toggle--netflix");
+      positionNetflixToggleNextToReport(btn, container);
+    }
+    container.appendChild(btn);
     syncPlayerToggle();
     return true;
+  }
+
+  /** Netflix: đặt nút DỊCH cạnh nút report (góc trên phải player). */
+  function positionNetflixToggleNextToReport(btn, container) {
+    if (!container) return;
+    const setPos = (top, right) => {
+      // setProperty(..., "important") để thắng CSS !important của base toggle.
+      btn.style.setProperty("top", `${top}px`, "important");
+      btn.style.setProperty("right", `${right}px`, "important");
+      btn.style.setProperty("left", "auto", "important");
+    };
+    const report = document.querySelector(
+      '[data-uia="player-report-modal-button"], [data-uia="report-modal-button"], ' +
+        'button[aria-label*="report" i], .button-nfplayerReportAProblem, .button-nfplayerFlag, [class*="nfplayerFlag" i]'
+    );
+    const h = container.getBoundingClientRect();
+    if (!report) {
+      // Fallback: góc trên phải player (report chưa mount / selector đổi).
+      setPos(12, 64);
+      return;
+    }
+    const r = report.getBoundingClientRect();
+    const gap = 10;
+    setPos(
+      Math.max(8, r.top - h.top + (r.height - (btn.offsetHeight || 32)) / 2),
+      Math.max(8, h.right - r.left + gap)
+    );
   }
 
   function ensurePlayerToggleObserver() {
     const target =
       document.querySelector("#movie_player") ||
       document.querySelector("ytd-player") ||
+      document.querySelector(".watch-video") ||
+      document.querySelector(".NFPlayer") ||
       document.body;
     if (playerToggleObserver) playerToggleObserver.disconnect();
     playerToggleObserver = new MutationObserver(() => {
       const btn = document.getElementById(PLAYER_TOGGLE_ID);
-      const left = document.querySelector(".ytp-left-controls");
-      if (!left || !btn || !left.contains(btn)) scheduleEnsurePlayerToggle();
+      const ytLeft = document.querySelector(".ytp-left-controls");
+      const video = document.querySelector("video");
+      if (
+        (ytLeft && (!btn || !ytLeft.contains(btn))) ||
+        (!ytLeft && video && (!btn || !btn.classList.contains("hardsub-generic-toggle")))
+      ) {
+        scheduleEnsurePlayerToggle();
+      }
     });
     playerToggleObserver.observe(target, { childList: true, subtree: true });
     ensurePlayerToggle();
@@ -2410,33 +2671,25 @@
   function cacheStats() {
     const n = cues.length;
     let cached = 0;
-    let pendingCount = 0;
     for (const c of cues) {
       if (c.translated) cached += 1;
-      else pendingCount += 1;
     }
-    return { n, cached, pending: pendingCount, translating: translatingIds.size };
+    return { n, cached, pending: 0, translating: translatingIds.size };
   }
 
   function updateCaptionStatusLine() {
     const st = cacheStats();
+    const tag = sourceLabel();
     const capTag =
       captionsStatus === "ok"
-        ? `YT · ${captionsInfo}`
+        ? `${tag} · ${captionsInfo}`
         : captionsStatus === "loading"
-          ? "YT…"
+          ? `${tag}…`
           : captionsStatus === "none" || captionsStatus === "error"
-            ? `YT ${captionsInfo || captionsStatus}`
-            : "YT";
-    const queueTag =
-      st.translating > 0
-        ? `translating…`
-        : st.pending > 0
-          ? `pending ${st.pending}`
-          : "idle";
-    lastStatusText = `${capTag} · cached ${st.cached}/${st.n} · ${queueTag}${
-      bridgeReady ? "" : " · bridge?"
-    }`;
+            ? `${tag} ${captionsInfo || captionsStatus}`
+            : tag;
+    const readyTag = bridgeReady ? "" : " · bridge?";
+    lastStatusText = `${capTag} · ${st.n} cues${readyTag}`;
     // Keep listDirty — publishSidePanelState includes cues only when dirty.
     publishSidePanelState();
   }
@@ -2483,6 +2736,18 @@
       updateCaptionStatusLine();
       return;
     }
+    // Non-YouTube players: read native subtitle cues from the page.
+    if (currentSource !== "youtube") {
+      captionsStatus = "loading";
+      captionsInfo = "";
+      updateCaptionStatusLine();
+      await loadPageCues(!!force);
+      if (stale()) return;
+      if (cues.length) await syncToPlayhead();
+      else updateBar(null);
+      updateCaptionStatusLine();
+      return;
+    }
     const skipCache = !!opts.skipCache;
     const applyOpts = skipCache ? { skipCache: true } : {};
     const swApplyOpts = (sw) => ({
@@ -2509,15 +2774,37 @@
         lang: settings.sourceLang,
       });
 
+    // T1: the SW pack must not sit behind the page-script handshake — whoever
+    // settles first (usable SW pack vs bridge wait) opens the flow; the bridge
+    // wait only gates the page-intercept paths below.
     const ready =
       opts.bridgeReady === true
         ? true
         : opts.bridgeReady === false
           ? false
-          : await waitForPageBridge(2500);
+          : await Promise.race([
+              waitForPageBridge(2500),
+              swPromise.then(
+                (r) => (swUsable(r) ? "sw" : new Promise(() => {})),
+                () => new Promise(() => {})
+              ),
+            ]);
     if (stale()) return;
 
-    if (ready) {
+    // T1: SW pack won the race — paint it now, skip the page-intercept dance.
+    if (ready === "sw") {
+      const sw = await swPromise;
+      if (stale()) return;
+      if (swOk(sw)) {
+        await applyLoadedCues(sw.cues || [], swLabel(sw), swApplyOpts(sw));
+        if (stale()) return;
+        kickSecondaryFill(sw);
+        return;
+      }
+      // Secondary-only pack (en/vi but no JA): fall through to the page paths.
+    }
+
+    if (ready === true) {
       pageLink = await pageCall(
         "GET_TIMEDTEXT_LINK",
         { videoId: currentVideoId, lang: settings.sourceLang },
@@ -2597,12 +2884,12 @@
       if (swOk(sw)) return;
     }
 
-    if (ready) {
+    if (ready === true) {
       // Prefer page multi-fetch (no setOption per lang) before LOAD_CAPTIONS CC path.
       const multi = await pageCall(
         "FETCH_MULTI_LANG",
         { videoId: currentVideoId, lang: settings.sourceLang },
-        20000
+        5000
       );
       if (stale()) return;
       if (Array.isArray(multi?.cues) && multi.cues.length) {
@@ -2625,7 +2912,7 @@
       const r = await pageCall(
         "LOAD_CAPTIONS",
         { videoId: currentVideoId, lang: settings.sourceLang, force: !!force },
-        45000
+        8000
       );
       if (stale()) return;
       const pageLang = langFromTimedtextUrl(r?.baseUrl) || r?.lang || "";
@@ -2800,6 +3087,9 @@
     } finally {
       translatingIds.delete(trackId);
       updateCaptionStatusLine();
+      publishSidePanelState({ forceList: true });
+      // Re-render overlay furigana/JLPT immediately after tokenization.
+      updateBar(cues.find((c) => c.id === activeCueId) || cue);
     }
     patchCueRow(idx);
   }
@@ -3112,7 +3402,6 @@
    * Used after import and JA Enter. Retries later via syncHealth if bridge offline.
    */
   async function enrichTokensAfterImport(cueIds = null) {
-    if (!bridgeReady) return 0;
     const idSet = cueIds
       ? new Set(Array.from(cueIds).map((x) => String(x)))
       : null;
@@ -3175,6 +3464,7 @@
     }
 
     let wrote = 0;
+    const cacheMap = {};
     for (const d of results) {
       if (!d) continue;
       const target = cues.find((c) => c.id === d.id) || null;
@@ -3187,6 +3477,7 @@
       const toks = Array.isArray(d.tokens) ? d.tokens : [];
       if (!toks.length) continue;
       target.tokens = toks;
+      cacheMap[target.id] = toks;
       // Hard-guarantee: never let enrich touch EN/VI or lock.
       target.en = snap.en;
       target.vi = snap.vi;
@@ -3196,12 +3487,15 @@
     }
 
     if (wrote > 0) {
+      // T3: slim {cueId: tokens} cache — reloads skip the bridge tokens RTT.
+      void chrome.storage.local.set({ [`tokens:${tabPrefix()}${currentVideoId}`]: cacheMap }).catch(() => {});
       scheduleSaveTranscript();
       listDirty = true;
       const active = cues.find((c) => c.id === activeCueId);
       updateBar(active || null);
       updateCaptionStatusLine();
-      publishSidePanelState();
+      publishSidePanelState({ forceList: true });
+      markFuriganaPainted();
     }
     return wrote;
   }
@@ -3244,7 +3538,7 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    const key = `transcript:${currentVideoId}`;
+    const key = `transcript:${tabPrefix()}${currentVideoId}`;
     const metaKey = metaStorageKey(currentVideoId);
     try {
       await chrome.storage.local.remove([key, metaKey]);
@@ -3265,7 +3559,7 @@
     updateCaptionStatusLine();
     toast("Đang tải lại caption từ đầu…");
     await loadAllCaptions(true, { skipCache: true });
-    if (cues.length) toast(`Đã tải lại ${cues.length} câu từ YouTube`);
+    if (cues.length) toast(`Đã tải lại ${cues.length} câu`);
     else toast(`Không có caption (${captionsInfo || captionsStatus})`);
   }
 
@@ -3602,7 +3896,7 @@
     // Prefer "# ---…" over bare ===== lines — IDEs treat ======= as conflict markers.
     // Keep 10+ dashes so import_parse.split(/-{10,}/) still works.
     lines.push("# ----------------------------------------");
-    lines.push("# YouTube Caption Session");
+    lines.push("# Caption Session");
     lines.push(`URL: ${location.href}`);
     lines.push(`Exported: ${new Date().toISOString().replace("T", " ").slice(0, 16)}`);
     lines.push("# ----------------------------------------");
@@ -3638,6 +3932,7 @@
 
   async function tick() {
     if (!settings.enabled) return;
+    checkPageWatch();
     const mtRes = await pageCall("GET_MEDIA_TIME", {}, 400);
     const mediaTime = Number(mtRes?.mediaTime);
     if (!Number.isFinite(mediaTime)) return;
@@ -3674,25 +3969,41 @@
 
   async function onNavigate() {
     const gen = ++navigateGen;
+    const prevVideoId = currentVideoId;
+    currentSource = sourceFromHost();
     currentVideoId = videoIdFromUrl();
+    pageWatchKey = `${currentSource}|${location.href}`;
+
+    // Overlay luôn bắt đầu tắt cho mỗi video mới — không nhớ trạng thái DỊCH ON;
+    // người dùng bấm nút DỊCH / Overlay để bật cho video hiện tại.
+    if (currentVideoId && currentVideoId !== lastOverlayResetVideo && settings.showOnVideo) {
+      settings.showOnVideo = false;
+      applyBarVisibility();
+      syncPlayerToggle();
+      void saveSettings();
+    }
+    lastOverlayResetVideo = currentVideoId;
     cues = [];
     activeCueId = "";
     translatingIds.clear();
     transcriptMeta = emptyMeta();
+    updateBar(null);
+    // Immediately clear Sidepanel cue list so old video subs vanish instantly
+    publishSidePanelState({ forceList: true, videoId: currentVideoId, cues: [] });
+    // Force reload status when video ID changes (fix for new video not loading script)
+    if (currentVideoId && currentVideoId !== prevVideoId) {
+      captionsStatus = "idle";
+      captionsInfo = "";
+    }
+    if (pageBridgeReady) {
+      void pageCall("RESET_CAPTIONS", { videoId: currentVideoId }, 200).catch(() => {});
+    }
     if (currentVideoId) {
       transcriptMeta = await loadTranscriptMeta(currentVideoId);
     }
     if (gen !== navigateGen) return;
 
-    // B7: kick SW caption pack immediately in parallel with page bridge wait.
-    const swPromise = currentVideoId
-      ? loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
-          baseUrl: "",
-          lang: settings.sourceLang,
-        })
-      : null;
-
-    // iPad parity: restore saved script immediately; owned import skips YT replace.
+    // iPad parity: restore saved script immediately (<50ms); owned import skips YT replace.
     listDirty = true;
     const restored =
       !!currentVideoId &&
@@ -3703,44 +4014,62 @@
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     void maybeAutoOpenOnNavigate();
-    // Disk is already on screen; Drive check runs behind it and re-applies via DRIVE_RESTORED.
     void checkDriveFresh(currentVideoId);
 
     if (restored && transcriptMeta.owned) {
-      // Heal chrome.storage if a poor YT auto-save was shadowing disk.
       void saveTranscript({ force: true });
       if (cues.length) await syncToPlayhead();
       else updateBar(null);
+      renderList(true);
+      publishSidePanelState({ forceList: true });
       syncHealth();
       return;
     }
 
-    const ready = await waitForPageBridge(2500);
-    if (gen !== navigateGen) return;
-    if (ready) await pageCall("BIND", {}, 400);
-    if (gen !== navigateGen) return;
-    // Pass bridgeReady + swPromise so loadAllCaptions reuses the early SW kick.
-    await loadAllCaptions(true, { bridgeReady: ready, swPromise });
-    if (gen !== navigateGen) return;
-    if (!cues.length && currentVideoId) {
-      await sleep(800);
+    if (currentSource !== "youtube") {
+      await loadPageCues(true);
       if (gen !== navigateGen) return;
-      await loadAllCaptions(true, { bridgeReady: ready });
+      if (cues.length) await syncToPlayhead();
+      else updateBar(null);
+      renderList(true);
+      publishSidePanelState({ forceList: true });
+      syncHealth();
+      return;
     }
+
+    // YouTube: kick background SW in parallel with direct timedtext link.
+    const swPromise =
+      currentVideoId
+        ? loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
+            baseUrl: "",
+            lang: settings.sourceLang,
+          })
+        : null;
+
+    await loadAllCaptions(true, { swPromise });
     if (gen !== navigateGen) return;
     if (cues.length) await syncToPlayhead();
     else updateBar(null);
+    renderList(true);
+    publishSidePanelState({ forceList: true });
     syncHealth();
   }
 
   async function init() {
     await loadSettings();
+    // Get tab ID for tab-scoped storage (fix cross-tab overwrites)
+    await ensureContentTabId();
+    // Mặc định tắt overlay khi mở trang — không khôi phục trạng thái ON đã lưu.
+    if (settings.showOnVideo) {
+      settings.showOnVideo = false;
+      void saveSettings();
+    }
     // Prove which unpacked build is live after chrome://extensions Reload.
     void bridgeFetch("/log", {
       method: "POST",
       body: {
         level: "INFO",
-        message: `ext content boot v=${chrome.runtime.getManifest().version} api=${PAGE_API_VER}`,
+        message: `ext content boot v=${chrome.runtime.getManifest().version} api=${PAGE_API_VER} tabId=${contentTabId}`,
       },
     }).catch(() => {});
     ensureUI();
@@ -3751,7 +4080,24 @@
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     bindGestureOpenSidePanel();
+    window.addEventListener("mousemove", pingToggleActivity, { passive: true });
+    window.addEventListener("message", (e) => {
+      // Same capability gate as the pageCall reply path — no unverified
+      // MAIN-world message may trigger caption reloads.
+      if (e.source !== window) return;
+      if (e.data?.type !== "__HARDSUB_TIMEDTEXT_CAPTURED__") return;
+      if (!pageCapToken || e.data.cap !== pageCapToken) return;
+      if (!cues.length || captionsStatus !== "ok") {
+        void loadAllCaptions(true);
+      }
+    });
     document.addEventListener("yt-navigate-finish", () => onNavigate());
+    // ABEMA / other SPAs navigate without yt-navigate-finish — popstate + the
+    // 250 ms tick poll (checkPageWatch) cover their route changes.
+    window.addEventListener("popstate", () => {
+      pageWatchKey = "";
+      void onNavigate();
+    });
     await onNavigate();
     bridgeFetch("/bootstrap", { method: "POST" }).catch(() => {});
     startLoop();

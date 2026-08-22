@@ -10,10 +10,20 @@
   }
   root.HardsubNormalize = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
-  const BRACKET_ONLY_RE = /^[\[［【(（][^\]］】)）]+[\]］】)）]$/u;
-  const SFX_TOKEN_RE = /[\[［【][^\]］】]*[\]］】]/gu;
-  const SFX_SOUND_PAREN_RE = /[（(][^）)]*音[）)]/gu;
-  const MUSIC_SYM_RE = /[♪🎵♫]+/gu;
+  const SFX_KEYWORDS = [
+    "笑", "泣", "拍手", "ため息", "咳", "くしゃみ", "歓声", "音楽", "効果音", "悲鳴", "沈黙",
+    "足音", "鐘", "ざわめき", "歓呼", "息", "叫び", "チャイム", "サイレン", "爆発音", "銃声",
+    "ノック音", "着信音", "電子音", "bgm", "sfx", "music", "applause", "laughter", "cheering",
+    "cough", "sigh", "gasp", "screaming", "silence", "snicker", "crying", "groan", "chuckle",
+    "ambient", "sound", "noise", "âm nhạc", "vỗ tay", "tiếng cười", "tiếng khóc", "thở dài",
+    "im lặng", "tiếng chuông", "tiếng súng", "tiếng nổ", "tiếng bước chân"
+  ];
+  const SFX_KEYWORDS_SET = new Set(SFX_KEYWORDS.map((k) => k.toLowerCase()));
+  const SFX_INLINE_RE = new RegExp(
+    `[\\[［【(（]\\s*(?:${SFX_KEYWORDS.join("|")}|[^\\s\\]］】)）]*(?:音|BGM|SFX|music|applause|laughter|âm nhạc|vỗ tay))\\s*[\\]］】)）]`,
+    "giu"
+  );
+  const MUSIC_SYM_RE = /[♪🎵♫🎶〜~～]+/gu;
 
   function charLen(s) {
     return Array.from(String(s || "")).length;
@@ -21,10 +31,12 @@
 
   function isMusicOnly(text) {
     const t = String(text || "").trim();
-    return !!t && /^[♪🎵♫\s]+$/u.test(t);
+    return !!t && /^[♪🎵♫🎶〜~～\s]+$/u.test(t);
   }
 
-  /** Bracket/paren-only label (SFX), no long CJK dialogue outside. */
+  /**
+   * Only drops pure SFX/music tags, NEVER drops dialogue/monologue in parentheses.
+   */
   function isSfxLabelOnly(text) {
     const t = String(text || "")
       .normalize("NFKC")
@@ -32,14 +44,30 @@
       .trim();
     if (!t) return true;
     if (isMusicOnly(t)) return true;
-    if (BRACKET_ONLY_RE.test(t)) return true;
+
+    // Check if wrapped in brackets: [...], (...), （...）, 【...】
+    const m = t.match(/^[\[［【(（](.+)[\]］】)）]$/u);
+    if (m) {
+      const inner = m[1].trim();
+      if (!inner || isMusicOnly(inner)) return true;
+      const lower = inner.toLowerCase();
+      if (SFX_KEYWORDS_SET.has(lower)) return true;
+      // Short label with known SFX indicator words
+      if (
+        inner.length <= 12 &&
+        /(?:音|BGM|SFX|music|applause|laughter|âm nhạc|vỗ tay|tiếng|cheer|gasp|sigh)/i.test(inner)
+      ) {
+        return true;
+      }
+      // If it contains dialogue indicators (particles, punctuation, Japanese sentence length), keep it!
+      return false;
+    }
     return false;
   }
 
   function stripSfxTokens(text) {
     return String(text || "")
-      .replace(SFX_TOKEN_RE, "")
-      .replace(SFX_SOUND_PAREN_RE, "")
+      .replace(SFX_INLINE_RE, "")
       .replace(MUSIC_SYM_RE, "")
       .replace(/\s+/g, " ")
       .trim();

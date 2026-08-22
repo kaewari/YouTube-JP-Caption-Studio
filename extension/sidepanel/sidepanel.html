@@ -7,48 +7,12 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
-    <header class="sp-header">
-      <div class="sp-title-row">
-        <strong>YT Caption</strong>
-        <span id="sp-status" class="sp-status">…</span>
-      </div>
-      <!-- Drive: replace oauth2.client_id in ../manifest.json (Google Cloud → OAuth Chrome Extension client + this extension ID). Folder fixed; no Picker. -->
-      <div class="sp-drive-row">
-        <button type="button" id="sp-drive-connect" title="OAuth + tìm/tạo caption-studio-backup.json trong folder Drive cố định">
-          Connect Drive
-        </button>
-        <button type="button" id="sp-drive-upload" title="Mirror mọi script lên Drive theo folder <videoId>/ (cues.json, meta.json, script.txt) + vocab">
-          Upload Drive
-        </button>
-        <span id="sp-drive-status" class="sp-drive-status" title="PC ↔ Drive ↔ iPad: vocab qua caption-studio-backup.json, script qua folder <videoId>/"></span>
-      </div>
-      <div class="sp-source-row">
-        <span id="sp-source" class="sp-source" title="Bản đang hiển thị: nguồn · rev (Lamport) · lần lưu gần nhất"></span>
-        <button type="button" id="sp-source-refresh" class="sp-source-refresh" title="Kiểm tra Drive rồi nạp lại bản mới nhất">
-          ⟳
-        </button>
-      </div>
-      <div class="sp-actions">
-        <button type="button" id="sp-reload" title="Tải lại caption">Reload</button>
-        <button type="button" id="sp-add-cue" title="Thêm cue tại playhead">+ Cue</button>
-        <button type="button" id="sp-overlay" title="Bật/tắt overlay trên video (tắt không đóng panel)">Overlay</button>
-        <button type="button" id="sp-clear-mt" title="Xóa EN/VI đã dịch + cache MT (giữ JA)">Xóa dịch</button>
-        <button
-          type="button"
-          id="sp-wipe-script"
-          title="Xóa script đã lưu và tải lại caption từ YouTube"
-        >
-          Xóa sub
-        </button>
-        <button type="button" id="sp-export" title="Export TXT">Export</button>
-        <button type="button" id="sp-import" title="Nhập bản dịch từ file JSON/TXT">Import</button>
-        <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
-        <button type="button" id="sp-follow" class="sp-follow" title="Cuộn theo timeline" hidden>
-          Theo timeline
-        </button>
-        <button type="button" id="sp-settings" title="Cài đặt">⚙</button>
-      </div>
-    </header>
+    <div id="sp-toast" class="sp-toast" hidden></div>
+    <div id="sp-empty" class="sp-empty">
+      Mở tab YouTube / ABEMA / Netflix đang phát video, rồi bấm Reload nếu cần.
+    </div>
+    <div id="sp-list" class="sp-list" hidden></div>
+
     <section id="sp-import-panel" class="sp-import-panel" hidden>
       <div class="sp-import-head">
         <strong>Nhập bản dịch</strong>
@@ -75,35 +39,33 @@
         <button type="button" id="sp-import-apply">Áp dụng</button>
       </div>
     </section>
-    <div id="sp-toast" class="sp-toast" hidden></div>
-    <section id="sp-level-drawer" class="sp-level-drawer" hidden>
-      <div class="sp-level-drawer-head">
-        <h2>Làm nổi bật theo cấp độ</h2>
-        <button type="button" id="sp-level-close" class="sp-level-close" title="Đóng">×</button>
+
+    <footer class="sp-footer">
+      <div class="sp-footer-toolbar">
+        <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm cue tại playhead">+ Cue</button>
+        <button type="button" id="sp-reload" class="sp-footer-btn" title="Tải lại caption">Reload</button>
+        <button type="button" id="sp-overlay" class="sp-footer-btn" title="Bật/tắt overlay trên video">Overlay</button>
+        <button type="button" id="sp-follow" class="sp-footer-btn sp-follow" title="Cuộn theo timeline" hidden>▶ Cuộn</button>
+        <div class="sp-footer-spacer"></div>
+        <button type="button" id="sp-import" class="sp-footer-btn" title="Nhập bản dịch từ file JSON/TXT">Import</button>
+        <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
+        <button type="button" id="sp-export" class="sp-footer-btn" title="Export TXT">Export</button>
+        <button type="button" id="sp-clear-mt" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa EN/VI đã dịch (giữ JA)">Xóa dịch</button>
+        <button type="button" id="sp-wipe-script" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa script đã lưu và tải lại từ đầu">Xóa sub</button>
+        <button type="button" id="sp-drive-upload" class="sp-footer-btn sp-footer-btn-subtle" title="Upload script lên Drive">☁ Drive</button>
+        <button type="button" id="sp-settings" class="sp-footer-btn sp-footer-btn-icon" title="Cài đặt">⚙</button>
       </div>
-      <label class="sp-level-master">
-        <span class="sp-toggle">
-          <input type="checkbox" id="sp-level-enabled" checked />
-          <span class="sp-toggle-track"></span>
-        </span>
-        <span>Bật tô màu theo JLPT</span>
-      </label>
-      <div class="sp-level-section-head">
-        <span>MÀU SẮC CẤP ĐỘ</span>
-        <button type="button" id="sp-level-reset" class="sp-level-reset">Đặt lại</button>
+      <div class="sp-footer-meta" hidden>
+        <!-- Hidden elements for state/drive binding compatibility -->
+        <span id="sp-status" class="sp-status"></span>
+        <button type="button" id="sp-drive-connect" hidden></button>
+        <span id="sp-drive-status" class="sp-drive-status" hidden></span>
+        <span id="sp-source" class="sp-source" hidden></span>
+        <button type="button" id="sp-source-refresh" class="sp-source-refresh" hidden></button>
       </div>
-      <div id="sp-level-rows" class="sp-level-rows"></div>
-      <div class="sp-level-preview-wrap">
-        <span class="sp-level-preview-label">VĂN BẢN VÍ DỤ:</span>
-        <div id="sp-level-preview" class="sp-level-preview"></div>
-      </div>
-      <a href="#" id="sp-open-popup" class="sp-level-more">Cài đặt khác (popup)…</a>
-    </section>
-    <div id="sp-empty" class="sp-empty">
-      Mở tab YouTube đang phát video, rồi bấm Reload nếu cần.
-    </div>
-    <div id="sp-list" class="sp-list" hidden></div>
-    <!-- Unused: vocab dict paints on the YouTube page via content script. -->
+    </footer>
+
+    <!-- Unused: vocab dict paints on the video page via content script. -->
     <aside id="sp-dict" class="sp-dict" hidden></aside>
     <script src="../content/cue_timing.js"></script>
     <script src="../shared/vocab_style.js"></script>

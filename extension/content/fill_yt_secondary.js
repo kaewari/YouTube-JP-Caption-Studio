@@ -11,9 +11,9 @@
   }
   root.HardsubFillYtSecondary = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
-  const DEFAULT_TOL = 0.35;
+  const DEFAULT_TOL = 0.6;
   /** Min overlap / min(span) to accept a start-mismatched pair. */
-  const OVERLAP_FRAC = 0.35;
+  const OVERLAP_FRAC = 0.20;
 
   function defaultIsLocked(c) {
     if (!c) return false;
@@ -40,8 +40,14 @@
     return Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
   }
 
-  /** Rank: tier0 start±tol (closer dt better), tier1 overlap frac. null = no match. */
-  function matchRank(cue, sec, tol) {
+  /**
+   * Rank:
+   * tier0 start±tol (closer dt better)
+   * tier1 high overlap (frac >= OVERLAP_FRAC)
+   * tier2 any overlap (ov > 0)
+   * tier3 proximity fallback (distance <= 3.0s)
+   */
+  function matchRank(cue, sec, tol, allowProximity = false) {
     const cs = cueSpan(cue);
     const ss = secSpan(sec);
     const dt = Math.abs(cs.start - ss.start);
@@ -54,6 +60,18 @@
     if (ov > 0 && frac >= OVERLAP_FRAC) {
       return { tier: 1, frac, ov };
     }
+    if (ov > 0) {
+      return { tier: 2, frac, ov };
+    }
+    if (allowProximity) {
+      const startDist = Math.abs(cs.start - ss.start);
+      const endDist = Math.abs(cs.end - ss.end);
+      const centerDist = Math.abs((cs.start + cs.end) / 2 - (ss.start + ss.end) / 2);
+      const minD = Math.min(startDist, endDist, centerDist);
+      if (minD <= 3.0) {
+        return { tier: 3, dist: minD, dt };
+      }
+    }
     return null;
   }
 
@@ -65,16 +83,22 @@
       if (a.dt !== b.dt) return a.dt < b.dt;
       return (a.ov || 0) > (b.ov || 0);
     }
-    if (a.frac !== b.frac) return a.frac > b.frac;
-    return (a.ov || 0) > (b.ov || 0);
+    if (a.tier === 1 || a.tier === 2) {
+      if (a.frac !== b.frac) return a.frac > b.frac;
+      return (a.ov || 0) > (b.ov || 0);
+    }
+    if (a.tier === 3) {
+      return a.dist < b.dist;
+    }
+    return false;
   }
 
-  function findBestRow(cues, sec, tol, pred) {
+  function findBestRow(cues, sec, tol, pred, allowProximity = false) {
     let best = null;
     let bestR = null;
     for (const c of cues || []) {
       if (pred && !pred(c)) continue;
-      const r = matchRank(c, sec, tol);
+      const r = matchRank(c, sec, tol, allowProximity);
       if (betterRank(r, bestR)) {
         best = c;
         bestR = r;
@@ -117,8 +141,8 @@
 
   /**
    * Attach one secondary lang onto cues (fill empty unlocked, or append orphan).
-   * Prefers empty unlockable rows; overlap covers start-skewed EN/VI tracks.
-   * Second pass fills leftover blank JA from unused secondary.
+   * Multi-tier adaptive alignment covers start-skewed and split/merged EN/VI tracks.
+   * Second pass fills leftover blank JA from unused secondary with proximity.
    * @returns {number} rows changed (filled or appended)
    */
   function attachLang(cues, secondary, field, tol, isLocked, appendOrphans) {
@@ -127,13 +151,14 @@
     let n = 0;
     const canPaint = (c) => !isLocked(c) && !String(c[field] || "").trim();
 
+    // Pass 1: Standard match (tier 0, tier 1, tier 2)
     for (let i = 0; i < list.length; i++) {
       const sec = list[i];
       const text = String(sec.text || "").trim();
       if (!text) continue;
-      // Prefer blank unlockable; else any match consumes the secondary (no wrong orphan).
+      // Prefer blank unlockable; else any match consumes the secondary
       const hit =
-        findBestRow(cues, sec, tol, canPaint) || findBestRow(cues, sec, tol);
+        findBestRow(cues, sec, tol, canPaint, false) || findBestRow(cues, sec, tol, null, false);
       if (hit) {
         used.add(i);
         if (canPaint(hit)) {
@@ -148,7 +173,7 @@
       n += 1;
     }
 
-    // Blank JA leftover: nearest unused secondary by same rank rules.
+    // Pass 2: Blank JA leftover: nearest unused secondary by proximity (tier 3).
     for (const cue of cues || []) {
       if (!canPaint(cue)) continue;
       let bestI = -1;
@@ -158,7 +183,7 @@
         const sec = list[i];
         const text = String(sec.text || "").trim();
         if (!text) continue;
-        const r = matchRank(cue, sec, tol);
+        const r = matchRank(cue, sec, tol, true);
         if (betterRank(r, bestR)) {
           bestI = i;
           bestR = r;

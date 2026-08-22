@@ -201,10 +201,10 @@
     const kana = toHiragana(romaji);
     if (kana === romaji) return null;
     // Keep incomplete trailing consonant (except n) for further typing.
-    let keep = "";
+    let keep = false;
     const m = romaji.match(/([bcdfghjklmpqrstvwxyz]+)$/i);
     if (m && !/^(n|nn)$/i.test(m[1]) && toHiragana(romaji.slice(0, -m[1].length)) + m[1].toLowerCase() === kana + m[1].toLowerCase()) {
-      // incomplete — already handled inside toHiragana by passing through
+      keep = true;
     }
     // If conversion left a trailing consonant that wasn't converted, ok.
     const next = v.slice(0, start) + kana + v.slice(c);

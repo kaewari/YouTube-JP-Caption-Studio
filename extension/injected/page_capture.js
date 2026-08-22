@@ -5,8 +5,22 @@
 (function () {
   // Bump when message API changes so content can reinject after extension reload
   // without a full YouTube document reload (SPA keeps old MAIN-world listeners).
-  const API_VER = 3;
+  const API_VER = 5;
   if (window.__HARDSubOCRCapture?.apiVer === API_VER) return;
+  // Capability token from the content script's inject URL (?cap=...). Echoed in
+  // every reply so the content script can reject forged page-world messages.
+  let CAP_TOKEN = "";
+  try {
+    CAP_TOKEN =
+      String(
+        (document.currentScript || document.getElementById("hardsub-ocr-page-script"))?.src || ""
+      )
+        .split("?")[1]
+        ?.match(/(?:^|&)cap=([^&]+)/)?.[1] || "";
+    if (CAP_TOKEN) CAP_TOKEN = decodeURIComponent(CAP_TOKEN);
+  } catch (_) {
+    CAP_TOKEN = "";
+  }
   if (typeof window.__hardsubPageMsgHandler === "function") {
     try {
       window.removeEventListener("message", window.__hardsubPageMsgHandler);
@@ -114,16 +128,33 @@
   }
 
   function seekTo(t) {
+    const sec = Math.max(0, Number(t) || 0);
+    const nflx = getNetflixPlayer();
+    if (nflx && typeof nflx.seek === "function") {
+      try {
+        nflx.seek(Math.round(sec * 1000));
+        return true;
+      } catch (_) {}
+    }
     const video = state.video || findVideo();
     if (!video) return false;
-    video.currentTime = Math.max(0, Number(t) || 0);
+    video.currentTime = sec;
     return true;
   }
 
   function playAt(t) {
+    const sec = Math.max(0, Number(t) || 0);
+    const nflx = getNetflixPlayer();
+    if (nflx && typeof nflx.seek === "function") {
+      try {
+        nflx.seek(Math.round(sec * 1000));
+        if (typeof nflx.play === "function") nflx.play();
+        return { ok: true };
+      } catch (_) {}
+    }
     const video = state.video || findVideo();
     if (!video) return { ok: false, reason: "no_video" };
-    video.currentTime = Math.max(0, Number(t) || 0);
+    video.currentTime = sec;
     const playResult = video.play();
     if (playResult && typeof playResult.then === "function") {
       playResult.catch(() => {});
@@ -141,6 +172,17 @@
 
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** Race a promise against a timeout — settles with the first to finish. */
+  function withTimeout(promise, ms) {
+    let timer = null;
+    return Promise.race([
+      promise,
+      new Promise((_, rej) => {
+        timer = setTimeout(() => rej(new Error(`timeout_${ms}`)), ms);
+      }),
+    ]).finally(() => clearTimeout(timer));
   }
 
   function prVideoId(pr) {
@@ -433,15 +475,36 @@
     return { cues: [], error: lastError };
   }
 
+  /** Lang family aliases: normalized base code → 2-letter family. */
+  const LANG_FAMILY_ALIASES = {
+    ja: ["ja", "jpn", "jp"],
+    en: ["en", "eng"],
+    vi: ["vi", "vie", "viet", "vn"],
+  };
+
+  /**
+   * Match a track lang code (vi, vi-VN, vie, VI, vi_vn, en-US…) to a family
+   * (ja / en / vi). Normalizes case + separators; falls back to 3-letter aliases.
+   */
+  function matchLangFamily(lang, family) {
+    const raw = String(lang || "")
+      .toLowerCase()
+      .replace(/_/g, "-")
+      .trim();
+    if (!raw) return false;
+    const base = raw.split("-")[0];
+    const aliases = LANG_FAMILY_ALIASES[family] || [];
+    if (aliases.includes(raw) || aliases.includes(base)) return true;
+    return raw.startsWith(family + "-");
+  }
+
   function pickBestTrackByPrefix(tracks, prefix) {
     const pref = String(prefix || "").toLowerCase();
     const ranked = (tracks || [])
       .filter(
         (t) =>
           t?.baseUrl &&
-          String(t.languageCode || "")
-            .toLowerCase()
-            .startsWith(pref)
+          matchLangFamily(t.languageCode, pref)
       )
       .sort((a, b) => (a.kind === "asr" ? 1 : 0) - (b.kind === "asr" ? 1 : 0));
     return ranked[0] || null;
@@ -538,8 +601,376 @@
     if (body && String(body).trim().length > 10) {
       state.timedtext.body = String(body);
       const cues = parseTimedtextBody(body);
-      if (cues.length) state.timedtext.cues = cues;
+      if (cues.length) {
+        state.timedtext.cues = cues;
+        try {
+          window.postMessage(
+            {
+              type: "__HARDSUB_TIMEDTEXT_CAPTURED__",
+              source: "youtube",
+              videoId: state.timedtext.videoId,
+              count: cues.length,
+              cap: CAP_TOKEN,
+            },
+            "*"
+          );
+        } catch (_) {}
+      }
     }
+  }
+
+  const netflixState = {
+    cues: [],
+    enCues: [],
+    viCues: [],
+    tracks: new Map(),
+    /** Lang family → the last timedtext URL captured for it (URL-inference base). */
+    urlByLang: new Map(),
+    /** If extension is actively switching track to probe a specific lang, set here. */
+    probingLang: null,
+  };
+
+  /** Best guess: is this track a caption/subtitle track (vs audio/dub)? */
+  function isTextTrack(t) {
+    const type = String(t?.mediaType || t?.type || t?.kind || t?.trackType || t?.rawTrackType || "").toLowerCase();
+    return (
+      type === "text" ||
+      type === "subtitle" ||
+      type === "subtitles" ||
+      type === "captions" ||
+      type === "primary" ||
+      type === "assistive" ||
+      type.includes("subtitle")
+    );
+  }
+
+  /** Prefer caption tracks over audible/dub entries when a lang has both. */
+  function textPrefer(list) {
+    const textOne = (list || []).find(isTextTrack);
+    return textOne || (list || [])[0] || null;
+  }
+
+  /** If a VI text track exists but we could not pull cues, tell the UI why. */
+  let viProbeFailed = false;
+
+  function parseVtt(text) {
+    const cues = [];
+    const src = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!src) return cues;
+    const timeRe = /(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})/;
+    const toSec = (m) =>
+      Number(m[1]) * 3600 +
+      Number(m[2]) * 60 +
+      Number(m[3]) +
+      Number(m[4]) / Math.pow(10, String(m[4]).length);
+    for (const block of src.split(/\n{2,}/)) {
+      const lines = block.split("\n").map((l) => l.trim());
+      if (!lines.length || !lines[0]) continue;
+      if (/^(WEBVTT|NOTE|STYLE|REGION)\b/i.test(lines[0])) continue;
+      let ti = -1;
+      for (let i = 0; i < lines.length; i += 1) {
+        if (lines[i].includes("-->")) {
+          ti = i;
+          break;
+        }
+      }
+      if (ti < 0) continue;
+      const timing = lines[ti].split("-->");
+      const sm = String(timing[0] || "").trim().match(timeRe);
+      if (!sm) continue;
+      const start = toSec(sm);
+      const em = String(timing[1] || "").trim().match(timeRe);
+      let end = em ? toSec(em) : start + 2;
+      if (!Number.isFinite(end) || end < start) end = start + 2;
+      const text = lines
+        .slice(ti + 1)
+        .join(" ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!text) continue;
+      cues.push({ start, end, text });
+    }
+    return cues;
+  }
+
+  function parseDfxpTime(timeStr, tickRate = 10000000, frameRate = 24) {
+    if (!timeStr) return NaN;
+    const s = String(timeStr).trim();
+    if (!s) return NaN;
+    if (s.endsWith("t")) {
+      const ticks = Number(s.slice(0, -1));
+      return Number.isFinite(ticks) ? ticks / tickRate : NaN;
+    }
+    if (s.endsWith("ms")) {
+      const ms = Number(s.slice(0, -2));
+      return Number.isFinite(ms) ? ms / 1000 : NaN;
+    }
+    if (s.endsWith("s")) {
+      const sec = Number(s.slice(0, -1));
+      return Number.isFinite(sec) ? sec : NaN;
+    }
+    if (s.endsWith("f")) {
+      const frames = Number(s.slice(0, -1));
+      return Number.isFinite(frames) ? frames / frameRate : NaN;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s);
+    const parts = s.split(":");
+    if (parts.length === 3) {
+      const h = Number(parts[0]) || 0;
+      const m = Number(parts[1]) || 0;
+      let secPart = parts[2];
+      let sec = 0;
+      let frames = 0;
+      if (secPart.includes(".")) {
+        sec = Number(secPart) || 0;
+      } else if (secPart.includes(":")) {
+        const sub = secPart.split(":");
+        sec = Number(sub[0]) || 0;
+        frames = Number(sub[1]) || 0;
+      } else {
+        sec = Number(secPart) || 0;
+      }
+      return h * 3600 + m * 60 + sec + (frames > 0 ? frames / frameRate : 0);
+    } else if (parts.length === 2) {
+      const m = Number(parts[0]) || 0;
+      const sec = Number(parts[1]) || 0;
+      return m * 60 + sec;
+    }
+    return NaN;
+  }
+
+  function parseDfxpText(xmlString) {
+    if (!xmlString || typeof xmlString !== "string") return [];
+    let tickRate = 10000000;
+    let frameRate = 24;
+    const tickRateMatch = xmlString.match(/ttp:tickRate=["']?(\d+)["']?/i) || xmlString.match(/tickRate=["']?(\d+)["']?/i);
+    if (tickRateMatch && Number(tickRateMatch[1]) > 0) tickRate = Number(tickRateMatch[1]);
+    const frameRateMatch = xmlString.match(/ttp:frameRate=["']?(\d+)["']?/i) || xmlString.match(/frameRate=["']?(\d+)["']?/i);
+    if (frameRateMatch && Number(frameRateMatch[1]) > 0) frameRate = Number(frameRateMatch[1]);
+
+    function cleanText(inner) {
+      if (!inner) return "";
+      return inner
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0)
+        .join("\n")
+        .trim();
+    }
+
+    function extractTiming(attrs, parentStart = NaN, parentEnd = NaN) {
+      if (!attrs) return { start: parentStart, end: parentEnd };
+      const beginMatch = attrs.match(/\bbegin=["']([^"']+)["']/i);
+      const endMatch = attrs.match(/\bend=["']([^"']+)["']/i);
+      const durMatch = attrs.match(/\bdur=["']([^"']+)["']/i);
+
+      let start = beginMatch ? parseDfxpTime(beginMatch[1], tickRate, frameRate) : parentStart;
+      let end = endMatch ? parseDfxpTime(endMatch[1], tickRate, frameRate) : parentEnd;
+      if (!Number.isFinite(end) && durMatch && Number.isFinite(start)) {
+        const dur = parseDfxpTime(durMatch[1], tickRate, frameRate);
+        if (Number.isFinite(dur)) end = start + dur;
+      }
+      return { start, end };
+    }
+
+    const cues = [];
+
+    // Pass 1: Parse <div> blocks with timing
+    const divRegex = /<div\b([^>]*)>([\s\S]*?)<\/div>/gi;
+    let divMatch;
+    while ((divMatch = divRegex.exec(xmlString)) !== null) {
+      const divAttrs = divMatch[1];
+      const divContent = divMatch[2];
+      const divTiming = extractTiming(divAttrs);
+
+      const pRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+      let pMatch;
+      let divHasP = false;
+      while ((pMatch = pRegex.exec(divContent)) !== null) {
+        divHasP = true;
+        const pAttrs = pMatch[1];
+        const pContent = pMatch[2];
+        const pTiming = extractTiming(pAttrs, divTiming.start, divTiming.end);
+
+        // Check if spans inside p have their own timing
+        const spanRegex = /<span\b([^>]*)>([\s\S]*?)<\/span>/gi;
+        let spanMatch;
+        let spanCount = 0;
+        while ((spanMatch = spanRegex.exec(pContent)) !== null) {
+          const sAttrs = spanMatch[1];
+          const sContent = spanMatch[2];
+          if (/\bbegin=["']/i.test(sAttrs)) {
+            const sTiming = extractTiming(sAttrs, pTiming.start, pTiming.end);
+            const text = cleanText(sContent);
+            if (Number.isFinite(sTiming.start) && text) {
+              let end = Number.isFinite(sTiming.end) && sTiming.end > sTiming.start ? sTiming.end : sTiming.start + 2.0;
+              cues.push({
+                start: Math.round(sTiming.start * 1000) / 1000,
+                end: Math.round(end * 1000) / 1000,
+                text,
+              });
+              spanCount++;
+            }
+          }
+        }
+
+        if (spanCount === 0) {
+          const text = cleanText(pContent);
+          let start = pTiming.start;
+          let end = pTiming.end;
+          if (Number.isFinite(start) && text) {
+            if (!Number.isFinite(end) || end <= start) end = start + 2.0;
+            cues.push({
+              start: Math.round(start * 1000) / 1000,
+              end: Math.round(end * 1000) / 1000,
+              text,
+            });
+          }
+        }
+      }
+
+      if (!divHasP && Number.isFinite(divTiming.start)) {
+        const text = cleanText(divContent);
+        if (text) {
+          let end = Number.isFinite(divTiming.end) && divTiming.end > divTiming.start ? divTiming.end : divTiming.start + 2.0;
+          cues.push({
+            start: Math.round(divTiming.start * 1000) / 1000,
+            end: Math.round(end * 1000) / 1000,
+            text,
+          });
+        }
+      }
+    }
+
+    // Fallback: If no cues found via div-tree, parse all <p> and <span> globally
+    if (!cues.length) {
+      const pTagRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+      let match;
+      while ((match = pTagRegex.exec(xmlString)) !== null) {
+        const attrs = match[1];
+        const innerContent = match[2];
+        const timing = extractTiming(attrs);
+        const text = cleanText(innerContent);
+        if (Number.isFinite(timing.start) && text) {
+          let end = Number.isFinite(timing.end) && timing.end > timing.start ? timing.end : timing.start + 2.0;
+          cues.push({
+            start: Math.round(timing.start * 1000) / 1000,
+            end: Math.round(end * 1000) / 1000,
+            text,
+          });
+        }
+      }
+    }
+
+    // Dedup and sort
+    const seen = new Set();
+    const result = [];
+    cues.sort((a, b) => a.start - b.start || a.end - b.end);
+    for (const c of cues) {
+      const key = `${c.start.toFixed(3)}_${c.end.toFixed(3)}_${c.text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(c);
+    }
+    return result;
+  }
+
+  function parseSubtitlePayload(text) {
+    if (!text || typeof text !== "string") return [];
+    const t = text.trim();
+    if (t.startsWith("WEBVTT") || t.includes("-->")) {
+      const vtt = parseVtt(t);
+      if (vtt.length) return vtt;
+    }
+    if (t.includes("<tt") || t.includes("<p") || t.includes("<div") || t.startsWith("<?xml")) {
+      const dfxp = parseDfxpText(t);
+      if (dfxp.length) return dfxp;
+    }
+    const dfxp = parseDfxpText(t);
+    if (dfxp.length) return dfxp;
+    return parseVtt(t);
+  }
+
+  function detectSubtitleLang(text, cues, url) {
+    if (netflixState.probingLang) {
+      return netflixState.probingLang;
+    }
+    const langMatch =
+      String(text || "").match(/xml:lang=["']([^"']+)["']/i) ||
+      String(text || "").match(/Language:\s*([a-zA-Z-]+)/i) ||
+      String(url || "").match(/[?&](?:lang|language|bcp47|l)=([a-zA-Z-]+)/i);
+    if (langMatch) {
+      const l = langMatch[1].toLowerCase();
+      if (matchLangFamily(l, "ja")) return "ja";
+      if (matchLangFamily(l, "vi")) return "vi";
+      if (matchLangFamily(l, "en")) return "en";
+      return l;
+    }
+    // Scan up to 100 cues for accurate character classification
+    const sample = (cues || []).slice(0, 100).map((c) => c.text).join(" ");
+    if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(sample)) {
+      return "ja";
+    }
+    if (/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/.test(sample)) {
+      return "vi";
+    }
+    if (/[a-zA-Z]/.test(sample)) {
+      return "en";
+    }
+    return "";
+  }
+
+  function noteNetflixTimedtext(url, text) {
+    if (!text || typeof text !== "string") return;
+    const cues = parseSubtitlePayload(text);
+    if (!cues.length) return;
+
+    const lang = detectSubtitleLang(text, cues, String(url || ""));
+    if (lang) netflixState.urlByLang.set(lang, String(url));
+
+    if (matchLangFamily(lang, "ja")) {
+      netflixState.cues = cues;
+      netflixState.tracks.set("ja", cues);
+    } else if (matchLangFamily(lang, "en")) {
+      netflixState.enCues = cues;
+      netflixState.tracks.set("en", cues);
+    } else if (matchLangFamily(lang, "vi")) {
+      netflixState.viCues = cues;
+      netflixState.tracks.set("vi", cues);
+    } else {
+      netflixState.tracks.set(lang || "unknown", cues);
+      if (!netflixState.cues.length) {
+        netflixState.cues = cues;
+      }
+    }
+    try {
+      window.postMessage(
+        {
+          type: "__HARDSUB_TIMEDTEXT_CAPTURED__",
+          source: "netflix",
+          lang,
+          count: cues.length,
+          cap: CAP_TOKEN,
+        },
+        "*"
+      );
+    } catch (_) {}
+  }
+
+  const NETFLIX_URL_RE = /nflxvideo\.(net|com)|nflxext\.com|nflxso\.net|nflximg\.net|netflix\.com|oca\.nflx|\.dfxp|\.vtt|timedtext|subtitles/i;
+  function isNetflixUrl(u) {
+    return NETFLIX_URL_RE.test(String(u || ""));
   }
 
   function installTimedtextHooks() {
@@ -551,12 +982,21 @@
       try {
         const req = args[0];
         const url = typeof req === "string" ? req : req && req.url ? req.url : "";
-        if (url && String(url).includes("/api/timedtext")) {
-          res
-            .clone()
-            .text()
-            .then((t) => noteTimedtext(url, t))
-            .catch(() => noteTimedtext(url, ""));
+        if (url) {
+          const uStr = String(url);
+          if (uStr.includes("/api/timedtext")) {
+            res
+              .clone()
+              .text()
+              .then((t) => noteTimedtext(url, t))
+              .catch(() => noteTimedtext(url, ""));
+          } else if (isNetflixUrl(uStr)) {
+            res
+              .clone()
+              .text()
+              .then((t) => noteNetflixTimedtext(url, t))
+              .catch(() => {});
+          }
         }
       } catch (_) {}
       return res;
@@ -571,8 +1011,13 @@
     XMLHttpRequest.prototype.send = function (...args) {
       this.addEventListener("load", function () {
         try {
-          if (this.__hardsubTtUrl && String(this.__hardsubTtUrl).includes("/api/timedtext")) {
-            noteTimedtext(this.__hardsubTtUrl, this.responseText || "");
+          if (this.__hardsubTtUrl) {
+            const uStr = String(this.__hardsubTtUrl);
+            if (uStr.includes("/api/timedtext")) {
+              noteTimedtext(this.__hardsubTtUrl, this.responseText || "");
+            } else if (isNetflixUrl(uStr)) {
+              noteNetflixTimedtext(this.__hardsubTtUrl, this.responseText || "");
+            }
           }
         } catch (_) {}
       });
@@ -923,15 +1368,388 @@
     const asr = track.kind === "asr";
     let s = 0;
     if (prefer === "auto") {
-      if (lang.startsWith("ja")) s += 90;
-      else if (lang.startsWith("en")) s += 40;
-    } else if (lang.startsWith(prefer)) {
+      if (matchLangFamily(lang, "ja")) s += 90;
+      else if (matchLangFamily(lang, "en")) s += 40;
+    } else if (matchLangFamily(lang, prefer)) {
       s += 100;
-    } else if (lang.startsWith("ja")) {
+    } else if (matchLangFamily(lang, "ja")) {
       s += 70;
     }
     if (!asr) s += 25;
     return s;
+  }
+
+  /** All <track> subtitle sources across every <video> on the page (dedup). */
+  function collectTrackSources() {
+    const out = [];
+    const seen = new Set();
+    for (const v of document.querySelectorAll("video")) {
+      for (const tr of v.querySelectorAll("track")) {
+        const src = tr.src || tr.getAttribute("src") || "";
+        if (!src || seen.has(src)) continue;
+        seen.add(src);
+        out.push({ src, lang: tr.srclang || tr.label || "" });
+      }
+    }
+    return out;
+  }
+
+  /** Which site family this tab belongs to — content maps to a scrubbed storage key. */
+  function pageInfo() {
+    let source = "web";
+    try {
+      const h = location.hostname;
+      if (h === "www.youtube.com" || h === "youtube.com" || h.endsWith("youtube-nocookie.com")) {
+        source = "youtube";
+      } else if (h === "abema.tv" || h.endsWith(".abema.tv")) {
+        source = "abema";
+      } else if (h === "netflix.com" || h.endsWith(".netflix.com")) {
+        source = "netflix";
+      }
+    } catch (_) {}
+    let id = "";
+    if (source === "netflix") {
+      const nm = String(location.pathname || "").match(/\/(?:watch|title)\/(\d+)/);
+      if (nm && nm[1]) id = nm[1];
+    }
+    if (!id) {
+      const rawPath = String(location.pathname || "").replace(/\/+$/, "");
+      id = rawPath.split("/").filter(Boolean).pop() || "";
+    }
+    let title = "";
+    try {
+      title = String(document.title || "")
+        .replace(/\s*-\s*([^|-]+)$/i, "")
+        .trim();
+    } catch (_) {}
+    return {
+      ok: true,
+      source,
+      id,
+      url: location.href,
+      title,
+      host: location.hostname,
+    };
+  }
+
+  function getNetflixPlayer() {
+    try {
+      const vp = window.netflix?.appContext?.state?.playerApp?.getAPI()?.videoPlayer;
+      if (!vp) return null;
+      const sessionIds = vp.getAllPlayerSessionIds ? vp.getAllPlayerSessionIds() : [];
+      const id = sessionIds[0];
+      return id ? vp.getVideoPlayerBySessionId(id) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function fetchNetflixCaptions() {
+    const player = getNetflixPlayer();
+    if (player && typeof player.getTimedTextTrackList === "function") {
+      const tracks = player.getTimedTextTrackList() || [];
+      const bcp47 = (t) => String(t?.bcp47 || "").toLowerCase();
+      const jaTrack = textPrefer(
+        tracks.filter(
+          (t) =>
+            !t.isNone &&
+            (matchLangFamily(bcp47(t), "ja") || /japanese|日本語/i.test(t.displayName || ""))
+        )
+      );
+      const enTrack = textPrefer(
+        tracks.filter(
+          (t) =>
+            !t.isNone &&
+            (matchLangFamily(bcp47(t), "en") || /english/i.test(t.displayName || ""))
+        )
+      );
+      const viTrack = textPrefer(
+        tracks.filter(
+          (t) =>
+            !t.isNone &&
+            (matchLangFamily(bcp47(t), "vi") ||
+              /vietnamese|tiếng việt|tieng viet|vi\b/i.test(t.displayName || ""))
+        )
+      );
+
+      // Helper to fetch direct track URLs if exposed on track objects.
+      // Each URL fetch is timeout-capped so one hung track never blocks the rest.
+      async function tryFetchTrackDirect(track, langKey) {
+        if (!track) return false;
+        const urls = [];
+        // Deep-scan the whole track object — Netflix hides subtitle URLs under
+        // arbitrary keys (downloadBaseUrl, trackId, timedtext…), so take every
+        // http(s) string plus any explicitly URL-ish key at every depth.
+        function scanUrls(obj, depth = 0) {
+          if (!obj || depth > 8) return;
+          if (typeof obj === "string") {
+            if (/^https?:\/\//.test(obj)) urls.push(obj);
+          } else if (typeof obj === "object") {
+            try {
+              for (const k of Object.keys(obj)) {
+                const v = obj[k];
+                if (
+                  /\b(url|href|src|baseUrl|downloadUrl|manifest|timedtext|subtitle)\b/i.test(k) &&
+                  typeof v === "string" &&
+                  /^https?:\/\//.test(v)
+                ) {
+                  urls.push(v);
+                }
+                scanUrls(v, depth + 1);
+              }
+            } catch (_) {}
+          }
+        }
+        scanUrls(track);
+        for (const u of urls) {
+          try {
+            const res = await withTimeout(fetch(u, { credentials: "omit" }), 600);
+            if (res.ok) {
+              const xml = await res.text();
+              const parsed = parseSubtitlePayload(xml);
+              if (parsed && parsed.length) {
+                if (langKey === "ja") netflixState.cues = parsed;
+                else if (langKey === "en") netflixState.enCues = parsed;
+                else if (langKey === "vi") netflixState.viCues = parsed;
+                netflixState.tracks.set(langKey, parsed);
+                return true;
+              }
+            }
+          } catch (_) {}
+        }
+        return false;
+      }
+
+      // Look at direct track URLs in parallel — lang fetches are independent.
+      await Promise.all([
+        jaTrack && !netflixState.cues.length
+          ? tryFetchTrackDirect(jaTrack, "ja")
+          : Promise.resolve(false),
+        enTrack && !netflixState.enCues.length
+          ? tryFetchTrackDirect(enTrack, "en")
+          : Promise.resolve(false),
+        viTrack && !netflixState.viCues.length
+          ? tryFetchTrackDirect(viTrack, "vi")
+          : Promise.resolve(false),
+      ]);
+
+      /**
+       * Netflix track objects rarely expose the subtitle URL directly, but the
+       * JA/EN manifests we already captured usually let us infer the same movie's
+       * VI/EN URL (swap trackId / lang query param). Tries plain URL candidates.
+       */
+      async function tryBuildUrlForTrack(track, langKey) {
+        if (!track) return false;
+        const rawId = String(track?.trackId ?? track?.subtitleId ?? track?.id ?? "");
+        const candidates = [];
+        const add = (s) => {
+          if (s && !candidates.includes(s)) candidates.push(s);
+        };
+        // Fall back to any captured Netflix URL (JA usually; EN/others also help).
+        const factories = [
+          netflixState.urlByLang.get("ja"),
+          netflixState.urlByLang.get("en"),
+          ...Array.from(netflixState.urlByLang.values()),
+        ].filter(Boolean);
+        const langMap = {
+          ja: langKey,
+          en: langKey,
+          vi: langKey,
+          jpn: langKey,
+          vie: langKey,
+          "vi-vn": langKey,
+        };
+        for (const base of factories) {
+          // Global replace of every language token (query + path) → requested lang.
+          add(
+            base.replace(
+              /([?&](?:l|lang|dl)=)([^&]+)/,
+              (m, p, v) => `${p}${langMap[String(v).toLowerCase()] || langKey}`
+            )
+          );
+          add(
+            base.replace(
+              /(?:ja|en|vi|jpn|vie|vi-vn)(?=[/_.?-]|$)/gi,
+              (m) => String(langMap[m.toLowerCase()] || langKey)
+            )
+          );
+          if (rawId && /[?&](trackId|subtitleId|id)=/.test(base)) {
+            add(base.replace(/([?&]trackId=)([^&]+)/, `$1${encodeURIComponent(rawId)}`));
+            add(base.replace(/([?&]subtitleId=)([^&]+)/, `$1${encodeURIComponent(rawId)}`));
+            add(base.replace(/([?&]id=)([^&]+)/, `$1${encodeURIComponent(rawId)}`));
+          }
+          // Bare manifest: drop the lang param so the default (account language) is used.
+          add(base.replace(/([?&])(l|lang|dl)=[^&]+/, (_, pre) => pre));
+        }
+        const seen = new Set();
+        for (const u of candidates) {
+          if (seen.has(u)) continue;
+          seen.add(u);
+          try {
+            const res = await withTimeout(fetch(u, { credentials: "include" }), 600);
+            if (!res.ok) continue;
+            const xml = await res.text();
+            const parsed = parseSubtitlePayload(xml);
+            if (parsed && parsed.length) {
+              if (langKey === "ja") netflixState.cues = parsed;
+              else if (langKey === "en") netflixState.enCues = parsed;
+              else if (langKey === "vi") netflixState.viCues = parsed;
+              netflixState.tracks.set(langKey, parsed);
+              return true;
+            }
+          } catch (_) {}
+        }
+        return false;
+      }
+
+      // Direct URLs missing → try infer from the captured manifests.
+      if (!netflixState.enCues.length && enTrack) await tryBuildUrlForTrack(enTrack, "en");
+      if (!netflixState.viCues.length && viTrack) await tryBuildUrlForTrack(viTrack, "vi");
+      if (viTrack && !netflixState.viCues.length) viProbeFailed = true;
+
+      // Seamless track switcher fallback for any tracks not yet fetched directly.
+      try {
+        if (typeof player.setSubtitleEnabled === "function") player.setSubtitleEnabled(true);
+        if (typeof player.setOption === "function") player.setOption("subtitle", "enabled", "on");
+      } catch (_) {}
+
+      // Seamless track switcher fallback: probe missing EN and VI tracks.
+      if (typeof player.setTimedTextTrack === "function") {
+        const got = (langKey) =>
+          langKey === "ja"
+            ? netflixState.cues.length
+            : langKey === "en"
+              ? netflixState.enCues.length
+              : netflixState.viCues.length;
+        const switchTrackAndWait = async (track, langKey, force = false) => {
+          if (!track) return;
+          if (!force && got(langKey)) return;
+          try {
+            netflixState.probingLang = langKey;
+            player.setTimedTextTrack(track);
+            const deadline = Date.now() + 800;
+            while (Date.now() < deadline && !got(langKey)) {
+              await new Promise((r) => setTimeout(r, 60));
+            }
+          } catch (_) {
+          } finally {
+            netflixState.probingLang = null;
+          }
+        };
+        if (enTrack && !netflixState.enCues.length) {
+          await switchTrackAndWait(enTrack, "en");
+        }
+        if (viTrack && !netflixState.viCues.length) {
+          await switchTrackAndWait(viTrack, "vi");
+        }
+        if (jaTrack) {
+          await switchTrackAndWait(jaTrack, "ja", true);
+        }
+      }
+    }
+
+    const video = findVideo();
+    if (video && video.textTracks) {
+      for (const tr of video.textTracks) {
+        const trCues = tr.cues;
+        if (!trCues || !trCues.length) continue;
+        const trLang = String(tr.language || tr.label || "").toLowerCase();
+        const native = [];
+        for (const c of trCues) {
+          let st = Number(c.startTime);
+          if (!Number.isFinite(st)) continue;
+          let en = Number(c.endTime);
+          if (!Number.isFinite(en)) en = st + 2;
+          const text = String(c.text || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+          if (text) native.push({ start: st, end: Math.max(st + 0.2, en), text });
+        }
+        if (native.length) {
+          if (matchLangFamily(trLang, "ja") && !netflixState.cues.length) {
+            netflixState.cues = native;
+          } else if (matchLangFamily(trLang, "en") && !netflixState.enCues.length) {
+            netflixState.enCues = native;
+          } else if (matchLangFamily(trLang, "vi") && !netflixState.viCues.length) {
+            netflixState.viCues = native;
+          } else if (!netflixState.cues.length) {
+            netflixState.cues = native;
+          }
+        }
+      }
+    }
+
+    if (netflixState.cues.length) {
+      return {
+        ok: true,
+        via: "netflix_timedtext",
+        count: netflixState.cues.length,
+        cues: netflixState.cues,
+        enCues: netflixState.enCues,
+        viCues: netflixState.viCues,
+        viUnavailable: viProbeFailed && !netflixState.viCues.length,
+      };
+    }
+
+    return {
+      ok: false,
+      reason: "no_netflix_cues",
+      count: 0,
+      cues: [],
+      enCues: netflixState.enCues,
+      viCues: netflixState.viCues,
+      viUnavailable: viProbeFailed && !netflixState.viCues.length,
+    };
+  }
+
+  /**
+   * Generic caption fetch for non-YouTube players (ABEMA / Netflix / hls.js / shaka / …):
+   */
+  async function fetchPageCaptions() {
+    const info = pageInfo();
+    if (info.source === "netflix") {
+      return await fetchNetflixCaptions();
+    }
+
+    const cues = [];
+    const tried = new Set();
+    for (const t of collectTrackSources()) {
+      if (tried.has(t.src)) continue;
+      tried.add(t.src);
+      try {
+        const res = await fetch(t.src, { credentials: "include", cache: "no-store" });
+        if (res.ok) {
+          const got = parseVtt(await res.text());
+          if (got.length && !cues.length) cues.push(...got);
+        }
+      } catch (_) {
+        /* try next */
+      }
+    }
+    if (cues.length) return { ok: true, via: "track_elements", count: cues.length, cues };
+
+    // Fallback: in-page native textTracks cues (already parsed by the player).
+    const native = [];
+    const video = findVideo();
+    if (video && video.textTracks) {
+      const list = video.textTracks;
+      for (const tr of list) {
+        let cueList = null;
+        try {
+          cueList = tr.cues;
+        } catch (_) {}
+        if (!cueList) continue;
+        for (const c of cueList) {
+          let st = Number(c.startTime);
+          if (!Number.isFinite(st)) continue;
+          let en = Number(c.endTime);
+          if (!Number.isFinite(en)) en = st + 2;
+          const text = String(c.text || "").replace(/\s+/g, " ").trim();
+          if (!text) continue;
+          native.push({ start: st, end: Math.max(st + 0.2, en), text });
+        }
+      }
+    }
+    if (native.length) return { ok: true, via: "text_tracks", count: native.length, cues: native };
+    return { ok: false, reason: "no_cues", count: 0, cues: [] };
   }
 
   function pickCaptionTrack(tracks, preferLang) {
@@ -1010,6 +1828,8 @@
     playAt,
     loadCaptions,
     fetchMultiLangCaptions,
+    fetchPageCaptions,
+    getPageInfo: pageInfo,
     captionAt,
     getTimedtextLink,
     setRoi(roi) {
@@ -1027,7 +1847,10 @@
     const { type, requestId, payload } = ev.data;
 
     const reply = (result) => {
-      window.postMessage({ source: "hardsub-ocr-page", requestId, result }, "*");
+      window.postMessage(
+        { source: "hardsub-ocr-page", requestId, result, cap: CAP_TOKEN },
+        "*"
+      );
     };
 
     try {
@@ -1061,6 +1884,26 @@
               hasVi: false,
             })
           );
+      } else if (type === "GET_PAGE_INFO") reply(pageInfo());
+      else if (type === "FETCH_CAPTIONS") {
+        fetchPageCaptions(payload || {})
+          .then(reply)
+          .catch((err) =>
+            reply({ ok: false, reason: "exception", message: String(err), count: 0, cues: [] })
+          );
+      } else if (type === "RESET_CAPTIONS") {
+        bindVideo();
+        ccTriggerVideoId = "";
+        state.captions = { videoId: "", cues: [], track: null, status: "idle", error: "" };
+        state.timedtext = { url: "", videoId: "", body: "", cues: [] };
+        netflixState.cues = [];
+        netflixState.enCues = [];
+        netflixState.viCues = [];
+        netflixState.tracks.clear();
+        netflixState.urlByLang.clear();
+        netflixState.probingLang = null;
+        viProbeFailed = false;
+        reply({ ok: true });
       } else if (type === "GET_TIMEDTEXT_LINK") reply(getTimedtextLink(payload || {}));
       else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
       else reply({ ok: false, reason: "unknown" });

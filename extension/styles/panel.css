@@ -573,3 +573,70 @@
 .hardsub-ytp-toggle:hover .hardsub-ytp-toggle__pill {
   border-color: rgba(255, 255, 255, 0.28);
 }
+
+/* Generic / Floating toggle for Netflix, ABEMA, and web players */
+.hardsub-generic-toggle {
+  position: absolute !important;
+  left: 24px !important;
+  top: 48% !important;
+  transform: translateY(-50%) !important;
+  z-index: 2147483646 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Reveal button when hovering over the video player or moving mouse */
+.watch-video:hover .hardsub-generic-toggle,
+.NFPlayer:hover .hardsub-generic-toggle,
+[class*="player"]:hover .hardsub-generic-toggle,
+[class*="com-vod-"]:hover .hardsub-generic-toggle,
+#hardsub-ocr-root:hover .hardsub-generic-toggle,
+.hardsub-generic-toggle:hover,
+.hardsub-generic-toggle.force-visible {
+  opacity: 0.88;
+  pointer-events: auto;
+}
+
+.hardsub-generic-toggle:hover {
+  opacity: 1 !important;
+  transform: translateY(-50%) scale(1.08) !important;
+}
+
+/* Netflix: nút DỊCH ở vùng đen phía trên video, cạnh nút report (top-right).
+   Vị trí chính xác theo nút report do content.js đặt inline (important).
+   Base (fallback): góc trên phải player, transform không dịch chuyển dọc. */
+.NFPlayer .hardsub-generic-toggle--netflix,
+.watch-video .hardsub-generic-toggle--netflix {
+  left: auto !important;
+  top: 12px !important;
+  right: 64px !important;
+  transform: none !important;
+}
+
+.NFPlayer .hardsub-generic-toggle--netflix:hover,
+.watch-video .hardsub-generic-toggle--netflix:hover {
+  transform: scale(1.08) !important;
+}
+
+.hardsub-generic-toggle .hardsub-ytp-toggle__pill {
+  height: 32px;
+  padding: 0 12px 0 6px;
+  border-radius: 16px;
+  background: rgba(20, 20, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65), 0 0 12px rgba(62, 166, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 12px;
+}
+
+

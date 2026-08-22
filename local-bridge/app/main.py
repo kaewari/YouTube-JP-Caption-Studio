@@ -100,6 +100,7 @@ app.add_middleware(
 )
 
 _latencies: deque[float] = deque(maxlen=50)
+_batch_latencies: deque[float] = deque(maxlen=50)
 
 _EXT_STATE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "config" / "extension_state.json"
 _ext_state_lock = threading.Lock()
@@ -164,6 +165,13 @@ def _p50_latency() -> float:
     return s[len(s) // 2]
 
 
+def _p95_latency() -> float:
+    if not _batch_latencies:
+        return 0.0
+    s = sorted(_batch_latencies)
+    return s[min(len(s) - 1, int(len(s) * 0.95))]
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     governor.start()
@@ -199,6 +207,7 @@ def health() -> HealthResponse:
         caps=governor.state.caps,
         pressure=snap["pressure"],
         latency_p50_ms=_p50_latency(),
+        tokenize_batch_p95_ms=_p95_latency(),
         bootstrap=progress.model_dump(),
     )
 
@@ -235,28 +244,33 @@ def tokenize_text(body: TokenizeRequest) -> TokenizeResponse:
 @app.post("/tokenize_batch", response_model=TokenizeBatchResponse)
 def tokenize_batch(body: TokenizeBatchRequest) -> TokenizeBatchResponse:
     """Batch Sudachi tokenize for post-import enrich."""
-    with _governed():
-        if not sudachi_loaded():
-            load_tokenizer()
-        results: list[TokenizeBatchItem] = []
-        for cue in body.cues or []:
-            src = (cue.text or "").strip()
-            results.append(
-                TokenizeBatchItem(
-                    id=cue.id or "",
-                    source=src,
-                    tokens=tokenize(src) if src else [],
+    t0 = time.perf_counter()
+    try:
+        with _governed():
+            if not sudachi_loaded():
+                load_tokenizer()
+            results: list[TokenizeBatchItem] = []
+            for cue in body.cues or []:
+                src = (cue.text or "").strip()
+                results.append(
+                    TokenizeBatchItem(
+                        id=cue.id or "",
+                        source=src,
+                        tokens=tokenize(src) if src else [],
+                    )
                 )
-            )
-        return TokenizeBatchResponse(results=results)
+            return TokenizeBatchResponse(results=results)
+    finally:
+        ms = (time.perf_counter() - t0) * 1000.0
+        _latencies.append(ms)
+        _batch_latencies.append(ms)
 
 
 @app.post("/dict", response_model=DictResponse)
 def dict_lookup(body: DictRequest) -> DictResponse:
-    with _governed():
-        if not dict_loaded():
-            load_dictionary()
-        return lookup(body.surface, lemma=body.lemma or "")
+    if not dict_loaded():
+        load_dictionary()
+    return lookup(body.surface, lemma=body.lemma or "")
 
 
 @app.post("/scripts/save", response_model=ScriptSaveResponse)

@@ -42,9 +42,9 @@ def _detect_machine() -> tuple[int, float]:
 def compute_caps(cpu: int | None = None, mem_gb: float | None = None) -> Caps:
     if cpu is None or mem_gb is None:
         cpu, mem_gb = _detect_machine()
-    # Tokenize/dict only — no OCR/MT worker pools.
-    n = min(4, max(1, cpu // 4))
-    fps = 10 if mem_gb >= 16 else 8
+    # Tokenize only — lightweight worker pools.
+    n = max(4, min(16, cpu or 4))
+    fps = 12 if (mem_gb or 8) >= 16 else 10
     return Caps(max_in_flight=n, max_fps=fps, w_ocr=0, w_mt=0)
 
 

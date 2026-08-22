@@ -101,7 +101,7 @@ def render_script_txt(
     # Cue separators keep 10+ dashes so import_parse.split(/-{10,}/) still works.
     lines: list[str] = [
         "# ----------------------------------------",
-        "# YouTube Caption Script",
+        "# Caption Script",
         f"video_id: {video_id}",
     ]
     if title:

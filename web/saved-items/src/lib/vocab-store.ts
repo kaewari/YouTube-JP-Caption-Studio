@@ -61,16 +61,13 @@ export function toUserVocabMap(words: SavedWord[]): UserVocabMap {
 }
 
 /** Merge chrome.storage `userVocab` map into rich SavedWord rows (keep glosses).
- *  Demo words appear only when there is no real vocabulary anywhere yet. */
+ *  Never seeds demo words — mocks are demo-only (localhost/SSR), so an empty
+ *  real store can never push mock words over storage/bridge. */
 export function mergeUserVocabMap(
   prev: SavedWord[],
   map: UserVocabMap,
 ): SavedWord[] {
   const byLemma = new Map<string, SavedWord>();
-  const hasRealData = Object.keys(map).length > 0 || prev.length > 0;
-  if (!hasRealData) {
-    for (const w of MOCK_SAVED_WORDS) byLemma.set(w.lemma, w);
-  }
   for (const w of prev) byLemma.set(w.lemma, w);
 
   const next: SavedWord[] = [];
@@ -170,7 +167,7 @@ export async function loadWordsAsync(): Promise<LoadResult> {
           note:
             words.length && Object.keys(map).length
               ? "chrome.storage.local · userVocab (live sync với dict / side panel)"
-              : "Chưa có từ thật — demo seed (mock).",
+              : "Chưa có từ thật — đánh dấu trong dict popup trên YouTube.",
         };
       }
       if (localRich.length) {
@@ -295,7 +292,13 @@ export function setWordStatus(
 
 export function resetToMock(): SavedWord[] {
   const words = MOCK_SAVED_WORDS.map((w) => ({ ...w }));
-  persistWords(words);
+  // Demo-only: fill the localhost UI, never pollute chrome.storage/bridge
+  // (extension pull would otherwise replace real words with demo words).
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+  } catch {
+    /* ignore */
+  }
   return words;
 }
 

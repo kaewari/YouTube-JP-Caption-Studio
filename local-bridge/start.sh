@@ -37,8 +37,10 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
+if [[ ! -f .venv/bin/uvicorn ]]; then
+  pip install -q --upgrade pip
+  pip install -q -r requirements.txt
+fi
 
 # Ensure Sudachi dict present
 python3 - <<'PY'

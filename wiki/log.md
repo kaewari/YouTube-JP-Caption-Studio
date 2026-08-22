@@ -2,6 +2,54 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
+## [2026-08-21] ingest | VI caption load fixes + Netflix parallel fetch
+
+`plan/vietnamese-caption-fixes-2026-08-21.md` filed & code shipped. `matchLangFamily()`
+(normalize case/separator + 3-letter alias `vie`/`eng`/`jpn`) thay `startsWith` hẹp ở
+`service_worker.js` (fetchBestLangPack, hasEn/hasVi, scoreTrack) và `page_capture.js`
+(pickBestTrackByPrefix, scoreTrack, noteNetflixTimedtext). Netflix: `bcp47` lowercase
+trước khi so (case-insensitive), regex displayName mở rộng `…|vi\b`; `tryFetchTrackDirect`
+chạy `Promise.all` + `withTimeout(2s)`; track switcher giữ tuần tự bound 800ms + luôn
+restore JA. `content.js` logYtSecondaryMiss thêm via/reason/trackCount.
+`scripts/lang_family_sanity.js` 20 case × 2 file PASS. Chưa test thật trên Netflix/YouTube.
+
+## [2026-08-20] ingest | Netflix replay & edit fixes — verify on disk
+
+`review/netflix-replay-edit-verify-2026-08-20.md` filed (no code change). Verified
+`plan/netflix-replay-and-edit-fixes-2026-08-20.md` on disk: Bug 1 (Netflix player
+API seek/play) ✅, Bug 2 (JA IME nudge/romaji) ✅, Bug 3 (furigana/JLPT) — 2/3
+present, **`updateBar(active)` missing** in `onJaEdit` finally (gap ghi nhận, chưa
+sửa theo yêu cầu). `netflix-caption-fixes` 3/3 ✅, `netflix-caption-support` shipped ✅,
+`sub-load-furigana` T1–T5 done ✅ (wiki đã cập nhật). Còn mở: local-bridge-audit
+(no plan). Index Active table + review catalog updated.
+
+## [2026-08-20] lint | Sub-load furigana plan verified done + onJaEdit overlay gap fixed
+
+Verified `plan/sub-load-furigana-100ms-2026-08-08.md` T1–T5 on disk (AGENTS §2):
+T1 race SW vs bridge-wait + `Promise.all` cache/meta + skipCache `awaitDisk` only
+when owned; T2 enrich parallel + await capped; T3 tokens cache in chrome.storage;
+T4 sidepanel `patchRow`/sig incremental + dict delegate; T5 `markFuriganaPainted`
+log >150 ms. Wiki topic + index updated → **done** (was stale "chưa làm").
+
+Also verified `plan/netflix-replay-and-edit-fixes-2026-08-20.md` on disk: Bug 1
+(`getNetflixPlayer()`/`seek()`/`play()` in page_capture.js), Bug 2 (`nudge.focus()`
+removed, `applyRomajiFallback` no callers), Bug 3 (`enrichTokensAfterImport` no
+bridgeReady gate, `publishSidePanelState({forceList:true})` in onJaEdit) — but
+`updateBar(active)` was **missing** from onJaEdit's finally. Added it so the
+overlay re-renders furigana/JLPT immediately after JA edit.
+
+## [2026-08-20] ingest | Netflix Replay (M7375), JA Edit & Furigana Retention
+
+`plan/netflix-replay-and-edit-fixes-2026-08-20.md` filed & shipped. Sử dụng Netflix Player API `seek()`/`play()` thay cho DOM `<video>` tránh mã lỗi M7375 (`page_capture.js`), loại bỏ nhảy focus `nudge` và tắt can thiệp `applyRomajiFallback` để OS IME gõ tự nhiên không mất chữ (`sidepanel.js`), sửa `enrichTokensAfterImport` và `onJaEdit` để giữ nguyên Furigana và màu JLPT tức thì (`content.js`). Topic: `wiki/topics/netflix-support.md`.
+
+## [2026-08-19] ingest | Netflix Caption Fixes & Bridge Concurrency
+
+`plan/netflix-caption-fixes-2026-08-19.md` filed & shipped. Tự động tải ngầm track EN/VI trên Netflix (`page_capture.js`), tái thiết kế nút toggle mờ ở mép trái video (`panel.css`, `content.js`), loại bỏ lỗi 503 nghẽn governor trên `/dict`, thêm `threading.local()` cho SQLite connection và thread lock cho Sudachi tokenize (`tokenize_ja.py`). Topic: `wiki/topics/netflix-support.md`.
+
+## [2026-08-19] ingest | Netflix Caption Support
+
+`plan/netflix-caption-support-2026-08-19.md` filed & shipped. Triển khai parser DFXP / TTML (`extension/shared/dfxp_parser.js`), network hook & player API trong `injected/page_capture.js`, cập nhật `content.js` (key `netflix__<watchId>`), `service_worker.js`, `sidepanel.js` và `manifest.json`. Sanity test `scripts/netflix_dfxp_sanity.js` 12/12 pass. Topic: `wiki/topics/netflix-support.md`.
+
 ## [2026-08-08] ingest | Plan: sub load + furigana/level ≤ 100 ms
 
 `plan/sub-load-furigana-100ms-2026-08-08.md` filed (plan-only, no code). Baseline:
@@ -134,3 +182,11 @@ H1/H2/H3/H6/H8, M1/M2/M3/M5/M6/M8, M9/M10 all present in source; bridge
 `test_script_store` confirmed pre-existing (matches Known open). No stale
 active rows; `sub-load-furigana-100ms` topic matches raw plan. Proceeded to
 implement T1–T5.
+
+## [2026-08-22] ingest | Codebase improvements plan
+
+Filed behavior-preserving audit plan:
+`plan/codebase-improvement-plan-2026-08-22.md`. Topic:
+`wiki/topics/codebase-improvements-2026-08-22.md`. Scope covers extension,
+local bridge, iPad/iPhone, macOS bridge, web, tests, build hygiene and docs.
+Execution pending; no source functionality changed.

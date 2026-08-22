@@ -36,10 +36,9 @@ Thư mục này chứa mã nguồn ứng dụng iPad hoàn chỉnh được vi�
 
 ### 1.2. `extension/` (Chrome Extension MV3 - Desktop)
 Thư mục này chứa mã nguồn thuần của Extension cho Chrome, đóng vai trò là "Client" tương tác trực tiếp với trình duyệt trên máy tính.
-- **`injected/page_capture.js`**: Được inject thẳng vào **MAIN world** (môi trường của chính trang web YouTube). Nó override `XMLHttpRequest` / `fetch` để "chặn bắt" (intercept) các request lấy phụ đề gốc (`/api/timedtext`).
-- **`content/content.js`**: Tạo ra các overlay DOM (phụ đề cứng) trên video, đồng bộ vị trí hiển thị, quản lý merge cache.
-- **`background/service_worker.js`**: Controller giao tiếp với Local Bridge qua HTTP, xử lý các tác vụ nền.
-- **`sidepanel/`**: Chứa HTML/CSS/JS render giao diện Side Panel để chỉnh sửa phụ đề (JA, EN, VI).
+- **`injected/page_capture.js`**: Được inject thẳng vào **MAIN world** (môi trường của chính trang web). Với **YouTube**, nó override `XMLHttpRequest` / `fetch` để "chặn bắt" (intercept) các request lấy phụ đề gốc (`/api/timedtext`); với **Netflix**, nó tự động tải song song cả 3 track phụ đề tiếng Nhật (JA), tiếng Anh (EN) và tiếng Việt (VI) qua DFXP/TTML từ `nflxvideo.net` hoặc Netflix Player API, đồng thời điều khiển tua/phát (Replay) qua chính thức `player.seek()` và `player.play()` tránh mã lỗi M7375; với **ABEMA / web video khác**, nó đọc phụ đề native qua `<track>` (WebVTT) và `video.textTracks`.
+- **`content/content.js`**: Tạo ra các overlay DOM (phụ đề cứng) trên video, đồng bộ vị trí hiển thị, quản lý merge cache. Khóa lưu trữ được namespaced theo nguồn (`netflix__…`, `abema__…`) nên Netflix, ABEMA và YouTube dùng chung toàn bộ pipeline (cache, disk script, tombstones, Drive) mà không đè lẫn. Nút bật/tắt `[DỊCH]` nằm trong player controls phía dưới trên YouTube; trên **Netflix** nó nổi ở vùng đen phía trên video, cạnh nút Report. **Overlay luôn bắt đầu tắt cho mỗi video mới** — trạng thái DỊCH ON không được nhớ giữa các video; người dùng phải bấm `[DỊCH]` / Overlay để bật. Khi chỉnh sửa tiếng Nhật, hệ thống tự động bóc tách lại furigana và tô màu JLPT tức thì.
+- **`sidepanel/`**: Chứa HTML/CSS/JS render giao diện Side Panel để chỉnh sửa phụ đề (JA, EN, VI). Nhập liệu tiếng Nhật hỗ trợ bộ gõ hệ điều hành (OS Japanese/Vietnamese IME) tự nhiên, không giật con trỏ chuột hay mất chữ khi nhấp sửa cue. Nút **⚙ Cài đặt** mở thẳng tab settings (`popup.html?v=settings`).
 - **`popup/`**: Chứa các file tĩnh HTML/JS sau khi build Next.js (lấy từ `web/saved-items`).
 
 ### 1.3. `local-bridge/` (FastAPI Backend - Desktop)
@@ -54,7 +53,7 @@ Thư mục này chứa mã nguồn thuần của Extension cho Chrome, đóng va
 
 ### 1.4. `web/saved-items/` (Next.js App)
 - Chứa React/Next.js UI Component hiện đại, sử dụng TailwindCSS.
-- Dùng để quản lý danh sách từ vựng cá nhân và thiết lập hiển thị phụ đề (Hardsub settings).
+- Dùng để quản lý danh sách từ vựng cá nhân và thiết lập hiển thị phụ đề (Hardsub settings) — gồm phần **Tô màu theo cấp độ (JLPT)** (màu N5→N1/unknown, bật/tắt từng level, đặt lại màu mặc định; lưu live vào `hardsubSettings.levelColors` / `levelHighlightEnabled`).
 - Ứng dụng được export thành static file (`next build`) và ném vào thư mục `extension/popup/`.
 
 ---
