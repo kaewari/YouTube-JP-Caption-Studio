@@ -1,0 +1,31 @@
+# Bridge only — no Saved Items / Next.js.
+#   cd local-bridge
+#   # stop host uvicorn on :8765 first if running
+#   docker compose up --build
+#
+# Host Chrome extension → http://127.0.0.1:8765
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yt-caption-bridge:local
+    container_name: yt-caption-bridge
+    ports:
+      # Host loopback only — LAN devices must not reach the destructive API.
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ../data:/app/data
+      - ../tools:/app/tools
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - path: .env
+        required: false
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s

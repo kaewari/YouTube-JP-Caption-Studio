@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" xmlns:tts="http://www.w3.org/ns/ttml#styling" ttp:tickRate="10000000" xml:lang="ja">
+  <head>
+    <styling>
+      <style xml:id="s1" tts:fontSize="100%" tts:fontFamily="sans-serif"/>
+    </styling>
+  </head>
+  <body>
+    <div>
+      <p begin="10000000t" end="35000000t" region="bottom">
+        <span style="s1">こんにちは、&lt;世界&gt;！</span>
+      </p>
+      <p begin="00:00:04.120" end="00:00:06.840" region="bottom">
+        これは<br/>テスト字幕です。
+      </p>
+      <p begin="7.5s" dur="2.1s" region="bottom">
+        <span>Netflix&#39;s Japanese &amp; English test</span>
+      </p>
+    </div>
+  </body>
+</tt>

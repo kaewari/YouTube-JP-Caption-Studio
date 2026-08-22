@@ -26,7 +26,8 @@ final class VocabSync {
         do {
             let remote = try await downloadRemote()
             let localAt = rememberAppliedDate() ?? .distantPast
-            if let remote, let remoteAt = remote.updatedAt, remoteAt > localAt {
+            if let remote, let remoteAt = remote.updatedAt, remoteAt > localAt,
+               !hasLocalUnsynced(context: context) {
                 applying = true
                 try Self.applyVocabOnly(remote, to: context)
                 rememberApplied(remoteAt)
@@ -49,6 +50,11 @@ final class VocabSync {
                   let remoteAt = remote.updatedAt else { return }
             let localAt = rememberAppliedDate() ?? .distantPast
             guard remoteAt > localAt else { return }
+            // Local edits not yet pushed must not be clobbered by the remote copy.
+            guard !hasLocalUnsynced(context: context) else {
+                try await pushLocal(context: context)
+                return
+            }
             applying = true
             try Self.applyVocabOnly(remote, to: context)
             rememberApplied(remoteAt)
@@ -59,6 +65,14 @@ final class VocabSync {
             print("[VocabSync] pullIfNewer: \(error.localizedDescription)")
             #endif
         }
+    }
+
+    /// Any vocabulary saved after the last successful push/apply means local edits
+    /// are not on Drive yet — push them instead of pulling over them (LWW wins).
+    private func hasLocalUnsynced(context: ModelContext) -> Bool {
+        let words = (try? context.fetch(FetchDescriptor<Vocabulary>())) ?? []
+        guard let newest = words.map(\.savedAt).max() else { return false }
+        return newest > (rememberAppliedDate() ?? .distantPast)
     }
 
     func schedulePush(context: ModelContext) {
