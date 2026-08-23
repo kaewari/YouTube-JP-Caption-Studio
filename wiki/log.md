@@ -2,6 +2,18 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
+## [2026-08-23] ingest | Quét hiệu năng toàn repo & UX benchmark (Workflow multi-agent)
+
+`review/perf-ux-audit-2026-08-23.md` filed. Chạy 28 agents qua Workflow pipeline:
+- **59 perf findings confirmed** (3 P0, 24 P1, 28 P2, 4 P3):
+  - P0: `SettingsSync.swift:62` (vòng lặp push UserDefaults vô tận lên Drive), `VocabStyle.swift:55` (JSONDecoder giải mã màu mỗi token trên frame UI), `page_capture.js:971` (`NETFLIX_URL_RE` khớp cả CDN hình ảnh/video), `SettingsPanel.tsx:234` (persist unthrottled trên slider).
+  - P1: `findActiveCue()` sort 250ms tick (`content.js:3380`), fallback tokenize tuần tự, SW `setTimeout` debounce mất khi MV3 kill (`service_worker.js:1600`), Drive mirror duyệt tuần tự O(N*3), `NLPTagger` cache wipe-when-full (`NLPTagger.swift:44`), Sudachi `_tokenize_lock` nghẽn batch.
+- **Phân giải xung đột LB-6**: Xác nhận LB-6 VẪN CÒN TỒN TẠI trên disk (`script_store.py:459` `load_script` ghi disk không có mutex với `save_script`).
+- **24 UX benchmark gaps**: So sánh với Language Reactor, Trancy, Migaku. Thiếu lớn nhất: Auto-pause cuối câu (U1-1), Replay/Loop cue bằng phím tắt (U1-2/U1-4), nút điều khiển trực tiếp trên caption bar (U1-5), lưu câu kèm ngữ cảnh (U1-8), xuất Anki TSV kèm furigana (U1-6).
+- **8 critic coverage gaps** ghi nhận (bootstrap download sync, dict sqlite RAM build, ime stdio blocking).
+- Đã tạo topic `wiki/topics/perf-ux-audit-2026-08-23.md`, cập nhật index.
+
+
 ## [2026-08-21] ingest | VI caption load fixes + Netflix parallel fetch
 
 `plan/vietnamese-caption-fixes-2026-08-21.md` filed & code shipped. `matchLangFamily()`
