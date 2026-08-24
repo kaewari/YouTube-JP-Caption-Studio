@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube JP Caption Studio",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Load captions (YouTube, ABEMA, Netflix, and other video sites), manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
   "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
   "host_permissions": [
@@ -56,6 +56,7 @@
       "js": [
         "shared/vocab_style.js",
         "shared/dfxp_parser.js",
+        "shared/timedtext_parse.js",
         "content/normalize_cues.js",
         "content/cue_timing.js",
         "content/fill_yt_secondary.js",

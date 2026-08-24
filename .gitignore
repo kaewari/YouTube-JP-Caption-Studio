@@ -65,8 +65,6 @@ data/subtitles/*/
 
 # IME
 local-bridge/bin/ime-select
-scripts/ime-switch/ime-select
-scripts/ime-switch/host_wrap.sh
 tools/ime-switch/ime-select
 tools/ime-switch/host_wrap.sh
 
@@ -74,8 +72,6 @@ tools/ime-switch/host_wrap.sh
 Không có tiêu đề/
 # Per-video caption scripts (auto-saved by bridge)
 scripts/*/
-!scripts/ime-switch/
-!scripts/ime-switch/**
 web/saved-items/out/
 web/saved-items/.next/
 

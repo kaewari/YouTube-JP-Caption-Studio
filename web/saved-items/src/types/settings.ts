@@ -41,6 +41,13 @@ export interface HardsubSettings {
   levelHighlightEnabled: boolean;
   /** Per-level colors, mirror of extension/shared/vocab_style.js. */
   levelColors: Record<string, { on: boolean; color: string }>;
+  /** Per-platform enable/disable settings (default all true). */
+  enabledPlatforms?: {
+    youtube: boolean;
+    netflix: boolean;
+    abema: boolean;
+    web: boolean;
+  };
   /**
    * Preserved through chrome.storage round-trips (never dropped on save):
    * status-class colors/categories used by content + side panel.
@@ -81,6 +88,12 @@ export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
     n2: { on: true, color: "#e08a4a" },
     n1: { on: true, color: "#e74c5c" },
     unknown: { on: true, color: "#c5c5d0" },
+  },
+  enabledPlatforms: {
+    youtube: true,
+    netflix: true,
+    abema: true,
+    web: true,
   },
 };
 

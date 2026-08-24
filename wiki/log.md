@@ -2,19 +2,25 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
-## [2026-08-23] ingest | Quét hiệu năng toàn repo & UX benchmark (Workflow multi-agent)
+## [2026-08-23] ingest | Codebase review & improvement plan execution
 
-`review/perf-ux-audit-2026-08-23.md` filed. Chạy 28 agents qua Workflow pipeline:
-- **59 perf findings confirmed** (3 P0, 24 P1, 28 P2, 4 P3):
-  - P0: `SettingsSync.swift:62` (vòng lặp push UserDefaults vô tận lên Drive), `VocabStyle.swift:55` (JSONDecoder giải mã màu mỗi token trên frame UI), `page_capture.js:971` (`NETFLIX_URL_RE` khớp cả CDN hình ảnh/video), `SettingsPanel.tsx:234` (persist unthrottled trên slider).
-  - P1: `findActiveCue()` sort 250ms tick (`content.js:3380`), fallback tokenize tuần tự, SW `setTimeout` debounce mất khi MV3 kill (`service_worker.js:1600`), Drive mirror duyệt tuần tự O(N*3), `NLPTagger` cache wipe-when-full (`NLPTagger.swift:44`), Sudachi `_tokenize_lock` nghẽn batch.
-- **Phân giải xung đột LB-6**: Xác nhận LB-6 VẪN CÒN TỒN TẠI trên disk (`script_store.py:459` `load_script` ghi disk không có mutex với `save_script`).
-- **24 UX benchmark gaps**: So sánh với Language Reactor, Trancy, Migaku. Thiếu lớn nhất: Auto-pause cuối câu (U1-1), Replay/Loop cue bằng phím tắt (U1-2/U1-4), nút điều khiển trực tiếp trên caption bar (U1-5), lưu câu kèm ngữ cảnh (U1-8), xuất Anki TSV kèm furigana (U1-6).
-- **8 critic coverage gaps** ghi nhận (bootstrap download sync, dict sqlite RAM build, ime stdio blocking).
-- Đã tạo topic `wiki/topics/perf-ux-audit-2026-08-23.md`, cập nhật index.
+- Filed: `review/codebase-review-2026-08-23.md` và `plan/codebase-improvement-plan-2026-08-23.md`.
+- Shared: `import_parse.js` hỗ trợ timeline > 1h (`h:mm:ss`); test suite `import_parse_test.js` PASS.
+- Native apps (iPad/iPhone): `SubtitleParser.swift` unique cue ID generation, `YouTubePlayerView.swift` dismantle cleanup message handlers, `ScriptStore.swift` parse time > 1h, `iphone-app` device ID set to `iphone-*`.
+- Scripts & Tools: `build_freq_ja.py` hỗ trợ output path arg, `tools/ime-switch/README.md` cập nhật path `tools/ime-switch/`.
+- Web: `web/saved-items/package.json` dọn boilerplate template metadata.
+- Sanity tests: toàn bộ 7 suite PASS (lang_family, fill_yt_secondary, cue_timing, rev_pick, netflix_dfxp, normalize_cues, import_parse_test).
 
+## [2026-08-23] ingest | Codebase improvements — priority guards & bridge validation
 
-## [2026-08-21] ingest | VI caption load fixes + Netflix parallel fetch
+Triển khai nhóm fix ưu tiên theo `plan/codebase-improvement-plan-2026-08-22.md`:
+- Bridge: `_governed()` bọc thêm `/dict` (đồng nhất với `/tokenize` & `/tokenize_batch`).
+- Pydantic models: thêm `max_length` bounds (`TokenizeRequest` 8192, `DictRequest` surface 512/lemma 256/sentence_id 128, `SegmentCueIn` text 2048/id 128) + validator `userVocab` key ≤ 128.
+- Requirements: thêm `pytest`, `pytest-asyncio`, `httpx` vào `local-bridge/requirements.txt`.
+- Extension: `DRIVE_UPLOAD_ALARM` + `DRIVE_PENDING_MIRROR_KEY` lưu vào session storage phục vụ crash recovery khi MV3 SW bị kill.
+- Sanity tests: lang_family, fill_yt_secondary, cue_timing, rev_pick, netflix_dfxp PASS.
+- Wiki: cập nhật `wiki/topics/codebase-improvements-2026-08-22.md` ghi nhận shipped status.
+
 
 `plan/vietnamese-caption-fixes-2026-08-21.md` filed & code shipped. `matchLangFamily()`
 (normalize case/separator + 3-letter alias `vie`/`eng`/`jpn`) thay `startsWith` hẹp ở
@@ -202,3 +208,9 @@ Filed behavior-preserving audit plan:
 `wiki/topics/codebase-improvements-2026-08-22.md`. Scope covers extension,
 local bridge, iPad/iPhone, macOS bridge, web, tests, build hygiene and docs.
 Execution pending; no source functionality changed.
+
+## [2026-08-24] fix | Caption throttle: sidepanel trống + overlay không hiện
+- Root cause (verified live): SW bắn ≤24 timedtext request/load → YouTube throttle 429/502 per-IP; mọi tầng (SW, page, bridge) dính cùng wall; stall ~25s trước khi báo empty.
+- Fix: SW fan-out 24→12 + abort sớm khi 429/502 + negative-cache 60s (`ttMiss:*`); bridge `/captions` bỏ retry ≥400, timeout 10s, LRU cache 10 phút; content bridge tier cap 12s.
+- Mobile: iPhone/iPad `CaptionService` tuần tự không burst — không cần sửa; cả hai app BUILD SUCCEEDED.
+- Files: `extension/background/service_worker.js`, `extension/content/content.js`, `local-bridge/app/api/captions.py`; plan `plan/fix-caption-throttle-stall-2026-08-24.md`.

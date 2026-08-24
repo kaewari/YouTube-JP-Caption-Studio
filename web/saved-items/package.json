@@ -2,27 +2,8 @@
   "name": "yt-caption-saved-items",
   "version": "0.3.2",
   "private": true,
-  "description": "YT Caption Saved Items — Language Reactor–style vocab UI for the hardsub OCR / caption translate project",
-  "author": "JCodesMore",
+  "description": "YT Caption Saved Items — Language Reactor–style vocab UI for YouTube JP Caption Studio",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/JCodesMore/ai-website-cloner-template.git"
-  },
-  "homepage": "https://github.com/JCodesMore/ai-website-cloner-template",
-  "bugs": {
-    "url": "https://github.com/JCodesMore/ai-website-cloner-template/issues"
-  },
-  "keywords": [
-    "claude-code",
-    "website-clone",
-    "reverse-engineering",
-    "nextjs",
-    "ai",
-    "template",
-    "tailwindcss",
-    "shadcn-ui"
-  ],
   "engines": {
     "node": ">=24"
   },

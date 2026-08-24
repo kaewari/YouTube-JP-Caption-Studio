@@ -41,7 +41,7 @@ Or the binary directly:
 Only if you want IME switch **without** the bridge. One-time:
 
 ```bash
-cd scripts/ime-switch
+cd tools/ime-switch
 chmod +x install.sh host.py
 ./install.sh <extension-id>
 ```

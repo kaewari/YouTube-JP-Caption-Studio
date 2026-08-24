@@ -9,8 +9,8 @@
   }
   root.HardsubImportParse = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
-  /** m:ss(.frac) or plain seconds — not a greedy \S+ (avoids eating 0:08-0:10). */
-  const TIME_TOKEN_RE = String.raw`\d+(?::\d{1,2})?(?:\.\d+)?`;
+  /** m:ss(.frac), h:mm:ss(.frac) or plain seconds — not a greedy \S+ (avoids eating 0:08-0:10). */
+  const TIME_TOKEN_RE = String.raw`(?:\d+:)?\d+:\d{1,2}(?:\.\d+)?|\d+(?:\.\d+)?`;
   /**
    * `[N]` or `[N-M]` (cue id / id range — hyphen inside brackets is NOT time),
    * then start (→|->|–|—|-)? end.
@@ -31,6 +31,14 @@
     const s = String(raw || "").trim().replace(",", ".");
     if (!s) return NaN;
     if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+    const parts = s.split(":");
+    if (parts.length === 3) {
+      const hrs = Number(parts[0]);
+      const mins = Number(parts[1]);
+      const secs = Number(parts[2]);
+      if (isNaN(hrs) || isNaN(mins) || isNaN(secs)) return NaN;
+      return hrs * 3600 + mins * 60 + secs;
+    }
     const m = s.match(/^(\d+):(\d{1,2})(?:\.(\d+))?$/);
     if (!m) return NaN;
     const mins = Number(m[1]) || 0;

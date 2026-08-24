@@ -13,6 +13,8 @@ const {
 assert.strictEqual(parseTimeToken("0:00"), 0);
 assert.strictEqual(parseTimeToken("0:02"), 2);
 assert.strictEqual(parseTimeToken("1:02.5"), 62.5);
+assert.strictEqual(parseTimeToken("1:12:05"), 4325);
+assert.strictEqual(parseTimeToken("01:00:00.5"), 3600.5);
 
 const hyphen = parseExportTxt(`[001] 0:00 - 0:02
 JA: こんにちは

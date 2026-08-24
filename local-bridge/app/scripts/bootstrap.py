@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import ssl
 import sys
+import tempfile
 import threading
 import urllib.request
 import uuid
@@ -47,21 +49,25 @@ def _ssl_context() -> ssl.SSLContext:
 
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Write to a unique temp then atomically replace — an interrupted download
-    # must never leave a truncated file at the final path (bootstrap would be
-    # stuck on the next run because "exists" suppresses retry).
-    tmp = dest.with_name(f"{dest.name}.{uuid.uuid4().hex}.part")
+    # Write to a unique temp via NamedTemporaryFile in dest dir then atomically move —
+    # an interrupted download must never leave a truncated file at the final path.
     ctx = _ssl_context()
-    try:
-        with urllib.request.urlopen(url, context=ctx, timeout=300) as resp, open(tmp, "wb") as out:
-            while True:
-                chunk = resp.read(1024 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
-        tmp.replace(dest)
-    finally:
-        tmp.unlink(missing_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=dest.parent, prefix=f"{dest.name}.", suffix=".part", delete=False
+    ) as tmp_file:
+        tmp = Path(tmp_file.name)
+        try:
+            with urllib.request.urlopen(url, context=ctx, timeout=300) as resp:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    tmp_file.write(chunk)
+            tmp_file.flush()
+            shutil.move(str(tmp), str(dest))
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
 
 
 def bootstrap_async() -> None:

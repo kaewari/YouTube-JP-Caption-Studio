@@ -117,6 +117,10 @@ struct YouTubePlayerView: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         coordinator.stopObserving(uiView)
+        let names = ["captionHandler", "timeHandler", "rectHandler", "layoutHandler", "navHandler", "fullscreenHandler"]
+        for name in names {
+            uiView.configuration.userContentController.removeScriptMessageHandler(forName: name)
+        }
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
@@ -263,16 +267,19 @@ struct YouTubePlayerView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            // Player pane is a YouTube-only shell — external sites must not navigate
-            // the WKWebView (open them in the system browser instead).
-            let host = navigationAction.request.url?.host?.lowercased() ?? ""
-            if host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "youtu.be" {
-                decisionHandler(.allow)
-            } else if navigationAction.navigationType == .other && navigationAction.request.url == nil {
-                decisionHandler(.allow)
-            } else {
-                decisionHandler(.cancel)
+            guard let url = navigationAction.request.url else {
+                decisionHandler(navigationAction.navigationType == .other ? .allow : .cancel)
+                return
             }
+            let scheme = url.scheme?.lowercased() ?? ""
+            if scheme == "about" || scheme == "blob" || scheme == "data" {
+                decisionHandler(.allow)
+                return
+            }
+            let host = url.host?.lowercased() ?? ""
+            let allowed = ["youtube.com", "youtu.be", "netflix.com", "abema.tv"]
+            let isAllowed = allowed.contains { host == $0 || host.hasSuffix("." + $0) }
+            decisionHandler(isAllowed ? .allow : .cancel)
         }
     }
 }

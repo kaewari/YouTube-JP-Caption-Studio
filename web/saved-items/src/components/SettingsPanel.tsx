@@ -545,6 +545,69 @@ export function SettingsPanel() {
           ]}
         />
 
+        <Fieldset legend="Nền tảng hỗ trợ">
+          <ToggleRow
+            id="plat-yt"
+            checked={settings.enabledPlatforms?.youtube !== false}
+            onChange={(v) =>
+              patch({
+                enabledPlatforms: {
+                  youtube: v,
+                  netflix: settings.enabledPlatforms?.netflix !== false,
+                  abema: settings.enabledPlatforms?.abema !== false,
+                  web: settings.enabledPlatforms?.web !== false,
+                },
+              })
+            }
+            label="YouTube"
+          />
+          <ToggleRow
+            id="plat-netflix"
+            checked={settings.enabledPlatforms?.netflix !== false}
+            onChange={(v) =>
+              patch({
+                enabledPlatforms: {
+                  youtube: settings.enabledPlatforms?.youtube !== false,
+                  netflix: v,
+                  abema: settings.enabledPlatforms?.abema !== false,
+                  web: settings.enabledPlatforms?.web !== false,
+                },
+              })
+            }
+            label="Netflix"
+          />
+          <ToggleRow
+            id="plat-abema"
+            checked={settings.enabledPlatforms?.abema !== false}
+            onChange={(v) =>
+              patch({
+                enabledPlatforms: {
+                  youtube: settings.enabledPlatforms?.youtube !== false,
+                  netflix: settings.enabledPlatforms?.netflix !== false,
+                  abema: v,
+                  web: settings.enabledPlatforms?.web !== false,
+                },
+              })
+            }
+            label="ABEMA"
+          />
+          <ToggleRow
+            id="plat-web"
+            checked={settings.enabledPlatforms?.web !== false}
+            onChange={(v) =>
+              patch({
+                enabledPlatforms: {
+                  youtube: settings.enabledPlatforms?.youtube !== false,
+                  netflix: settings.enabledPlatforms?.netflix !== false,
+                  abema: settings.enabledPlatforms?.abema !== false,
+                  web: v,
+                },
+              })
+            }
+            label="Web video khác"
+          />
+        </Fieldset>
+
         <Fieldset legend="ROI (% video intrinsic)">
           <div className="grid grid-cols-2 gap-3">
             <NumberField

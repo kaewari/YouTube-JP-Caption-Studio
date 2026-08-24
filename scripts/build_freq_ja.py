@@ -25,6 +25,7 @@ _HAS_JA = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 
 def main() -> None:
     src = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/ja_full.txt")
+    out_path = Path(sys.argv[2]) if len(sys.argv) > 2 else OUT
     if not src.exists():
         raise SystemExit(f"missing frequency source: {src}")
 
@@ -47,9 +48,9 @@ def main() -> None:
         if rank >= MAX_RANK:
             break
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(ranks, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"wrote {OUT} ({len(ranks)} lemmas)")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(ranks, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"wrote {out_path} ({len(ranks)} lemmas)")
 
 
 if __name__ == "__main__":

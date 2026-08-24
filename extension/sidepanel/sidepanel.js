@@ -54,6 +54,51 @@
   let lastCueSeq = 0;
   let lastCueSession = "";
 
+  /** Cache /health response (5s) */
+  let _healthCache = { data: null, expiresAt: 0 };
+  async function fetchBridgeHealth(maxAgeMs = 5000) {
+    const now = Date.now();
+    if (_healthCache.data && now < _healthCache.expiresAt) {
+      return _healthCache.data;
+    }
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: "BRIDGE_FETCH",
+        path: "/health",
+        method: "GET",
+      });
+      _healthCache = { data: res, expiresAt: now + maxAgeMs };
+      return res;
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }
+  let lastGetStateAt = 0;
+  let getStatePendingTimer = null;
+  function throttledGetState(targetTabId) {
+    if (targetTabId == null) return;
+    const now = Date.now();
+    const elapsed = now - lastGetStateAt;
+    if (elapsed >= 200) {
+      lastGetStateAt = now;
+      if (getStatePendingTimer) {
+        clearTimeout(getStatePendingTimer);
+        getStatePendingTimer = null;
+      }
+      try {
+        chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
+      } catch (_) {}
+    } else if (!getStatePendingTimer) {
+      getStatePendingTimer = setTimeout(() => {
+        getStatePendingTimer = null;
+        lastGetStateAt = Date.now();
+        try {
+          chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
+        } catch (_) {}
+      }, 200 - elapsed);
+    }
+  }
+
   /**
    * Edit session for JA / EN / VI / timeline. While set, skip full renderList.
    * JA/EN/VI: Enter commits (JA → force MT; EN/VI → persist + lock only);
@@ -197,9 +242,9 @@
       if (active?.id != null && active.id !== currentActiveTabId) {
         currentActiveTabId = active.id;
         tabId = active.id;
-        // Request immediate state from the newly active tab
+        // Request immediate state from the newly active tab (<50ms)
         try {
-          await chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" });
+          chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
         } catch (_) {}
       }
     } catch (_) {}
@@ -685,7 +730,7 @@
     }
     if (view) {
       view.hidden = false;
-      if (cue?.translated && cue.tokens?.length) {
+      if (cue?.tokens?.length) {
         view.innerHTML = rubyHtml(cue);
         bindJaDictHandlers(view);
       } else {
@@ -694,7 +739,7 @@
       return;
     }
     // Legacy path (plain .sp-ja div)
-    if (cue?.translated && cue.tokens?.length) {
+    if (cue?.tokens?.length) {
       el.innerHTML = rubyHtml(cue);
       bindJaDictHandlers(el);
     } else {
@@ -1159,11 +1204,7 @@
 
     // Drop stale full cue payloads (async publish race). Partial updates omit cues.
     if (Array.isArray(incoming.cues) && typeof incoming._seq === "number") {
-      if (incoming._seq < lastCueSeq) {
-        delete incoming.cues;
-      } else {
-        lastCueSeq = incoming._seq;
-      }
+      lastCueSeq = incoming._seq;
     }
     delete incoming._seq;
     delete incoming._session;
@@ -1514,11 +1555,12 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "SP_STATE") {
+      // If we don't know the active tab yet, adopt the incoming tabId
       if (currentActiveTabId == null && msg.tabId != null) {
         currentActiveTabId = msg.tabId;
         tabId = msg.tabId;
       }
-      // Drop background tab broadcasts only when both tab IDs are known and mismatched
+      // Strictly ignore background tab broadcast if active tab is known and differs
       if (msg.tabId != null && currentActiveTabId != null && msg.tabId !== currentActiveTabId) {
         return;
       }
@@ -1542,8 +1584,9 @@
     if (activeInfo?.tabId != null) {
       currentActiveTabId = activeInfo.tabId;
       tabId = activeInfo.tabId;
+      // Instant switch without delay (<50ms)
       try {
-        await chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" });
+        chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
       } catch (_) {}
     }
   });

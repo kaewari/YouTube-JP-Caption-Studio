@@ -18,7 +18,6 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/netflix-support.md](topics/netflix-support.md) | Netflix subtitle support (DFXP/TTML + player hooks) — **shipped** (2026-08-19) |
 | [topics/vietnamese-caption-loading.md](topics/vietnamese-caption-loading.md) | VI caption load fixes + Netflix parallel fetch — **shipped code, chờ test thật** (2026-08-21) |
 | [topics/codebase-improvements-2026-08-22.md](topics/codebase-improvements-2026-08-22.md) | Codebase improvement plan (behavior-preserving) — **open** (2026-08-22) |
-| [topics/perf-ux-audit-2026-08-23.md](topics/perf-ux-audit-2026-08-23.md) | Audit hiệu năng toàn repo & UX benchmark (59 perf findings, 24 UX gaps) — **open** (2026-08-23) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
@@ -34,7 +33,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
 | source | Full codebase review (Fable) | — | [review/codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md) |
 | open | Codebase improvements 2026-08-22 (behavior-preserving) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
-| open | Audit hiệu năng toàn repo & UX benchmark (59 perf, 24 UX) | — | [review/perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md) |
+| open | Full codebase review & improvement plan 2026-08-23 | [plan/codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md) | [review/codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md) |
 
 ## Raw catalogs (immutable)
 
@@ -64,6 +63,7 @@ Do not rewrite these from the wiki. Link only.
 - [timeline-yt-multi-sub-2026-08-02.md](../plan/timeline-yt-multi-sub-2026-08-02.md)
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
 - [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
+- [codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md)
 
 ### Reviews (`review/`)
 
@@ -82,7 +82,7 @@ Do not rewrite these from the wiki. Link only.
 - [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
 - [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
 - [netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md)
-- [perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md)
+- [codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md)
 
 ## Open gaps (from Fable review, not in closed P0)
 

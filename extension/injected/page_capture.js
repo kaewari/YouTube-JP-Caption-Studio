@@ -5,7 +5,7 @@
 (function () {
   // Bump when message API changes so content can reinject after extension reload
   // without a full YouTube document reload (SPA keeps old MAIN-world listeners).
-  const API_VER = 5;
+  const API_VER = 6;
   if (window.__HARDSubOCRCapture?.apiVer === API_VER) return;
   // Capability token from the content script's inject URL (?cap=...). Echoed in
   // every reply so the content script can reject forged page-world messages.
@@ -164,7 +164,13 @@
 
   function videoIdFromLocation() {
     try {
-      return new URLSearchParams(location.search).get("v") || "";
+      const v = new URLSearchParams(location.search).get("v");
+      if (v) return v;
+      const m = location.pathname.match(/\/(?:shorts|live|embed|v)\/([A-Za-z0-9_-]{11})/);
+      if (m && m[1]) return m[1];
+      const domVid = document.querySelector("ytd-watch-flexy, ytd-watch-grid")?.getAttribute("video-id");
+      if (domVid) return domVid;
+      return "";
     } catch {
       return "";
     }
@@ -292,11 +298,18 @@
 
   async function fetchPlayerViaInnertube(videoId) {
     const attempts = [];
-    // ANDROID client returns usable timedtext URLs; WEB player URLs often empty.
+    // ANDROID / IOS clients return usable timedtext URLs without POT; anonymous omit credentials.
     attempts.push({
       clientName: "ANDROID",
       clientVersion: "20.10.38",
       androidSdkVersion: 30,
+      credentials: "omit",
+    });
+    attempts.push({
+      clientName: "IOS",
+      clientVersion: "19.45.4",
+      deviceModel: "iPhone14,5",
+      credentials: "omit",
     });
     const apiKey =
       ytcfgGet("INNERTUBE_API_KEY") || "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
@@ -307,6 +320,7 @@
       clientName: String(clientName),
       clientVersion: String(clientVersion),
       useKey: true,
+      credentials: "same-origin",
     });
 
     for (const client of attempts) {
@@ -320,9 +334,10 @@
           hl: document.documentElement.lang || "ja",
         };
         if (client.androidSdkVersion) bodyClient.androidSdkVersion = client.androidSdkVersion;
+        if (client.deviceModel) bodyClient.deviceModel = client.deviceModel;
         const res = await fetch(url, {
           method: "POST",
-          credentials: "same-origin",
+          credentials: client.credentials || "omit",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             context: { client: bodyClient },
@@ -440,36 +455,56 @@
     return u;
   }
 
+  function buildTimedtextUrlVariants(baseUrl) {
+    const raw = normalizeTimedtextUrl(baseUrl);
+    if (!raw) return [];
+    const variants = [];
+    const add = (u) => {
+      if (u && !variants.includes(u)) variants.push(u);
+    };
+    add(raw);
+    if (!raw.includes("fmt=srv3")) {
+      const srv3 = raw.includes("fmt=")
+        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=srv3")
+        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=srv3`;
+      add(srv3);
+    }
+    if (!raw.includes("fmt=json3")) {
+      const json3 = raw.includes("fmt=")
+        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+      add(json3);
+    }
+    if (raw.includes("fmt=")) {
+      const stripped = raw.replace(/([?&])fmt=[^&]+(&|$)/, (m, p1, p2) => (p2 === "&" ? p1 : "")).replace(/\?$/, "");
+      add(stripped);
+    }
+    return variants;
+  }
+
   async function fetchJson3Cues(url) {
     if (!url) return { cues: [], error: "no_url" };
-    const u0 = normalizeTimedtextUrl(url);
-    // Prefer json3; raw then srv3 as fallback.
-    const urls = [];
-    if (!u0.includes("fmt=")) {
-      urls.push(`${u0}${u0.includes("?") ? "&" : "?"}fmt=json3`);
-      urls.push(u0);
-      urls.push(`${u0}${u0.includes("?") ? "&" : "?"}fmt=srv3`);
-    } else {
-      urls.push(u0);
-    }
+    const urls = buildTimedtextUrlVariants(url);
     let lastError = "empty_or_html";
-    for (const u of urls) {
-      try {
-        const res = await fetch(u, { credentials: "same-origin", cache: "no-store" });
-        if (!res.ok) {
-          lastError = `http_${res.status}`;
-          continue;
+    for (const cred of ["omit", "same-origin"]) {
+      for (const u of urls) {
+        try {
+          const res = await fetch(u, { credentials: cred, cache: "no-store" });
+          if (!res.ok) {
+            lastError = `http_${res.status}_${cred}`;
+            continue;
+          }
+          const body = await res.text();
+          if (!body || !body.trim()) {
+            lastError = `empty_${cred}`;
+            continue;
+          }
+          const cues = parseTimedtextBody(body);
+          if (cues.length) return { cues, error: "" };
+          lastError = "no_events";
+        } catch (err) {
+          lastError = String(err);
         }
-        const body = await res.text();
-        if (!body || !body.trim()) {
-          lastError = "empty_or_html";
-          continue;
-        }
-        const cues = parseTimedtextBody(body);
-        if (cues.length) return { cues, error: "" };
-        lastError = "no_events";
-      } catch (err) {
-        lastError = String(err);
       }
     }
     return { cues: [], error: lastError };
@@ -610,6 +645,8 @@
               source: "youtube",
               videoId: state.timedtext.videoId,
               count: cues.length,
+              url: state.timedtext.url,
+              cues,
               cap: CAP_TOKEN,
             },
             "*"
@@ -1294,6 +1331,20 @@
         );
       }
 
+      // Native TextTracks fallback: if the player already decoded cues onto <video>
+      const nativeFallback = fetchNativeTextTrackCues();
+      if (nativeFallback?.ok && nativeFallback.cues.length) {
+        return okCaptionResult(
+          nativeFallback.cues,
+          {
+            languageCode: preferLang || "ja",
+            kind: "asr",
+            name: "video-texttracks",
+          },
+          { via: "text_tracks" }
+        );
+      }
+
       const reason =
         (tracks && tracks.length) || tryTracks.length
           ? lastFetchError || "timedtext_empty"
@@ -1725,8 +1776,10 @@
       }
     }
     if (cues.length) return { ok: true, via: "track_elements", count: cues.length, cues };
+    return fetchNativeTextTrackCues();
+  }
 
-    // Fallback: in-page native textTracks cues (already parsed by the player).
+  function fetchNativeTextTrackCues() {
     const native = [];
     const video = findVideo();
     if (video && video.textTracks) {
