@@ -5,7 +5,7 @@ import {
   hasChromeStorage,
   type ChromeStorageChange,
 } from "@/lib/chrome-env";
-import { MOCK_SAVED_WORDS } from "@/lib/mock-data";
+import { IS_DEV, MOCK_SAVED_WORDS } from "@/lib/mock-data";
 import type { SavedWord, UserVocabMap, VocabStatus } from "@/types/vocab";
 
 const STORAGE_KEY = "ytcaption.savedWords.v1";
@@ -140,14 +140,14 @@ function loadLocalWords(): SavedWord[] | null {
 }
 
 /**
- * Load words: chrome.storage userVocab → bridge → localStorage → mock.
+ * Load words: chrome.storage userVocab → bridge → localStorage → mock (DEV only).
  */
 export async function loadWordsAsync(): Promise<LoadResult> {
   if (typeof window === "undefined") {
     return {
-      words: MOCK_SAVED_WORDS,
+      words: IS_DEV ? MOCK_SAVED_WORDS : [],
       source: "mock",
-      note: "SSR — mock seed",
+      note: IS_DEV ? "SSR — mock seed" : "SSR",
     };
   }
 
@@ -205,10 +205,18 @@ export async function loadWordsAsync(): Promise<LoadResult> {
     };
   }
 
+  if (IS_DEV) {
+    return {
+      words: MOCK_SAVED_WORDS.map((w) => ({ ...w })),
+      source: "mock",
+      note: "Dữ liệu demo. Extension sẽ thay bằng userVocab thật.",
+    };
+  }
+
   return {
-    words: MOCK_SAVED_WORDS.map((w) => ({ ...w })),
-    source: "mock",
-    note: "Dữ liệu demo. Extension sẽ thay bằng userVocab thật.",
+    words: [],
+    source: "localStorage",
+    note: "Chưa có từ đã lưu.",
   };
 }
 
@@ -216,9 +224,9 @@ export async function loadWordsAsync(): Promise<LoadResult> {
 export function loadWords(): LoadResult {
   if (typeof window === "undefined") {
     return {
-      words: MOCK_SAVED_WORDS,
+      words: IS_DEV ? MOCK_SAVED_WORDS : [],
       source: "mock",
-      note: "SSR — mock seed",
+      note: IS_DEV ? "SSR — mock seed" : "SSR",
     };
   }
   const local = loadLocalWords();

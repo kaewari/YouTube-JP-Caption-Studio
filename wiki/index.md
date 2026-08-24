@@ -33,6 +33,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
 | source | Full codebase review (Fable) | — | [review/codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md) |
 | open | Codebase improvements 2026-08-22 (behavior-preserving) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
+| open | Full codebase review & improvement plan 2026-08-23 | [plan/codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md) | [review/codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md) |
 
 ## Raw catalogs (immutable)
 
@@ -62,6 +63,7 @@ Do not rewrite these from the wiki. Link only.
 - [timeline-yt-multi-sub-2026-08-02.md](../plan/timeline-yt-multi-sub-2026-08-02.md)
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
 - [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
+- [codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md)
 
 ### Reviews (`review/`)
 
@@ -80,6 +82,7 @@ Do not rewrite these from the wiki. Link only.
 - [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
 - [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
 - [netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md)
+- [codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md)
 
 ## Open gaps (from Fable review, not in closed P0)
 

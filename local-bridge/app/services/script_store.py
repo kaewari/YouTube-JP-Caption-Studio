@@ -411,21 +411,36 @@ def _save_script_locked(
         "deviceId": device_id(),
     }
 
-    _atomic_write_text(
-        cues_path, _dump({"video_id": vid, "cues": cleaned, "meta": meta})
+    cues_content = _dump({"video_id": vid, "cues": cleaned, "meta": meta})
+    tokens_content = _dump(new_tokens)
+    meta_content = _dump(meta)
+    txt_content = render_script_txt(
+        cleaned,
+        video_id=vid,
+        url=str(meta.get("url") or ""),
+        title=str(meta.get("title") or ""),
+        tokens=new_tokens,
     )
-    _atomic_write_text(tokens_path, _dump(new_tokens))
-    _atomic_write_text(meta_path, _dump(meta))
-    _atomic_write_text(
-        folder / "script.txt",
-        render_script_txt(
-            cleaned,
-            video_id=vid,
-            url=str(meta.get("url") or ""),
-            title=str(meta.get("title") or ""),
-            tokens=new_tokens,
-        ),
-    )
+
+    # Atomic multi-file write: write all files to temporary files in target folder first.
+    # Only replace final files once all temp files are successfully written.
+    files_to_write = {
+        cues_path: cues_content,
+        tokens_path: tokens_content,
+        meta_path: meta_content,
+        folder / "script.txt": txt_content,
+    }
+    temp_files: list[tuple[Path, Path]] = []
+    try:
+        for final_path, content in files_to_write.items():
+            tmp_path = final_path.with_name(f"{final_path.name}.{uuid.uuid4().hex}.tmp")
+            tmp_path.write_text(content, encoding="utf-8")
+            temp_files.append((tmp_path, final_path))
+        for tmp_path, final_path in temp_files:
+            tmp_path.replace(final_path)
+    finally:
+        for tmp_path, _ in temp_files:
+            tmp_path.unlink(missing_ok=True)
 
     logger.info(
         "Saved script %s cues=%d translated=%d rev=%d → %s",

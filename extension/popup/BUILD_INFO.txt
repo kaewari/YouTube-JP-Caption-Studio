@@ -1,3 +1,3 @@
-Built from web/saved-items at 2026-08-07T16:29:30.135Z
+Built from web/saved-items at 2026-08-24T12:31:51.479Z
 Source of truth: chrome.storage.local (userVocab, hardsubSettings)
 Inline scripts externalized for MV3 CSP.

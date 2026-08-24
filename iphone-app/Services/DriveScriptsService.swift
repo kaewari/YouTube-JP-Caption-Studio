@@ -13,7 +13,7 @@ enum DriveScriptsService {
     static let deviceId: String = {
         let key = "driveDeviceId"
         if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
-        let fresh = "ipad-" + UUID().uuidString.prefix(8).lowercased()
+        let fresh = "iphone-" + UUID().uuidString.prefix(8).lowercased()
         UserDefaults.standard.set(fresh, forKey: key)
         return fresh
     }()

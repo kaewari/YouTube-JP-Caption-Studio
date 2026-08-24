@@ -555,9 +555,10 @@ extension ScriptCue {
     private static func parseExportTime(_ raw: String) -> Double {
         let s = raw.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
         if let v = Double(s), !s.contains(":") { return v }
-        let parts = s.split(separator: ":")
-        guard parts.count == 2, let m = Double(parts[0]), let sec = Double(parts[1]) else { return 0 }
-        return m * 60 + sec
+        let parts = s.split(separator: ":").compactMap { Double($0) }
+        if parts.count == 2 { return parts[0] * 60 + parts[1] }
+        if parts.count == 3 { return parts[0] * 3600 + parts[1] * 60 + parts[2] }
+        return 0
     }
 }
 
@@ -601,24 +602,39 @@ enum CueTiming {
         return "\(m):\(String(format: "%02d", whole))"
     }
 
-    /// Parse `m:ss[.t]` or plain seconds → milliseconds.
+    /// Parse `m:ss[.t]`, `h:mm:ss[.t]`, or plain seconds → milliseconds.
     static func parseInput(_ raw: String) -> Double? {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
         guard !s.isEmpty else { return nil }
         if s.range(of: #"[^\d.]"#, options: .regularExpression) == nil, let n = Double(s) {
             return n * 1000
         }
-        let parts = s.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2, let min = Double(parts[0]) else { return nil }
-        let secParts = parts[1].split(separator: ".", maxSplits: 1).map(String.init)
-        guard let sec = Double(secParts[0]), sec < 60 else { return nil }
-        let frac: Double = {
-            guard secParts.count > 1 else { return 0 }
-            let digits = secParts[1]
-            guard let n = Double(digits) else { return 0 }
-            return n / pow(10, Double(digits.count))
-        }()
-        return (min * 60 + sec + frac) * 1000
+        let parts = s.split(separator: ":").map(String.init)
+        if parts.count == 2 {
+            guard let min = Double(parts[0]) else { return nil }
+            let secParts = parts[1].split(separator: ".", maxSplits: 1).map(String.init)
+            guard let sec = Double(secParts[0]), sec < 60 else { return nil }
+            let frac: Double = {
+                guard secParts.count > 1 else { return 0 }
+                let digits = secParts[1]
+                guard let n = Double(digits) else { return 0 }
+                return n / pow(10, Double(digits.count))
+            }()
+            return (min * 60 + sec + frac) * 1000
+        }
+        if parts.count == 3 {
+            guard let hr = Double(parts[0]), let min = Double(parts[1]), min < 60 else { return nil }
+            let secParts = parts[2].split(separator: ".", maxSplits: 1).map(String.init)
+            guard let sec = Double(secParts[0]), sec < 60 else { return nil }
+            let frac: Double = {
+                guard secParts.count > 1 else { return 0 }
+                let digits = secParts[1]
+                guard let n = Double(digits) else { return 0 }
+                return n / pow(10, Double(digits.count))
+            }()
+            return (hr * 3600 + min * 60 + sec + frac) * 1000
+        }
+        return nil
     }
 
     static func apply(startMs: Double, endMs: Double, prevEndMs: Double?, nextStartMs: Double?) -> (start: Double, duration: Double) {

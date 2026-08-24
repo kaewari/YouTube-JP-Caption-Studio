@@ -1,6 +1,6 @@
 # Codebase improvements — 2026-08-22
 
-Status: open (plan filed, execution pending).
+Status: partial (priority guards + bridge validation shipped 2026-08-23; remaining modules open).
 
 ## Plan
 
@@ -20,18 +20,17 @@ C1/H1–H8/M1–M10 đã closed bởi review 2026-08-07; chỉ giữ liên kết
 
 Nhóm sắp xếp theo thứ tự ưu tiên trong plan; mỗi mục có file/line anchor.
 
-### Trust boundary & DoS (extension)
+### Trust boundary & DoS (extension) — shipped
 
-- 1.1 capability token giữa MAIN-world page script và content script
-  - `extension/content/content.js` (postMessage handler + pageCall)
-  - `extension/injected/page_capture.js` (gửi reply)
-- 1.2 `BRIDGE_FETCH` cap body + per-tab rate limit
-  - `extension/background/service_worker.js:421-460`
+- [x] 1.1 capability token giữa MAIN-world page script và content script
+  - `extension/content/content.js` + `extension/injected/page_capture.js`
+- [x] 1.2 `BRIDGE_FETCH` body cap + per-tab rate limit
+  - `extension/background/service_worker.js`
 
-### SW resilience (extension)
+### SW resilience (extension) — shipped
 
-- 1.7 Drive debounce — chuyển retry sang `chrome.alarms` để SW bị kill không rớt upload
-  - `extension/background/service_worker.js` (DRIVE_UPLOAD_DEBOUNCE_MS, DRIVE_SETTINGS_DEBOUNCE_MS)
+- [x] 1.7 Drive debounce giữ timer 5s; `chrome.alarms` + session storage retry khi SW bị kill
+  - `extension/background/service_worker.js` (`DRIVE_UPLOAD_ALARM`, `DRIVE_PENDING_MIRROR_KEY`)
 
 ### Code health (extension)
 
@@ -45,16 +44,19 @@ Nhóm sắp xếp theo thứ tự ưu tiên trong plan; mỗi mục có file/lin
 - 5.8 `web/saved-items/out/` build artifact vào `.gitignore`
 - 6.2 `skills/ponytail`, `skills/codegraph` stub (AGENTS §5 liệt kê 5 skills, repo còn thiếu 2)
 
-### Bridge (FastAPI)
+### Bridge (FastAPI) — partial shipped
 
-- 2.1 tách `app/main.py` thành routers — giữ nguyên route path + response shape
-- 2.2 chuẩn hoá `_governed()` cho `/tokenize`, `/tokenize_batch`, `/dict` + cap text size
-- 2.3 thêm literal cap cho `ImeSwitchRequest.to`, `userVocab` key/value length
-- 2.4 `script_store.save_script` — manifest + staging write, skip unchanged file
-- 2.5 bootstrap download — `tempfile.NamedTemporaryFile` + `shutil.move`
-- 2.6 thêm round-trip test cho Snapshot v1
-- 2.7 `cache.hit_ratio` read-only trong `/health`
-- 2.8 thêm `pytest`, `pytest-asyncio`, `httpx` vào `requirements.txt`; gate `PYTEST=1` trong `start.sh`
+- [x] 2.2 `_governed()` bao `/dict` (trước chỉ có `/tokenize`, `/tokenize_batch`)
+  - `local-bridge/app/main.py`
+- [x] 2.3 `max_length` validation: `TokenizeRequest.text` ≤ 8192; `DictRequest.surface` ≤ 512, `lemma` ≤ 256, `sentence_id` ≤ 128; `SegmentCueIn.id` ≤ 128, `text` ≤ 2048; `userVocab` key ≤ 128 (validator)
+  - `local-bridge/app/schemas/models.py`
+- [x] 2.8 `pytest`, `pytest-asyncio`, `httpx` vào `requirements.txt`
+  - `local-bridge/requirements.txt`
+- [ ] 2.1 router split `app/main.py`
+- [ ] 2.4 staging write + manifest `script_store.save_script`
+- [ ] 2.5 bootstrap `tempfile.NamedTemporaryFile` + `shutil.move`
+- [ ] 2.6 snapshot roundtrip test
+- [ ] 2.7 `cache.hit_ratio` trong `/health`
 
 ### iPad / iPhone Swift
 

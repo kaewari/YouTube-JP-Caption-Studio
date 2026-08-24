@@ -58,6 +58,17 @@ function normalizeCopyFormat(v: unknown): HardsubSettings["copyFormat"] {
   return v === "full" || v === "ja_vi" || v === "ja" || v === "vi" ? v : "full";
 }
 
+function normalizeEnabledPlatforms(raw: unknown): HardsubSettings["enabledPlatforms"] {
+  const d = DEFAULT_HARDSUB_SETTINGS.enabledPlatforms!;
+  if (!isRecord(raw)) return { ...d };
+  return {
+    youtube: bool(raw.youtube, d.youtube),
+    netflix: bool(raw.netflix, d.netflix),
+    abema: bool(raw.abema, d.abema),
+    web: bool(raw.web, d.web),
+  };
+}
+
 /** Merge partial / legacy payloads into a full HardsubSettings object. */
 export function normalizeSettings(raw: unknown): HardsubSettings {
   const d = DEFAULT_HARDSUB_SETTINGS;
@@ -101,6 +112,7 @@ export function normalizeSettings(raw: unknown): HardsubSettings {
     // panel's level colors on every popup save (hardsubSettings full replace).
     levelHighlightEnabled: raw.levelHighlightEnabled !== false,
     levelColors: normalizeLevelColors(raw.levelColors),
+    enabledPlatforms: normalizeEnabledPlatforms(raw.enabledPlatforms),
   };
 }
 

@@ -113,6 +113,11 @@ class Governor:
         with self._jobs_lock:
             self._active_jobs = max(0, self._active_jobs - 1)
 
+    @property
+    def active_slots(self) -> int:
+        with self._jobs_lock:
+            return self._active_jobs
+
     def snapshot(self) -> dict:
         with self.state._lock:
             return {

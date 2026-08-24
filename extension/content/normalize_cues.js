@@ -11,7 +11,7 @@
   root.HardsubNormalize = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const SFX_KEYWORDS = [
-    "笑", "泣", "拍手", "ため息", "咳", "くしゃみ", "歓声", "音楽", "効果音", "悲鳴", "沈黙",
+    "笑", "笑い", "笑い声", "泣", "泣き声", "拍手", "ため息", "溜息", "咳", "くしゃみ", "歓声", "音楽", "効果音", "悲鳴", "沈黙",
     "足音", "鐘", "ざわめき", "歓呼", "息", "叫び", "チャイム", "サイレン", "爆発音", "銃声",
     "ノック音", "着信音", "電子音", "bgm", "sfx", "music", "applause", "laughter", "cheering",
     "cough", "sigh", "gasp", "screaming", "silence", "snicker", "crying", "groan", "chuckle",

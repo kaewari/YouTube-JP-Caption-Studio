@@ -1,8 +1,12 @@
+importScripts("../shared/timedtext_parse.js");
+
 const BRIDGE = "http://127.0.0.1:8765";
 /** Optional Native Messaging fallback only — primary IME path is bridge POST /ime/switch. */
 const IME_NATIVE_HOST = "com.ytcaption.ime_switch";
 
 const POLL_BRIDGE_ALARM = "poll_bridge_state";
+const DRIVE_UPLOAD_ALARM = "drive_upload_retry";
+const DRIVE_PENDING_MIRROR_KEY = "drivePendingMirror";
 
 async function ensureBridgePollAlarm() {
   try {
@@ -14,12 +18,23 @@ async function ensureBridgePollAlarm() {
   } catch (_) {}
 }
 
+async function ensureDriveUploadAlarm() {
+  try {
+    if (!chrome.alarms?.create) return;
+    const existing = await chrome.alarms.get(DRIVE_UPLOAD_ALARM);
+    if (!existing) {
+      await chrome.alarms.create(DRIVE_UPLOAD_ALARM, { periodInMinutes: 1 });
+    }
+  } catch (_) {}
+}
+
 /** Icon click opens side panel; Saved Items popup accessible via side panel. */
 chrome.runtime.onInstalled.addListener(async () => {
   try {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (_) {}
   await ensureBridgePollAlarm();
+  await ensureDriveUploadAlarm();
 });
 
 chrome.runtime.onStartup?.addListener?.(async () => {
@@ -27,26 +42,51 @@ chrome.runtime.onStartup?.addListener?.(async () => {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (_) {}
   await ensureBridgePollAlarm();
+  await ensureDriveUploadAlarm();
 });
 
 /** Site families the extension supports (content scripts + side panel gate). */
-function isSupportedUrl(url) {
+function platformFromUrl(url) {
   try {
     const u = new URL(url || "");
     const h = u.hostname;
-    if (h === "www.youtube.com" || h === "youtube.com") return true;
-    if (h === "abema.tv" || h.endsWith(".abema.tv")) return true;
-    if (h === "www.netflix.com" || h === "netflix.com" || h.endsWith(".netflix.com")) return true;
-    return false;
+    if (h === "www.youtube.com" || h === "youtube.com") return "youtube";
+    if (h === "abema.tv" || h.endsWith(".abema.tv")) return "abema";
+    if (h === "www.netflix.com" || h === "netflix.com" || h.endsWith(".netflix.com")) return "netflix";
+    if (u.protocol === "http:" || u.protocol === "https:") return "web";
+    return null;
   } catch (_) {
-    return false;
+    return null;
+  }
+}
+
+function isSupportedUrl(url) {
+  const p = platformFromUrl(url);
+  return p === "youtube" || p === "abema" || p === "netflix";
+}
+
+async function isPlatformEnabledForUrl(url) {
+  const plat = platformFromUrl(url);
+  if (!plat) return false;
+  try {
+    const data = await chrome.storage.local.get("hardsubSettings");
+    const ep = data?.hardsubSettings?.enabledPlatforms || {
+      youtube: true,
+      netflix: true,
+      abema: true,
+      web: true,
+    };
+    return ep[plat] !== false;
+  } catch (_) {
+    return true;
   }
 }
 
 /** Enable side panel only on supported sites; disable (+ close) everywhere else. */
 async function syncSidePanelForTab(tabId, url) {
   if (tabId == null) return;
-  const onSupported = isSupportedUrl(url);
+  const enabledByPlat = await isPlatformEnabledForUrl(url);
+  const onSupported = isSupportedUrl(url) && enabledByPlat;
   try {
     await chrome.sidePanel.setOptions({
       tabId,
@@ -394,6 +434,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
   ) {
     scheduleSettingsDrivePush();
   }
+  if (changes.hardsubSettings) {
+    chrome.tabs?.query?.({}).then((tabs) => {
+      for (const tab of tabs || []) {
+        if (tab.id != null && tab.url) {
+          void syncSidePanelForTab(tab.id, tab.url);
+        }
+      }
+    }).catch(() => {});
+  }
 });
 
 // Top-level alarm listener (MV3: must register synchronously so SW wakes on alarm).
@@ -401,6 +450,16 @@ if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm?.name === POLL_BRIDGE_ALARM) {
       void pullExtensionStateFromBridge();
+    } else if (alarm?.name === DRIVE_UPLOAD_ALARM) {
+      // Crash-recovery path: SW was killed before the setTimeout fired.
+      // Read pending IDs from session storage (in-memory Set was lost).
+      const storage = chrome.storage.session || chrome.storage.local;
+      storage.get([DRIVE_PENDING_MIRROR_KEY]).then((r) => {
+        const ids = r[DRIVE_PENDING_MIRROR_KEY] || [];
+        if (!ids.length) return;
+        storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+        void driveQueued(() => mirrorToDrive(ids));
+      }).catch(() => {});
     }
   });
 }
@@ -428,6 +487,8 @@ const BRIDGE_ALLOWLIST = [
   { re: /^\/scripts\/save$/, methods: ["POST"] },
   { re: /^\/scripts\/[A-Za-z0-9_-]{4,64}\/(meta|tokens)$/, methods: ["GET"] },
   { re: /^\/scripts\/[A-Za-z0-9_-]{4,64}$/, methods: ["GET", "DELETE"] },
+  // Caption fallback tier; path arrives with its query string attached.
+  { re: /^\/captions\/[A-Za-z0-9_-]{4,64}(\?[A-Za-z0-9_=&-]*)?$/, methods: ["GET"] },
 ];
 
 // DoS guards for BRIDGE_FETCH — per-tab rate limit + body size cap.
@@ -508,6 +569,25 @@ function normalizeTimedtextUrl(url) {
   return u;
 }
 
+function buildTimedtextUrlVariants(baseUrl) {
+  const raw = normalizeTimedtextUrl(baseUrl);
+  if (!raw) return [];
+  const variants = [];
+  const add = (u) => {
+    if (u && !variants.includes(u)) variants.push(u);
+  };
+  add(raw);
+  // ponytail: two fmt variants max — more variants multiplied burst requests and
+  // tripped YouTube's per-IP throttle; re-add srv3/stripped only if a format gap shows up.
+  if (!raw.includes("fmt=json3")) {
+    const json3 = raw.includes("fmt=")
+      ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+      : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+    add(json3);
+  }
+  return variants;
+}
+
 /** Cookie header once per load (not per timedtext URL). */
 async function getYtCookieHeader() {
   try {
@@ -527,6 +607,25 @@ async function getYtCookieHeader() {
  * Prefer fmt=json3; parse XML text/p or json3.
  * Source timeline = ja track only; en and vi packs go to enCues/viCues — never into cues.
  */
+/** Negative cache: a just-throttled video returns instantly instead of re-bursting. */
+const TT_MISS_TTL_MS = 60_000;
+async function getTtMiss(videoId) {
+  try {
+    const storage = chrome.storage.session || chrome.storage.local;
+    const r = await storage.get([`ttMiss:${videoId}`]);
+    const at = Number(r[`ttMiss:${videoId}`]) || 0;
+    return at && Date.now() - at < TT_MISS_TTL_MS ? at : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+async function setTtMiss(videoId) {
+  try {
+    const storage = chrome.storage.session || chrome.storage.local;
+    await storage.set({ [`ttMiss:${videoId}`]: Date.now() });
+  } catch (_) {}
+}
+
 async function handleYtLoadCaptions(msg) {
   const videoId = String(msg.videoId || "").trim();
   const preferLang = String(msg.lang || "ja").toLowerCase();
@@ -534,11 +633,26 @@ async function handleYtLoadCaptions(msg) {
     return { ok: false, reason: "no_video_id", cues: [], hasEn: false, hasVi: false };
   }
 
+  // Explicit user action (Reload button) bypasses the negative cache.
+  if (!msg.force && (await getTtMiss(videoId))) {
+    return {
+      ok: false,
+      reason: "throttled_recently",
+      lastError: "http_429_cached",
+      cues: [],
+      trackCount: 0,
+      via: "all_failed",
+      hasEn: false,
+      hasVi: false,
+    };
+  }
+
   const cookieHeader = await getYtCookieHeader();
 
   /** @type {{ url: string, lang: string, asr: boolean, via: string }[]} */
   const candidates = [];
   const seen = new Set();
+  const lastError = { reason: "" };
 
   const pushUrl = (url, lang, asr, via) => {
     const key = normalizeTimedtextUrl(url);
@@ -570,6 +684,16 @@ async function handleYtLoadCaptions(msg) {
   for (const t of sortTracks(webTracks, preferLang)) {
     pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
   }
+  // Legacy unsigned URLs last resort — still served anonymously even when
+  // signed track URLs come back empty.
+  for (const [lang, asr] of [["ja", true], ["en", true], ["vi", false]]) {
+    pushUrl(
+      `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=${lang}&fmt=json3`,
+      lang,
+      asr,
+      "direct",
+    );
+  }
 
   const hasEn = candidates.some((c) => matchLangFamily(c.lang, "en"));
   const hasVi = candidates.some((c) => matchLangFamily(c.lang, "vi"));
@@ -580,9 +704,9 @@ async function handleYtLoadCaptions(msg) {
 
   // Best track per lang family (manual before ASR), fetched in parallel.
   const [jaPack, enPack, viPack] = await Promise.all([
-    fetchBestLangPack(candidates, "ja", cookieHeader),
-    fetchBestLangPack(candidates, "en", cookieHeader),
-    fetchBestLangPack(candidates, "vi", cookieHeader),
+    fetchBestLangPack(candidates, "ja", lastError),
+    fetchBestLangPack(candidates, "en", lastError),
+    fetchBestLangPack(candidates, "vi", lastError),
   ]);
 
   const secondary = {
@@ -621,9 +745,12 @@ async function handleYtLoadCaptions(msg) {
     };
   }
 
+  // Throttle miss → remember briefly so Reload/navigate doesn't re-burst.
+  if (isThrottleError(lastError)) await setTtMiss(videoId);
   return {
     ok: false,
     reason: "timedtext_empty",
+    lastError: lastError.reason || "",
     cues: [],
     trackCount: candidates.length,
     via: "all_failed",
@@ -701,11 +828,13 @@ async function fetchAndroidCaptionTracks(videoId) {
   const clients = [
     { clientName: "ANDROID", clientVersion: "20.10.38", androidSdkVersion: 30 },
     { clientName: "ANDROID", clientVersion: "19.44.38", androidSdkVersion: 30 },
+    { clientName: "IOS", clientVersion: "19.45.4", deviceModel: "iPhone14,5" },
   ];
   for (const client of clients) {
     try {
       const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
         method: "POST",
+        credentials: "omit",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           context: { client: { ...client, hl: "ja", gl: "JP" } },
@@ -778,7 +907,7 @@ function scoreTrack(track, preferLang) {
  * Manual preferred over ASR. Returns { cues, lang, asr, via } or null.
  * (Do not put lang globs like en-star in block comments — breaks the SW parse.)
  */
-async function fetchBestLangPack(candidates, prefix, cookieHeader = "") {
+async function fetchBestLangPack(candidates, prefix, lastError = null) {
   const ranked = (candidates || [])
     .filter((x) => x && matchLangFamily(x.lang, prefix))
     .sort((a, b) => {
@@ -787,7 +916,9 @@ async function fetchBestLangPack(candidates, prefix, cookieHeader = "") {
       return sb - sa;
     });
   for (const x of ranked) {
-    const body = await fetchTimedtextBody(x.url, cookieHeader);
+    // Throttled (429/502) is per-IP: further attempts cannot succeed this load.
+    if (isThrottleError(lastError)) return null;
+    const body = await fetchTimedtextBody(x.url, lastError);
     if (!body) continue;
     const cues = parseTimedtextBody(body);
     if (cues.length) {
@@ -797,178 +928,60 @@ async function fetchBestLangPack(candidates, prefix, cookieHeader = "") {
   return null;
 }
 
-async function fetchTimedtextBody(baseUrl, cookieHeader) {
+/** YouTube throttles bursts per-IP — stop fanning out once flagged. */
+function isThrottleError(lastError) {
+  return !!lastError && /http_(429|502|503)/.test(String(lastError.reason || ""));
+}
+
+/**
+ * Fetch one timedtext URL. Anonymous first (credentials: omit) — signed baseUrls
+ * issued to an anonymous innertube call get rejected (200 + empty) when replayed
+ * with the user's Google cookies; cookie session only retried when omit came back
+ * empty (member/age-gated tracks). Keeps the per-load request fan-out small so
+ * YouTube's per-IP throttle never trips.
+ */
+async function fetchTimedtextBody(baseUrl, lastError = null) {
   if (!baseUrl) return "";
-  const raw = normalizeTimedtextUrl(baseUrl);
-  const urls = [];
-  // Prefer json3; raw then srv3 as fallback.
-  if (!raw.includes("fmt=")) {
-    urls.push(`${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`);
-    urls.push(raw);
-    urls.push(`${raw}${raw.includes("?") ? "&" : "?"}fmt=srv3`);
-  } else {
-    urls.push(raw);
-  }
-  const cookie =
-    cookieHeader === undefined ? await getYtCookieHeader() : cookieHeader || "";
-  for (const url of urls) {
-    if (!url.startsWith("https://www.youtube.com/api/timedtext")) continue;
-    try {
-      const headers = {
-        Accept: "*/*",
-        Referer: "https://www.youtube.com/",
-      };
-      if (cookie) headers.Cookie = cookie;
-      const res = await fetch(url, { headers, cache: "no-store" });
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (!text) continue;
-      const trimmed = text.trim();
-      if (trimmed[0] === "{" || trimmed[0] === "<") return text;
-    } catch (_) {
-      /* next */
+  const urls = buildTimedtextUrlVariants(baseUrl);
+  for (const cred of ["omit", "include"]) {
+    for (const url of urls) {
+      if (!url.startsWith("https://www.youtube.com/api/timedtext")) continue;
+      try {
+        const headers = {
+          Accept: "*/*",
+          Referer: "https://www.youtube.com/",
+        };
+        const res = await fetch(url, { headers, credentials: cred, cache: "no-store" });
+        if (!res.ok) {
+          if (lastError && res.status >= 400) {
+            lastError.reason = `http_${res.status}_${cred}`;
+          }
+          // 429/502 = per-IP throttle; retrying other variants cannot succeed.
+          if (res.status === 429 || res.status === 502 || res.status === 503) return "";
+          continue;
+        }
+        const text = await res.text();
+        if (!text) {
+          if (lastError) lastError.reason = `empty_${cred}`;
+          continue;
+        }
+        const trimmed = text.trim();
+        if (trimmed[0] === "{" || trimmed[0] === "<") return text;
+        if (lastError) {
+          lastError.reason = `html_like_${trimmed.slice(0, 24).replace(/\s+/g, " ")}_${cred}`;
+        }
+      } catch (err) {
+        if (lastError) lastError.reason = `fetch_err ${String(err).slice(0, 60)}`;
+      }
     }
   }
   return "";
 }
 
-function parseTimedtextBody(body) {
-  const trimmed = String(body || "").trim();
-  if (!trimmed) return [];
-  if (trimmed[0] === "{") {
-    try {
-      return parseJson3(JSON.parse(trimmed));
-    } catch {
-      return [];
-    }
-  }
-  if (trimmed[0] === "<") return parseTimedtextXml(trimmed);
-  return [];
-}
-
-function parseJson3(data) {
-  const events = data?.events || [];
-  const nodes = [];
-  for (const ev of events) {
-    if (!ev || ev.tStartMs == null) continue;
-    const segs = ev.segs || [];
-    const text = segs
-      .map((s) => (s && s.utf8 != null ? String(s.utf8) : ""))
-      .join("")
-      .replace(/\n+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!text) continue;
-    nodes.push({
-      start: Number(ev.tStartMs) / 1000,
-      durMs: ev.dDurationMs != null ? Number(ev.dDurationMs) : null,
-      text,
-    });
-  }
-  const cues = [];
-  for (let i = 0; i < nodes.length; i += 1) {
-    const n = nodes[i];
-    const next = nodes[i + 1];
-    // YSD / VTT: end at next cue start. Ignore short dDurationMs on scrolling ASR
-    // (YouTube often reports 3000ms while the line stays until the next event).
-    let end = next
-      ? next.start
-      : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-        ? n.start + n.durMs / 1000
-        : n.start + 2;
-    cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-  }
-  return cues;
-}
-
-function decodeEntities(s) {
-  return String(s || "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-}
-
-/** YSD uses DOMParser on <text start dur>; we also support timedtext format=3 <p>. */
-function parseTimedtextXml(xml) {
-  const textCues = parseLegacyTextNodes(xml);
-  if (textCues.length) return textCues;
-  return parseParagraphNodes(xml);
-}
-
-function parseLegacyTextNodes(xml) {
-  const cues = [];
-  const textRe = /<text\s+([^>]*)>([\s\S]*?)<\/text>/gi;
-  let m;
-  const nodes = [];
-  while ((m = textRe.exec(xml))) {
-    const attrs = m[1] || "";
-    const start = Number((attrs.match(/\bstart="([\d.]+)"/) || [])[1] || 0);
-    const dur = Number((attrs.match(/\bdur="([\d.]+)"/) || [])[1] || 0);
-    const text = decodeEntities(
-      (m[2] || "")
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<[^>]+>/g, "")
-        .replace(/\n+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-    );
-    nodes.push({ start, dur, text });
-  }
-  // Match YSD: end = next.start (fallback start+dur)
-  for (let i = 0; i < nodes.length; i += 1) {
-    const n = nodes[i];
-    if (!n.text) continue;
-    const next = nodes[i + 1];
-    const end = next ? next.start : n.start + Math.max(0.2, n.dur || 2);
-    cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-  }
-  return cues;
-}
-
-function parseParagraphNodes(xml) {
-  const pRe = /<p\s+([^>]*)>([\s\S]*?)<\/p>/gi;
-  let m;
-  const nodes = [];
-  while ((m = pRe.exec(xml))) {
-    const attrs = m[1] || "";
-    const inner = m[2] || "";
-    const t = Number((attrs.match(/\bt="(\d+)"/) || [])[1] || 0) / 1000;
-    const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
-    const text = decodeEntities(
-      inner
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<[^>]+>/g, "")
-        .replace(/\n+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-    );
-    if (!text) continue;
-    nodes.push({
-      start: t,
-      durMs: dRaw != null ? Number(dRaw) : null,
-      text,
-    });
-  }
-  const cues = [];
-  for (let i = 0; i < nodes.length; i += 1) {
-    const n = nodes[i];
-    const next = nodes[i + 1];
-    // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-    let end = next
-      ? next.start
-      : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-        ? n.start + n.durMs / 1000
-        : n.start + 2;
-    cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-  }
-  return cues;
-}
+const decodeEntities = (s) => HardsubTimedtextParse.decodeEntities(s);
+const parseJson3 = (data) => HardsubTimedtextParse.parseJson3Cues(data);
+const parseTimedtextXml = (xml) => HardsubTimedtextParse.parseTimedtextXml(xml);
+const parseTimedtextBody = (body) => HardsubTimedtextParse.parseTimedtextBody(body);
 
 function dataUrlToBlob(dataUrl) {
   const parts = dataUrl.split(",");
@@ -1600,10 +1613,16 @@ const _pendingMirror = new Set();
 function scheduleDriveUpload(videoId) {
   if (videoId) _pendingMirror.add(String(videoId));
   if (_driveUploadTimer) clearTimeout(_driveUploadTimer);
+  // Persist pending IDs for crash-recovery alarm (MV3 may kill SW between timer and fire).
+  const storage = chrome.storage.session || chrome.storage.local;
+  storage.set({ [DRIVE_PENDING_MIRROR_KEY]: Array.from(_pendingMirror) }).catch(() => {});
+  // Alarm is the crash-recovery path; timer preserves the existing 5s UI debounce.
+  void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1 }).catch?.(() => {});
   _driveUploadTimer = setTimeout(() => {
     _driveUploadTimer = null;
     const ids = Array.from(_pendingMirror);
     _pendingMirror.clear();
+    storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
     void driveQueued(() => mirrorToDrive(ids));
   }, DRIVE_UPLOAD_DEBOUNCE_MS);
 }

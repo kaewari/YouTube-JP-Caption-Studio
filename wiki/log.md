@@ -2,7 +2,25 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
-## [2026-08-21] ingest | VI caption load fixes + Netflix parallel fetch
+## [2026-08-23] ingest | Codebase review & improvement plan execution
+
+- Filed: `review/codebase-review-2026-08-23.md` và `plan/codebase-improvement-plan-2026-08-23.md`.
+- Shared: `import_parse.js` hỗ trợ timeline > 1h (`h:mm:ss`); test suite `import_parse_test.js` PASS.
+- Native apps (iPad/iPhone): `SubtitleParser.swift` unique cue ID generation, `YouTubePlayerView.swift` dismantle cleanup message handlers, `ScriptStore.swift` parse time > 1h, `iphone-app` device ID set to `iphone-*`.
+- Scripts & Tools: `build_freq_ja.py` hỗ trợ output path arg, `tools/ime-switch/README.md` cập nhật path `tools/ime-switch/`.
+- Web: `web/saved-items/package.json` dọn boilerplate template metadata.
+- Sanity tests: toàn bộ 7 suite PASS (lang_family, fill_yt_secondary, cue_timing, rev_pick, netflix_dfxp, normalize_cues, import_parse_test).
+
+## [2026-08-23] ingest | Codebase improvements — priority guards & bridge validation
+
+Triển khai nhóm fix ưu tiên theo `plan/codebase-improvement-plan-2026-08-22.md`:
+- Bridge: `_governed()` bọc thêm `/dict` (đồng nhất với `/tokenize` & `/tokenize_batch`).
+- Pydantic models: thêm `max_length` bounds (`TokenizeRequest` 8192, `DictRequest` surface 512/lemma 256/sentence_id 128, `SegmentCueIn` text 2048/id 128) + validator `userVocab` key ≤ 128.
+- Requirements: thêm `pytest`, `pytest-asyncio`, `httpx` vào `local-bridge/requirements.txt`.
+- Extension: `DRIVE_UPLOAD_ALARM` + `DRIVE_PENDING_MIRROR_KEY` lưu vào session storage phục vụ crash recovery khi MV3 SW bị kill.
+- Sanity tests: lang_family, fill_yt_secondary, cue_timing, rev_pick, netflix_dfxp PASS.
+- Wiki: cập nhật `wiki/topics/codebase-improvements-2026-08-22.md` ghi nhận shipped status.
+
 
 `plan/vietnamese-caption-fixes-2026-08-21.md` filed & code shipped. `matchLangFamily()`
 (normalize case/separator + 3-letter alias `vie`/`eng`/`jpn`) thay `startsWith` hẹp ở
@@ -190,3 +208,9 @@ Filed behavior-preserving audit plan:
 `wiki/topics/codebase-improvements-2026-08-22.md`. Scope covers extension,
 local bridge, iPad/iPhone, macOS bridge, web, tests, build hygiene and docs.
 Execution pending; no source functionality changed.
+
+## [2026-08-24] fix | Caption throttle: sidepanel trống + overlay không hiện
+- Root cause (verified live): SW bắn ≤24 timedtext request/load → YouTube throttle 429/502 per-IP; mọi tầng (SW, page, bridge) dính cùng wall; stall ~25s trước khi báo empty.
+- Fix: SW fan-out 24→12 + abort sớm khi 429/502 + negative-cache 60s (`ttMiss:*`); bridge `/captions` bỏ retry ≥400, timeout 10s, LRU cache 10 phút; content bridge tier cap 12s.
+- Mobile: iPhone/iPad `CaptionService` tuần tự không burst — không cần sửa; cả hai app BUILD SUCCEEDED.
+- Files: `extension/background/service_worker.js`, `extension/content/content.js`, `local-bridge/app/api/captions.py`; plan `plan/fix-caption-throttle-stall-2026-08-24.md`.

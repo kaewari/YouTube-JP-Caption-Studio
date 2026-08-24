@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 
 class Token(BaseModel):
@@ -55,13 +55,15 @@ class HealthResponse(BaseModel):
     pressure: Literal["low", "high"] = "low"
     latency_p50_ms: float = 0.0
     tokenize_batch_p95_ms: float = 0.0
+    cache_hit_ratio: float = 0.0
+    active_slots: int = 0
     bootstrap: Optional[dict[str, Any]] = None
 
 
 class TokenizeRequest(BaseModel):
     """Sudachi + JLPT/freq only (import enrich / furigana)."""
 
-    text: str = ""
+    text: str = Field("", max_length=8192)
 
 
 class TokenizeResponse(BaseModel):
@@ -70,8 +72,8 @@ class TokenizeResponse(BaseModel):
 
 
 class SegmentCueIn(BaseModel):
-    id: str = ""
-    text: str
+    id: str = Field("", max_length=128)
+    text: str = Field(..., max_length=2048)
 
 
 class TokenizeBatchRequest(BaseModel):
@@ -89,9 +91,9 @@ class TokenizeBatchResponse(BaseModel):
 
 
 class DictRequest(BaseModel):
-    surface: str
-    lemma: str = ""
-    sentence_id: str = ""
+    surface: str = Field(..., max_length=512)
+    lemma: str = Field("", max_length=256)
+    sentence_id: str = Field("", max_length=128)
 
 
 class DictSense(BaseModel):
@@ -200,6 +202,20 @@ class ExtensionStateRequest(BaseModel):
     userVocab: Optional[dict[str, str]] = None
     hardsubSettings: Optional[dict[str, Any]] = None
     source: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_vocab(cls, data):
+        if isinstance(data, dict):
+            vocab = data.get("userVocab")
+            if vocab and isinstance(vocab, dict):
+                valid = {}
+                for k, v in vocab.items():
+                    key = str(k).strip()
+                    if key and len(key) <= 128 and v in ("known", "learning", "ignored", "special"):
+                        valid[key] = v
+                data["userVocab"] = valid
+        return data
 
 
 class ExtensionStateResponse(BaseModel):

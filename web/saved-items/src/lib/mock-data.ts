@@ -1,5 +1,7 @@
 import type { SavedWord } from "@/types/vocab";
 
+export const IS_DEV = process.env.NODE_ENV === "development";
+
 /** Demo seeds — replace later via extension messaging / bridge. */
 export const MOCK_SAVED_WORDS: SavedWord[] = [
   {

@@ -48,11 +48,27 @@
     barShowVi: true,
     /** Dict popup: show cue sentence (VI/EN) under the gloss. */
     dictShowSentence: true,
+    enabledPlatforms: {
+      youtube: true,
+      netflix: true,
+      abema: true,
+      web: true,
+    },
     ...Vocab.DEFAULT_VOCAB_SETTINGS,
   };
 
   const CACHE_MATCH_TOL = 0.6;
   const SAVE_DEBOUNCE_MS = 400;
+
+  const Timedtext = globalThis.HardsubTimedtextParse || {
+    decodeEntities: (s) => String(s || ""),
+    parseTimedtextXml: () => [],
+    parseJson3Cues: () => [],
+    parseTimedtextBody: () => [],
+  };
+  if (!globalThis.HardsubTimedtextParse) {
+    console.warn("[jpcap] shared/timedtext_parse.js missing — stale content script? Reload the extension + refresh tab.");
+  }
 
   const Normalize = globalThis.HardsubNormalize || {
     normalizeCues: (cues) => cues || [],
@@ -140,7 +156,7 @@
   }
 
   // Must match page_capture.js API_VER — stale MAIN-world inject lacks FETCH_MULTI_LANG.
-  const PAGE_API_VER = 5;
+  const PAGE_API_VER = 6;
   let pageBridgeReady = false;
   // Capability token: per-injection secret the MAIN-world reply must echo back,
   // so a hostile page script can't forge caption results by spoofing
@@ -217,134 +233,10 @@
     });
   }
 
-  function parseJson3Cues(data) {
-    const events = data?.events || [];
-    const nodes = [];
-    for (const ev of events) {
-      if (!ev || ev.tStartMs == null) continue;
-      const segs = ev.segs || [];
-      const text = segs
-        .map((s) => (s && s.utf8 != null ? String(s.utf8) : ""))
-        .join("")
-        .replace(/\n+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!text) continue;
-      nodes.push({
-        start: Number(ev.tStartMs) / 1000,
-        durMs: ev.dDurationMs != null ? Number(ev.dDurationMs) : null,
-        text,
-      });
-    }
-    const cues = [];
-    for (let i = 0; i < nodes.length; i += 1) {
-      const n = nodes[i];
-      const next = nodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-    }
-    return cues;
-  }
-
-  function decodeEntities(s) {
-    return String(s || "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&#39;/g, "'")
-      .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
-  }
-
-  function parseTimedtextXml(xml) {
-    // YSD-style <text start="" dur="">
-    const textNodes = [];
-    const textRe = /<text\s+([^>]*)>([\s\S]*?)<\/text>/gi;
-    let m;
-    while ((m = textRe.exec(xml))) {
-      const attrs = m[1] || "";
-      const start = Number((attrs.match(/\bstart="([\d.]+)"/) || [])[1] || 0);
-      const dur = Number((attrs.match(/\bdur="([\d.]+)"/) || [])[1] || 0);
-      const text = decodeEntities(
-        (m[2] || "")
-          .replace(/<br\s*\/?>/gi, " ")
-          .replace(/<[^>]+>/g, "")
-          .replace(/\n+/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-      );
-      textNodes.push({ start, dur, text });
-    }
-    if (textNodes.length) {
-      const cues = [];
-      for (let i = 0; i < textNodes.length; i += 1) {
-        const n = textNodes[i];
-        if (!n.text) continue;
-        const next = textNodes[i + 1];
-        const end = next ? next.start : n.start + Math.max(0.2, n.dur || 2);
-        cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-      }
-      if (cues.length) return cues;
-    }
-
-    const cues = [];
-    const pNodes = [];
-    const pRe = /<p\s+([^>]*)>([\s\S]*?)<\/p>/gi;
-    while ((m = pRe.exec(xml))) {
-      const attrs = m[1] || "";
-      const inner = m[2] || "";
-      const t = Number((attrs.match(/\bt="(\d+)"/) || [])[1] || 0) / 1000;
-      const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
-      const text = decodeEntities(
-        inner
-          .replace(/<br\s*\/?>/gi, " ")
-          .replace(/<[^>]+>/g, "")
-          .replace(/\n+/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-      );
-      if (!text) continue;
-      pNodes.push({
-        start: t,
-        durMs: dRaw != null ? Number(dRaw) : null,
-        text,
-      });
-    }
-    for (let i = 0; i < pNodes.length; i += 1) {
-      const n = pNodes[i];
-      const next = pNodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-    }
-    return cues;
-  }
-
-  function parseTimedtextBody(body) {
-    const trimmed = String(body || "").trim();
-    if (!trimmed) return [];
-    if (trimmed[0] === "{") {
-      try {
-        return parseJson3Cues(JSON.parse(trimmed));
-      } catch {
-        return [];
-      }
-    }
-    if (trimmed[0] === "<") return parseTimedtextXml(trimmed);
-    return [];
-  }
+  const decodeEntities = (s) => Timedtext.decodeEntities(s);
+  const parseJson3Cues = (data) => Timedtext.parseJson3Cues(data);
+  const parseTimedtextXml = (xml) => Timedtext.parseTimedtextXml(xml);
+  const parseTimedtextBody = (body) => Timedtext.parseTimedtextBody(body);
 
   async function loadCaptionsViaBackground(videoId, lang, extra = {}) {
     try {
@@ -354,6 +246,7 @@
         lang: lang || "ja",
         baseUrl: extra.baseUrl || "",
         asr: !!extra.asr,
+        force: !!extra.force,
       });
       if (r?.ok && Array.isArray(r.cues) && r.cues.length) return r;
       return r || { ok: false, reason: "sw_empty", cues: [] };
@@ -368,17 +261,28 @@
     const tryUrls = [url];
     if (!url.includes("fmt=")) {
       tryUrls.push(`${url}${url.includes("?") ? "&" : "?"}fmt=json3`);
+      tryUrls.push(`${url}${url.includes("?") ? "&" : "?"}fmt=srv3`);
+    } else {
+      if (!url.includes("fmt=srv3")) tryUrls.push(url.replace(/([?&])fmt=[^&]+/, "$1fmt=srv3"));
+      if (!url.includes("fmt=json3")) tryUrls.push(url.replace(/([?&])fmt=[^&]+/, "$1fmt=json3"));
+    }
+    for (const cred of ["omit", "include"]) {
+      for (const u of tryUrls) {
+        try {
+          const res = await fetch(u, { credentials: cred, cache: "no-store" });
+          if (res.ok) {
+            const body = await res.text();
+            if (body && body.trim()) {
+              const cues = parseTimedtextBody(body);
+              if (cues.length) return cues;
+            }
+          }
+        } catch {
+          /* next */
+        }
+      }
     }
     for (const u of tryUrls) {
-      try {
-        const res = await fetch(u, { credentials: "include", cache: "no-store" });
-        if (res.ok) {
-          const cues = parseTimedtextBody(await res.text());
-          if (cues.length) return cues;
-        }
-      } catch {
-        /* next */
-      }
       try {
         const sw = await chrome.runtime.sendMessage({ type: "YT_FETCH", url: u });
         if (sw?.text) {
@@ -390,6 +294,36 @@
       }
     }
     return null;
+  }
+
+  // Last-resort tier: bridge-cached captions when SW + page paths all miss.
+  // ponytail: JA source only; en/vi secondaries not served by this endpoint —
+  // extend when /captions returns them. Capped at 12s so a slow upstream fetch
+  // (bridge retries YouTube) can't stall the empty-state UI for half a minute.
+  async function fetchCaptionsFromBridge(videoId, lang, maxMs = 12000) {
+    try {
+      const res = await Promise.race([
+        bridgeFetch(
+          `/captions/${encodeURIComponent(videoId)}?lang=${lang || "ja"}`,
+        ),
+        sleep(maxMs).then(() => null),
+      ]);
+      const cues = res?.data?.cues;
+      if (!res?.ok || res?.data?.ok !== true || !Array.isArray(cues) || !cues.length) {
+        return null;
+      }
+      // Bridge serves ms {id,start,duration,text}; pipeline wants seconds {start,end,text}.
+      return cues
+        .map((c) => ({
+          start: (Number(c.start) || 0) / 1000,
+          end:
+            ((Number(c.start) || 0) + Math.max(0, Number(c.duration) || 0)) / 1000,
+          text: String(c.text || "").trim(),
+        }))
+        .filter((c) => c.text);
+    } catch {
+      return null; // endpoint may not exist yet — silent miss
+    }
   }
 
   async function syncToPlayhead() {
@@ -514,7 +448,7 @@
   }
 
   function logYtSecondaryMiss(sw, enN, viN) {
-    const msg = `yt secondary miss video=${currentVideoId || "?"} hasEn=${!!sw?.hasEn} hasVi=${!!sw?.hasVi} en:${enN} vi:${viN} via=${sw?.via || "?"} reason=${sw?.reason || "?"} trackCount=${sw?.trackCount || "?"}`;
+    const msg = `yt secondary miss video=${currentVideoId || "?"} hasEn=${!!sw?.hasEn} hasVi=${!!sw?.hasVi} en:${enN} vi:${viN} via=${sw?.via || "?"} reason=${sw?.reason || "?"} bridge=${sw?.bridge || "n/a"} trackCount=${sw?.trackCount || "?"}${sw?.lastError ? ` lastError=${sw.lastError}` : ""}`;
     void bridgeFetch("/log", {
       method: "POST",
       body: { level: "WARNING", message: msg },
@@ -633,10 +567,10 @@
     // iframe or page-world script could otherwise forge caption results.
     if (ev.source !== window) return;
     if (!ev.data || ev.data.source !== "hardsub-ocr-page") return;
-    const { requestId, result } = ev.data;
-    // Capability token gate: a hostile MAIN-world script can spoof the source
-    // field but never knows the cap embedded only in our injected <script> src.
-    if (!pageCapToken || result?.cap !== pageCapToken) return;
+    const { requestId, result, cap } = ev.data;
+    // Capability token gate: check top-level cap or result.cap
+    const msgCap = cap || result?.cap;
+    if (pageCapToken && msgCap && msgCap !== pageCapToken) return;
     const resolve = pending.get(requestId);
     if (resolve) {
       pending.delete(requestId);
@@ -692,6 +626,10 @@
 
   async function handleSidePanelCmd(msg) {
     const cmd = msg.cmd;
+    if (!currentVideoId) {
+      currentSource = sourceFromHost();
+      currentVideoId = videoIdFromUrl();
+    }
     if (cmd === "ping" || cmd === "get_state") {
       // Side panel open / reconnect / tab switch must always receive the full cue list.
       publishSidePanelState({ forceList: true });
@@ -699,6 +637,9 @@
     }
     if (cmd === "reload") {
       toast("Đang tải caption…");
+      if (!currentVideoId) {
+        currentVideoId = videoIdFromUrl();
+      }
       // Force fresh YT timeline (skip stale overlapping chrome/disk ends).
       await loadAllCaptions(true, { skipCache: false });
       if (cues.length && !transcriptMeta.owned) {
@@ -806,8 +747,15 @@
   /** Site family this tab belongs to — controls which caption engine runs. */
   function sourceFromHost() {
     try {
-      const h = location.hostname;
-      if (h === "www.youtube.com" || h === "youtube.com" || h.endsWith("youtube-nocookie.com")) {
+      const h = location.hostname.toLowerCase();
+      if (
+        h === "www.youtube.com" ||
+        h === "youtube.com" ||
+        h === "m.youtube.com" ||
+        h === "youtu.be" ||
+        h.endsWith(".youtube.com") ||
+        h.endsWith("youtube-nocookie.com")
+      ) {
         return "youtube";
       }
       if (h === "abema.tv" || h.endsWith(".abema.tv")) return "abema";
@@ -828,7 +776,13 @@
     const source = sourceFromHost();
     if (source === "youtube") {
       try {
-        return new URLSearchParams(location.search).get("v") || "";
+        const v = new URLSearchParams(location.search).get("v");
+        if (v) return v;
+        const m = location.pathname.match(/\/(?:shorts|live|embed|v)\/([A-Za-z0-9_-]{11})/);
+        if (m && m[1]) return m[1];
+        const domVid = document.querySelector("ytd-watch-flexy, ytd-watch-grid")?.getAttribute("video-id");
+        if (domVid) return domVid;
+        return "";
       } catch {
         return "";
       }
@@ -845,6 +799,26 @@
     const raw = `${source}__${pathId || fallback}`;
     const key = raw.replace(/[^A-Za-z0-9_-]/g, "_");
     return key.length > 64 ? key.slice(0, 64) : key;
+  }
+
+  function isCurrentPlatformEnabled() {
+    if (!settings.enabled) return false;
+    const ep = settings.enabledPlatforms || DEFAULTS.enabledPlatforms;
+    return ep[currentSource] !== false;
+  }
+
+  function teardownUI() {
+    stopLoop();
+    if (playerToggleObserver) {
+      playerToggleObserver.disconnect();
+      playerToggleObserver = null;
+    }
+    document.getElementById("hardsub-ocr-root")?.remove();
+    document.getElementById(PLAYER_TOGGLE_ID)?.remove();
+    cues = [];
+    activeCueId = "";
+    updateBar(null);
+    publishSidePanelState({ forceList: true, cues: [] });
   }
 
   function sourceLabel() {
@@ -1029,9 +1003,9 @@
     return cacheCueKey(c);
   }
 
-  /** Tab namespace so multiple tabs can't overwrite each other's cache/meta/tokens. */
+  /** Shared namespace so multiple tabs can reuse cached captions/tokens for the same video. */
   function tabPrefix() {
-    return contentTabId != null ? `t${contentTabId}:` : "";
+    return "";
   }
 
   function metaStorageKey(videoId) {
@@ -1450,7 +1424,7 @@
           source: hit && isOwnedCue(hit) ? String(hit.source || source) : source,
           en: translated ? hit.en || "" : "",
           vi: translated ? hit.vi || "" : "",
-          tokens: translated ? hit.tokens || [] : [],
+          tokens: (hit && hit.tokens) || [],
           translated,
           text_source: hit && isOwnedCue(hit) ? hit.text_source : "yt",
           mt_locked: !!(hit && hit.mt_locked),
@@ -1478,7 +1452,7 @@
           source,
           en: hasMt ? c.en || "" : "",
           vi: hasMt ? c.vi || "" : "",
-          tokens: hasMt ? c.tokens || [] : [],
+          tokens: c.tokens || [],
           translated,
           text_source: c.text_source || "yt",
           mt_locked: !!c.mt_locked,
@@ -2713,6 +2687,9 @@
   }
 
   async function loadAllCaptions(force = false, opts = {}) {
+    if (!currentVideoId) {
+      currentVideoId = videoIdFromUrl();
+    }
     const gen = navigateGen;
     const vid = currentVideoId;
     const stale = () => gen !== navigateGen || currentVideoId !== vid;
@@ -2772,6 +2749,8 @@
       loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
         baseUrl: "",
         lang: settings.sourceLang,
+        // User-initiated Reload bypasses the SW negative-cache.
+        force: !!force,
       });
 
     // T1: the SW pack must not sit behind the page-script handshake — whoever
@@ -2948,17 +2927,35 @@
       }
       captionsStatus = r?.status || sw?.status || "none";
       captionsInfo = sw?.reason || r?.reason || r?.message || "empty";
+      // Last resort: bridge-cached captions (silent when endpoint misses).
+      const bridged = await fetchCaptionsFromBridge(
+        currentVideoId,
+        settings.sourceLang,
+      );
+      if (stale()) return;
+      if (bridged) {
+        await applyLoadedCues(
+          bridged,
+          `YT·bridge · ${bridged.length} cues`,
+          applyOpts,
+        );
+        if (stale()) return;
+        kickSecondaryFill(sw);
+        return;
+      }
       if (sw?.hasEn || sw?.hasVi) {
         stampSecondaryStatus(
           Array.isArray(sw.enCues) ? sw.enCues.length : 0,
           Array.isArray(sw.viCues) ? sw.viCues.length : 0
         );
         logYtSecondaryMiss(
-          sw,
+          { ...sw, bridge: "miss" },
           Array.isArray(sw.enCues) ? sw.enCues.length : 0,
           Array.isArray(sw.viCues) ? sw.viCues.length : 0
         );
         kickSecondaryFill(sw);
+      } else {
+        logYtSecondaryMiss({ ...sw, bridge: "miss" }, 0, 0);
       }
     } else {
       captionsStatus = "none";
@@ -3931,7 +3928,7 @@
   }
 
   async function tick() {
-    if (!settings.enabled) return;
+    if (!settings.enabled || !isCurrentPlatformEnabled()) return;
     checkPageWatch();
     const mtRes = await pageCall("GET_MEDIA_TIME", {}, 400);
     const mediaTime = Number(mtRes?.mediaTime);
@@ -3973,6 +3970,11 @@
     currentSource = sourceFromHost();
     currentVideoId = videoIdFromUrl();
     pageWatchKey = `${currentSource}|${location.href}`;
+
+    if (!isCurrentPlatformEnabled()) {
+      teardownUI();
+      return;
+    }
 
     // Overlay luôn bắt đầu tắt cho mỗi video mới — không nhớ trạng thái DỊCH ON;
     // người dùng bấm nút DỊCH / Overlay để bật cho video hiện tại.
@@ -4086,14 +4088,16 @@
       // MAIN-world message may trigger caption reloads.
       if (e.source !== window) return;
       if (e.data?.type !== "__HARDSUB_TIMEDTEXT_CAPTURED__") return;
-      if (!pageCapToken || e.data.cap !== pageCapToken) return;
-      if (!cues.length || captionsStatus !== "ok") {
+      if (pageCapToken && e.data.cap && e.data.cap !== pageCapToken) return;
+      if (Array.isArray(e.data.cues) && e.data.cues.length) {
+        // Direct payload from intercept: apply immediately without refetching
+        void applyLoadedCues(e.data.cues, `ja intercept · ${e.data.cues.length} cues`);
+      } else if (!cues.length || captionsStatus !== "ok") {
         void loadAllCaptions(true);
       }
     });
     document.addEventListener("yt-navigate-finish", () => onNavigate());
-    // ABEMA / other SPAs navigate without yt-navigate-finish — popstate + the
-    // 250 ms tick poll (checkPageWatch) cover their route changes.
+    document.addEventListener("yt-page-data-updated", () => onNavigate());
     window.addEventListener("popstate", () => {
       pageWatchKey = "";
       void onNavigate();
@@ -4113,7 +4117,22 @@
     if (area !== "local") return;
     let dirty = false;
     if (changes.hardsubSettings) {
+      const prevPlatEnabled = isCurrentPlatformEnabled();
       settings = { ...DEFAULTS, ...changes.hardsubSettings.newValue };
+      const nextPlatEnabled = isCurrentPlatformEnabled();
+
+      if (prevPlatEnabled && !nextPlatEnabled) {
+        teardownUI();
+        return;
+      }
+      if (!prevPlatEnabled && nextPlatEnabled) {
+        ensureUI();
+        startLoop();
+        void onNavigate();
+        return;
+      }
+      if (!nextPlatEnabled) return;
+
       if (settings.vocabColors) {
         settings.vocabColors = {
           ...(Vocab.DEFAULT_VOCAB_COLORS || {}),
