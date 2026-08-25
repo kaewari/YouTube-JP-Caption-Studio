@@ -21,7 +21,7 @@
 
 ## 🌟 Key Features
 1. **Smart Captions**: Intercepts Japanese timedtext directly from YouTube, displaying them as an overlay on the video and in the Side Panel (JA / EN / VI toggles; EN+VI on by default). When the video also has EN/VI YouTube tracks, they are union-merged into cue rows (±0.35s; unmatched lines become orphan cues; Import/manual edits are never overwritten).
-2. **Furigana & Dictionary**: Real-time JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + local bridge `/dict`. iPad: `NLTagger` + bundled `dict.sqlite`. Tap/click a word → popup with **VI + EN** glosses and the cue’s sentence translation.
+2. **Furigana & Dictionary**: Real-time Yomitan JA-VI offline dictionary with Sino-Vietnamese (Hán-Việt) readings and clean JMdict EN fallback. Desktop: Sudachi + local bridge `/dict` with greedy multi-token idiom lookup (`気にする`, `足がつく`). iPad: `NLTagger` + bundled `dict.sqlite`. Tap/click a word → popup card with Kanji, Furigana, **Hán-Việt badge**, high-accuracy **VI definitions**, and secondary **EN glosses**.
 3. **JLPT / frequency coloring**: Tokens are colored by difficulty band (N5→N1 / unknown) from the shared `freq_ja.json` rank map — on both Desktop hardsub and the iPad overlay/side panel.
 4. **Personal Vocabulary Tracker**: Desktop: mark Known / Learning / Ignore / Special (status colors on subtitles). iPad: save looked-up words from the dict popup into SwiftData (status-mark UI still Desktop-first).
 5. **Manual Editing**: Edit JA/EN/VI and timelines in the Side Panel. Bulk Import/Export of `.txt`/`.json`. On iPad, JA shows as tappable tokens; use **Edit JA** to type.
@@ -99,7 +99,7 @@ OCR **不使用**。機械翻訳 **不使用**。翻訳は YouTube の EN/VI ト
 
 ## 🌟 主な機能
 1. **スマート字幕**: YouTubeから日本語 timedtext を取得し、オーバーレイとサイドパネルに表示（JA/EN/VI切替、EN+VIは既定でON）。EN/VI トラックがある動画では ±0.35s で union-merge（不一致は orphan 行；Import/手動は上書きしない）。
-2. **ルビ＆辞書**: JMdict（+ JA→VI / EN→VI）。単語をタップ/クリックすると **VI + EN** と文の翻訳が出るポップアップ。
+2. **ルビ＆辞書**: 高精度オフライン Yomitan 和越辞書（漢越音 Hán-Việt バッジ付き）と綺麗な JMdict 英和フォールバック。複数トークンの慣用句マッチング（`気にする`, `足がつく`）対応。単語をタップ/クリックすると **漢字・ルビ・漢越音・高精度ベトナム語訳・英語補足** が表示されるポップアップ。
 3. **JLPT / 頻度カラー**: `freq_ja.json` のランクから N5→N1 色分け（Desktop hardsub と iPad オーバーレイ/サイドパネル共通）。
 4. **個人単語帳**: Desktop は Known / Learning / Ignore / Special をマーク。iPad は辞書ポップアップから単語を SwiftData に保存（状態マークUIは Desktop 先行）。
 5. **手動編集**: サイドパネルで JA/EN/VI とタイムラインを編集。TXT/JSON 一括インポート/エクスポート。iPad の JA はトークン表示、「Sửa JA」で編集。
@@ -173,7 +173,7 @@ curl -s http://127.0.0.1:8765/health
 
 ## 🌟 Tính năng chính
 1. **Phụ đề thông minh**: Bắt timedtext JA từ YouTube (và phụ đề native từ ABEMA / web video khác qua textTrack/WebVTT) → overlay + Side Panel (toggle JA/EN/VI; EN+VI mặc định bật). Nếu video có track EN/VI trên YouTube thì union-merge (±0,35s; orphan thành cue mới; không ghi đè Import/sửa tay).
-2. **Furigana & Từ điển**: JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + bridge `/dict`. iPad: `NLTagger` + `dict.sqlite`. Chạm/click từ → popup **VI + EN** và dịch câu của cue.
+2. **Furigana & Từ điển**: Từ điển offline Nhật - Việt chuẩn Yomitan chất lượng cao với âm Hán-Việt cho toàn bộ Hán tự (Kanji) và fallback sạch sang JMdict tiếng Anh (không dùng dịch thô ghép từ). Desktop: Sudachi + bridge `/dict` với thuật toán Greedy Idiom Matcher cho quán ngữ nhiều từ (`気にする`, `足がつく`). Chạm/click từ → popup hiện Kanji, Furigana, **Huy hiệu Âm Hán-Việt**, **nghĩa tiếng Việt chuẩn xác** và **định nghĩa tiếng Anh phụ**.
 3. **Tô màu JLPT / tần suất**: Token màu N5→N1 / unknown từ `freq_ja.json` (chung Desktop và iPad).
 4. **Từ vựng cá nhân**: Desktop đánh dấu Đã biết / Đang học / Bỏ qua / Đặc biệt. iPad: Lưu từ từ popup vào SwiftData (UI đánh dấu trạng thái vẫn ưu tiên Desktop).
 5. **Sửa phụ đề**: Side Panel sửa JA/EN/VI + timeline; Import/Export `.txt`/`.json`. iPad: JA dạng token chạm được; **Sửa JA** để gõ.

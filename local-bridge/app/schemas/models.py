@@ -94,6 +94,7 @@ class DictRequest(BaseModel):
     surface: str = Field(..., max_length=512)
     lemma: str = Field("", max_length=256)
     sentence_id: str = Field("", max_length=128)
+    context_tokens: list[str] = Field(default_factory=list)
 
 
 class DictSense(BaseModel):
@@ -107,7 +108,9 @@ class DictResponse(BaseModel):
     surface: str
     matched: str = ""
     reading: str = ""
+    hanviet: str = ""
     found: bool = False
+    glosses_vi: list[str] = Field(default_factory=list)
     senses: list[DictSense] = Field(default_factory=list)
     message: str = ""
 

@@ -1,4 +1,4 @@
-"""Local dictionary: SQLite backend (dict.sqlite) for JMdict (EN) + JA→VI + EN→VI bridge (VNEDICT)."""
+"""Local dictionary: SQLite backend (dict.sqlite) for JMdict (EN) + Yomitan JA→VI + Sino-Vietnamese Han-Viet."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from app.core.cache import dict_cache
+from app.data.hanviet_data import get_hanviet_reading
 from app.schemas.models import DictResponse, DictSense
 from app.utils.text_utils import _kata_to_hira
 
@@ -21,7 +22,6 @@ DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "dict
 JMDICT_JSON = DATA_DIR / "jmdict_mini.json"
 JAVI_JSON = DATA_DIR / "ja_vi.json"
 JMDICT_VI_JSON = DATA_DIR / "jmdict_vi.json"
-EN_VI_JSON = DATA_DIR / "en_vi.json"
 SQLITE_DB = DATA_DIR / "dict.sqlite"
 
 RE_KANJI_KANA = re.compile(r"^([\u3400-\u9fff]+)([\u3040-\u309f]+)$")
@@ -268,6 +268,30 @@ _SEED_JA_VI: dict[str, list[str]] = {
     "死ぬ": ["chết"],
     "生まれる": ["được sinh ra"],
     "生きる": ["sống"],
+    "勉強": ["học tập", "học"],
+    "日本語": ["tiếng Nhật"],
+    "病院": ["bệnh viện"],
+    "旅行": ["du lịch"],
+    "天気": ["thời tiết"],
+    "説明": ["giải thích", "thuyết minh"],
+    "計画": ["kế hoạch"],
+    "経験": ["kinh nghiệm"],
+    "経済": ["kinh tế"],
+    "政治": ["chính trị"],
+    "社会": ["xã hội"],
+    "文化": ["văn hóa"],
+    "歴史": ["lịch sử"],
+    "法律": ["pháp luật", "luật"],
+    "環境": ["môi trường"],
+    "関係": ["quan hệ", "liên quan"],
+    "連絡": ["liên lạc"],
+    "相談": ["thảo luận", "bàn bạc"],
+    "準備": ["chuẩn bị"],
+    "確認": ["xác nhận", "kiểm tra"],
+    "成功": ["thành công"],
+    "失敗": ["thất bại"],
+    "必要": ["cần thiết"],
+    "複雑": ["phức tạp"],
 }
 
 _PUNCT_STRIP = "。、.!?,！？「」『』（）()[]【】…・〜～『』「」〈〉《》""''\""
@@ -284,7 +308,6 @@ _TAIL_PATTERNS = [
 
 _local = threading.local()
 _loaded = False
-_RE_EN_WORD = re.compile(r"[a-zA-Z']+")
 
 
 def _get_db() -> sqlite3.Connection | None:
@@ -421,23 +444,33 @@ def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
     return out
 
 
-def _query_en_vi(lemma: str) -> list[str]:
+def _query_hanviet(text: str) -> str:
+    """Extract Sino-Vietnamese reading for Kanji characters in text."""
+    if not text:
+        return ""
+    # Prefer in-memory hanviet dictionary table; fallback to SQLite kanji_hanviet if needed
+    hv = get_hanviet_reading(text)
+    if hv:
+        return hv
     conn = _get_db()
     if not conn:
-        return []
+        return ""
     try:
         cur = conn.cursor()
-        cur.execute("SELECT glosses FROM en_vi WHERE lemma = ?", (lemma.lower(),))
-        row = cur.fetchone()
-        if row and row[0]:
-            return json.loads(row[0])
+        readings: list[str] = []
+        for ch in text:
+            cur.execute("SELECT hanviet FROM kanji_hanviet WHERE kanji = ?", (ch,))
+            row = cur.fetchone()
+            if row and row[0]:
+                readings.append(row[0])
+        return " ".join(readings)
     except Exception as exc:
-        logger.warning("SQLite en_vi query error for %s: %s", lemma, exc)
-    return []
+        logger.warning("SQLite kanji_hanviet query error for %s: %s", text, exc)
+    return ""
 
 
 def _vi_glosses_for(key: str, reading: str = "") -> list[str]:
-    """Curated seed/ja_vi first, then Yomitan VI JMDict (reading-aware)."""
+    """Curated seed/ja_vi first, then Yomitan VI JMDict (reading-aware). Clean without EN bridge."""
     for cand in _script_variants(key):
         curated = _query_javi(cand)
         if curated:
@@ -465,56 +498,13 @@ def _vi_glosses_for(key: str, reading: str = "") -> list[str]:
     return []
 
 
-def _en_lemmas_from_gloss(gloss: str) -> list[str]:
-    """Normalize a JMdict English gloss → lookup keys for en_vi."""
-    s = (gloss or "").strip()
-    if not s:
-        return []
-    s = re.sub(r"\([^)]*\)", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    s = re.sub(r"^(to|a|an|the)\s+", "", s, flags=re.I)
-    words = _RE_EN_WORD.findall(s.lower())
-    if not words:
-        return []
-    keys = [words[0]]
-    if len(words) >= 2:
-        keys.append(" ".join(words[:2]))
-    return keys
-
-
-def _vi_from_en_glosses(gloss_en: list[str]) -> list[str]:
-    """Bridge EN JMdict glosses → VI via inverted VNEDICT (no MT)."""
-    if not gloss_en:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for gloss in gloss_en[:2]:
-        lemmas = _en_lemmas_from_gloss(gloss)
-        if not lemmas:
-            continue
-        for lemma in lemmas[:1]:
-            for vi in _query_en_vi(lemma)[:5]:
-                key = vi.casefold()
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(vi)
-                if len(out) >= 5:
-                    return out
-        if out:
-            break
-    return out
-
-
 def _enrich_senses_vi(senses: list[DictSense], key: str) -> list[DictSense]:
-    """Fill empty gloss_vi: seed/jmdict_vi, then EN→VI bridge (no MT)."""
+    """Fill empty gloss_vi from seed/jmdict_vi without broken EN-VI machine bridge."""
     out: list[DictSense] = []
     for sense in senses:
         vi = list(sense.gloss_vi or [])
         if not vi:
             vi = _vi_glosses_for(key, sense.reading or "")
-        if not vi:
-            vi = _vi_from_en_glosses(sense.gloss_en or [])
         out.append(
             DictSense(
                 gloss_en=list(sense.gloss_en or []),
@@ -659,10 +649,45 @@ def _try_keys(keys: list[str]) -> tuple[list[DictSense], str, str]:
     return [], "", ""
 
 
-def _expand_candidates(surface: str, lemma: str) -> list[str]:
+def _greedy_context_combinations(surface: str, context_tokens: list[str]) -> list[str]:
+    """Generate greedy multi-word idiom combinations from surrounding context tokens."""
+    combos: list[str] = []
+    if not context_tokens:
+        return combos
+    cleaned_tokens = [_strip_punct(_nfkc(t)) for t in context_tokens if _strip_punct(_nfkc(t))]
+    s_clean = _strip_punct(_nfkc(surface))
+    if not s_clean:
+        return combos
+
+    try:
+        idx = cleaned_tokens.index(s_clean)
+    except ValueError:
+        idx = -1
+
+    if idx >= 0:
+        # Multi-token combinations starting at surface
+        for end in range(min(len(cleaned_tokens), idx + 6), idx + 1, -1):
+            phrase = "".join(cleaned_tokens[idx:end])
+            if phrase and phrase != s_clean:
+                combos.append(phrase)
+    return combos
+
+
+def _expand_candidates(
+    surface: str,
+    lemma: str,
+    context_tokens: list[str] | None = None,
+) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
 
+    # 1. Greedy context token combinations (idioms/multi-word)
+    if context_tokens:
+        for combo in _greedy_context_combinations(surface, context_tokens):
+            for v in _script_variants(combo):
+                _add_candidate(candidates, seen, v)
+
+    # 2. Surface and lemma variants
     for raw in (surface, lemma):
         base = _strip_punct(_nfkc(raw or ""))
         if not base:
@@ -674,9 +699,9 @@ def _expand_candidates(surface: str, lemma: str) -> list[str]:
                 _add_candidate(candidates, seen, v)
 
     try:
-        from app.services.tokenize_ja import is_loaded, tokenize
+        from app.services.tokenize_ja import is_loaded as tok_loaded, tokenize
 
-        if is_loaded() and surface:
+        if tok_loaded() and surface:
             for tok in tokenize(_nfkc(surface)):
                 for piece in (tok.lemma, tok.surface):
                     piece = _strip_punct(_nfkc(piece or ""))
@@ -690,17 +715,22 @@ def _expand_candidates(surface: str, lemma: str) -> list[str]:
     return candidates
 
 
-def lookup(surface: str, lemma: str = "") -> DictResponse:
+def lookup(
+    surface: str,
+    lemma: str = "",
+    context_tokens: list[str] | None = None,
+) -> DictResponse:
     raw = _nfkc(surface or "")
     if not raw:
         return DictResponse(surface=surface, found=False, message="empty")
 
-    cache_key = f"{raw}|{_nfkc(lemma or '')}"
+    ctx_key = ",".join(context_tokens) if context_tokens else ""
+    cache_key = f"{raw}|{_nfkc(lemma or '')}|{ctx_key}"
     cached = dict_cache.get(cache_key)
     if cached:
         return DictResponse(**cached)
 
-    candidates = _expand_candidates(raw, lemma or "")
+    candidates = _expand_candidates(raw, lemma or "", context_tokens)
     candidates.sort(key=lambda s: (-len(s), s))
 
     matched = ""
@@ -732,14 +762,45 @@ def lookup(surface: str, lemma: str = "") -> DictResponse:
     found = bool(senses)
     if found:
         senses = _enrich_senses_vi(senses, matched or raw)
+
+    # Collect top unique VI glosses for fast access
+    vi_all: list[str] = []
+    seen_vi: set[str] = set()
+    for s in senses:
+        for g in s.gloss_vi:
+            gk = g.strip()
+            if gk and gk.casefold() not in seen_vi:
+                seen_vi.add(gk.casefold())
+                vi_all.append(gk)
+    if not vi_all:
+        for g in _vi_glosses_for(matched or raw, reading):
+            gk = g.strip()
+            if gk and gk.casefold() not in seen_vi:
+                seen_vi.add(gk.casefold())
+                vi_all.append(gk)
+
+    hanviet = _query_hanviet(matched or raw)
+
     resp = DictResponse(
         surface=raw,
         matched=matched or raw,
         reading=reading,
+        hanviet=hanviet,
         found=found,
+        glosses_vi=vi_all,
         senses=senses,
         message="" if found else "không có trong từ điển",
     )
     if found or SQLITE_DB.is_file():
         dict_cache.set(cache_key, resp.model_dump())
     return resp
+
+
+def lookup_word(
+    surface: str,
+    lemma: str = "",
+    context_tokens: list[str] | None = None,
+) -> DictResponse:
+    """Alias for lookup."""
+    return lookup(surface, lemma=lemma, context_tokens=context_tokens)
+

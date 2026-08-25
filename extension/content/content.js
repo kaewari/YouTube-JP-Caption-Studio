@@ -2028,8 +2028,9 @@
   }
 
   function primaryGlossLine(d) {
+    const directVi = Array.isArray(d?.glosses_vi) ? d.glosses_vi : [];
     const senses = d?.senses || [];
-    const viParts = [];
+    const viParts = [...directVi];
     const enParts = [];
     for (const sense of senses.slice(0, 4)) {
       for (const g of sense.gloss_vi || []) {
@@ -2040,7 +2041,7 @@
       }
     }
     return {
-      vi: viParts.slice(0, 5).join(", "),
+      vi: viParts.slice(0, 4).join(", "),
       en: enParts.slice(0, 4).join("; "),
     };
   }
@@ -2102,6 +2103,7 @@
 
     const term = d.matched || surface;
     const reading = d.reading || (d.senses?.[0]?.reading || "");
+    const hanviet = (d.hanviet || "").trim();
     const glossHtml = glossBlocksHtml(d);
     const markLemma = d.matched || lemma || surface;
     dictEl.innerHTML = `<div class="dict-top">
@@ -2109,6 +2111,8 @@
         <div class="dict-head-main">
           <strong class="dict-head">${escapeHtml(term)}</strong>${
             reading ? `<span class="dict-reading-top">${escapeHtml(reading)}</span>` : ""
+          }${
+            hanviet ? `<span class="dict-hanviet-badge">${escapeHtml(hanviet)}</span>` : ""
           }
         </div>
       </div>${glossHtml}${sentenceHtml}${markButtonsHtml(markLemma)}`;
