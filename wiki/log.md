@@ -22,6 +22,8 @@ Triển khai nhóm fix ưu tiên theo `plan/codebase-improvement-plan-2026-08-22
 - Wiki: cập nhật `wiki/topics/codebase-improvements-2026-08-22.md` ghi nhận shipped status.
 
 
+## [2026-08-21] ingest | Vietnamese caption fixes & parallel fetch
+
 `plan/vietnamese-caption-fixes-2026-08-21.md` filed & code shipped. `matchLangFamily()`
 (normalize case/separator + 3-letter alias `vie`/`eng`/`jpn`) thay `startsWith` hẹp ở
 `service_worker.js` (fetchBestLangPack, hasEn/hasVi, scoreTrack) và `page_capture.js`

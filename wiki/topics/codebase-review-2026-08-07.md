@@ -13,7 +13,7 @@ iPhone build xanh, macOS build xanh, web lint/typecheck/build xanh, bridge
 ## Raw review
 
 - [review/codebase-review-2026-08-07.md](../../review/codebase-review-2026-08-07.md)
-- Đã fix phiên trước: H4–H6, M9, M8 (build.sh iconset), M10 — xem wiki/topics/plans-completion.
+- Đã fix phiên trước: H4–H6, M9, M8 (build.sh iconset), M10 — xem [plans-completion.md](plans-completion.md).
 
 ## Fixes 2026-08-07
 
