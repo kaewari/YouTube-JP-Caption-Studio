@@ -1,7 +1,7 @@
 # Wiki index — plans & reviews
 
 LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pattern).  
-**You read; the LLM writes.** Schema: root [`AGENTS.md`](../AGENTS.md) §4.
+**You read; the LLM writes.** Schema: root [`CLAUDE.md`](../CLAUDE.md).
 
 ## Navigation
 
@@ -9,15 +9,15 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 |------|---------|
 | [log.md](log.md) | Append-only ingest / query / lint timeline |
 | [topics/repo-layout.md](topics/repo-layout.md) | Folder map + skill catalog + knowledge map §G — **xong** (flatten 2026-08-05) |
-| [topics/flatten-repo-layout.md](topics/flatten-repo-layout.md) | Flatten + skills keep (ponytail, codegraph, 3 domain) — **xong** (2026-08-05) |
 | [topics/p0-data-loss.md](topics/p0-data-loss.md) | Drive cue-merge + backup + extension rev guard — **done** (2026-08-05) |
-| [topics/local-bridge-audit.md](topics/local-bridge-audit.md) | Bridge audit 2026-08-06 — **10/10 findings còn ALIVE, chưa fix** |
+| [topics/local-bridge-audit.md](topics/local-bridge-audit.md) | Bridge audit 2026-08-06 — **5/10 fixed, LB-6 tracked in perf audit, 4/10 open** |
 | [topics/plans-completion.md](topics/plans-completion.md) | Inventory 17 plans — **product plans done / YAGNI cancelled** (2026-08-07) |
 | [topics/codebase-review-2026-08-07.md](topics/codebase-review-2026-08-07.md) | Full source review — **closed** (2026-08-07): C1/H1–H8/M1–M10 all fixed |
 | [topics/sub-load-furigana-100ms.md](topics/sub-load-furigana-100ms.md) | Sub load nhanh + furigana/level ≤100 ms — **done** (T1–T5 verified 2026-08-20) |
 | [topics/netflix-support.md](topics/netflix-support.md) | Netflix subtitle support (DFXP/TTML + player hooks) — **shipped** (2026-08-19) |
 | [topics/vietnamese-caption-loading.md](topics/vietnamese-caption-loading.md) | VI caption load fixes + Netflix parallel fetch — **shipped code, chờ test thật** (2026-08-21) |
-| [topics/codebase-improvements-2026-08-22.md](topics/codebase-improvements-2026-08-22.md) | Codebase improvement plan (behavior-preserving) — **open** (2026-08-22) |
+| [topics/codebase-improvements-2026-08-22.md](topics/codebase-improvements-2026-08-22.md) | Codebase improvement plan (behavior-preserving) — **partial** (2026-08-23) |
+| [topics/perf-ux-audit-2026-08-23.md](topics/perf-ux-audit-2026-08-23.md) | Multi-agent perf sweep + UX benchmark — **open** (2026-08-23) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
@@ -26,14 +26,16 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 |--------|-------|------|--------|
 | done | Netflix Caption Support & Replay | [plan/netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md) | [review/netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md) |
 | done | Plans completion inventory | all `plan/*.md` | [review/plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md) |
-| open | Local-bridge audit (10/10 ALIVE, chưa fix — no plan) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
+| partial | Local-bridge audit (5/10 fixed, LB-6 tracked in perf audit) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
 | done | Full codebase review 2026-08-07 (C1, H1–H8, M1–M10 fixed) | — | [review/codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md) |
 | done | Flatten repo layout | [plan/flatten-repo-layout-2026-08-05.md](../plan/flatten-repo-layout-2026-08-05.md) | [review/flatten-repo-layout-execute-2026-08-05.md](../review/flatten-repo-layout-execute-2026-08-05.md) |
 | done | P0 data-loss (cue-merge) | [plan/p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md) | [review/p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md) |
 | done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
 | source | Full codebase review (Fable) | — | [review/codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md) |
-| open | Codebase improvements 2026-08-22 (behavior-preserving) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
+| partial | Codebase improvements 2026-08-22 (priority guards shipped) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
 | open | Full codebase review & improvement plan 2026-08-23 | [plan/codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md) | [review/codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md) |
+| open | Multi-agent perf sweep + UX benchmark 2026-08-23 | — | [review/perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md) |
+| done | Codebase improvement plan 2026-08-26 (T1-T4) | [plan/codebase-improvement-plan-2026-08-26.md](../plan/codebase-improvement-plan-2026-08-26.md) | — |
 
 ## Raw catalogs (immutable)
 
@@ -64,6 +66,7 @@ Do not rewrite these from the wiki. Link only.
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
 - [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
 - [codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md)
+- [codebase-improvement-plan-2026-08-26.md](../plan/codebase-improvement-plan-2026-08-26.md)
 
 ### Reviews (`review/`)
 
@@ -83,8 +86,9 @@ Do not rewrite these from the wiki. Link only.
 - [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
 - [netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md)
 - [codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md)
+- [perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md)
 
-## Open gaps (from Fable review, not in closed P0)
+## Open gaps
 
 Tracked lightly until ingested into their own topic pages:
 

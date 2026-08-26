@@ -15,7 +15,7 @@ Hỗ trợ phụ đề tiếng Nhật (Hardsub Overlay, Furigana, JLPT Color, tr
 - [x] **Side Panel & Service Worker**: `sidepanel.js` và `service_worker.js` mở quyền kết nối cho tab Netflix.
 - [x] **Multi-lang EN/VI auto-fetch**: `page_capture.js` tự động quét danh sách track và tải đồng thời phụ đề EN và VI qua URL trực tiếp hoặc chuyển track ngầm để ghép timeline tam ngữ.
 - [x] **Nút Toggle mờ khi hover**: `panel.css` và `content.js` định vị nút ở mép trái video, ẩn khi rảnh và hiện mờ khi di chuột vào player.
-- [x] **Bridge Dictionary unthrottled & thread-safe**: Loại bỏ nghẽn 503 từ governor trên `/dict`, thêm `threading.local()` cho SQLite connection và thread lock cho Sudachi tokenizer.
+- [x] **Bridge Dictionary unthrottled & thread-safe**: Gỡ governor tạm thời (2026-08-19), sau đó chuẩn hóa lại `_governed()` có timeout/cap payload (2026-08-23), thêm `threading.local()` cho SQLite connection và thread lock cho Sudachi tokenizer.
 - [x] **Netflix Replay không lỗi M7375**: `page_capture.js` điều khiển tua/phát qua `player.seek(ms)` và `player.play()` của Netflix Video Player API.
 - [x] **Nhập liệu tiếng Nhật ổn định**: `sidepanel.js` tắt nhảy focus nudge và tắt can thiệp `applyRomajiFallback` để OS IME gõ tự nhiên, không mất chữ hay nhảy con trỏ.
 - [x] **Bảo toàn Furigana & JLPT color**: `content.js` tự động phân tích tokens cho câu vừa sửa và cập nhật ngay lập tức về Side Panel.
