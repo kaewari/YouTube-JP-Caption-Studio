@@ -15,4 +15,8 @@ router = APIRouter()
 def dict_lookup(body: DictRequest) -> DictResponse:
     if not dict_loaded():
         load_dictionary()
-    return lookup(body.surface, lemma=body.lemma or "")
+    return lookup(
+        body.surface,
+        lemma=body.lemma or "",
+        context_tokens=body.context_tokens or None,
+    )

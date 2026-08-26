@@ -91,6 +91,7 @@ def _clean_vi_gloss(s: str) -> str | None:
     s = (s or "").strip()
     s = s.replace("\\n", " ").strip()
     s = _RE_BULLET.sub("", s).strip(" -\t;")
+    s = re.sub(r"^\{[^}]*\}\s*,?\s*", "", s).strip()
     if not s or len(s) < 2:
         return None
     if _RE_SINO_DUMP.match(s) or _RE_ALLCAPS_VI.match(s):
@@ -182,9 +183,11 @@ def _vi_glosses_from_raw(raw_items: list[str]) -> list[str]:
                 break
 
     if not out:
-        m = re.search(r"\{[^}]+\}\s*,\s*([^\n\{]+)", text)
-        if m and _RE_VI_DIAC.search(m.group(1)):
-            _add_clause_glosses(m.group(1), out, seen, limit=3)
+        for raw in raw_items:
+            if isinstance(raw, str) and _RE_VI_DIAC.search(raw):
+                _add_clause_glosses(raw, out, seen, limit=3)
+                if len(out) >= 3:
+                    break
 
     return out[:5]
 

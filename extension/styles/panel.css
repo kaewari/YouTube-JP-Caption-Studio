@@ -359,6 +359,21 @@
   margin-right: 6px;
 }
 
+.hardsub-dict .dict-hanviet-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e5c07b;
+  background: rgba(229, 192, 123, 0.14);
+  border: 1px solid rgba(229, 192, 123, 0.28);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .hardsub-dict .dict-gloss {
   color: #f2f2f6;
   font-size: 16px;

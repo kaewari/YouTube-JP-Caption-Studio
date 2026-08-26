@@ -44,7 +44,7 @@ Thư mục này chứa mã nguồn thuần của Extension cho Chrome, đóng va
 ### 1.3. `local-bridge/` (FastAPI Backend - Desktop)
 Đây là Backend chạy ở localhost (`127.0.0.1:8765`) để gánh các tác vụ nặng mà Chrome Extension không thể làm tốt.
 - **`app/services/`**:
-  - `dictionary.py`: Quản lý query dữ liệu từ điển JMdict (SQLite).
+  - `dictionary.py`: Quản lý query dữ liệu từ điển offline chất lượng cao qua SQLite (`dict.sqlite`). Tích hợp bộ từ điển Yomitan JA-VI, tra cứu âm Hán-Việt (Sino-Vietnamese) cho toàn bộ Hán tự (Kanji), thuật toán Greedy Idiom Matcher cho cụm từ/quán ngữ nhiều token (`気にする`, `足がつく`), và fallback sạch sang JMdict tiếng Anh (không dùng máy dịch thô EN-VI).
   - `tokenize_ja.py`: Sử dụng thư viện `sudachipy` để chia từ, phân tích từ loại (POS), bóc tách furigana.
   - `script_store.py`: Per-video folder `data/subtitles/{videoId}/` — `cues.json` + `meta.json` (+ `script.txt` khi mirror) + `tokens.json` (local-only, không lên Drive). Lamport `rev`, cờ `owned`.
   - `snapshot.py`: Encode/decode Snapshot v1 (`GET`/`POST /backup/snapshot`) — legacy/slim; script sync chính = folder mirror qua `/scripts/{id}/files`.
@@ -117,7 +117,7 @@ Chrome Extensions không hoạt động trên iPadOS. Để mang ứng dụng l�
   - Desktop: `vocab_style.js` gắn class `jlpt-n5`…`jlpt-n1` / `level-unknown` lên từng token hardsub + side panel.
   - iPad: `VocabStyle` + `TokenizedJAView` tô cùng palette; particle/punct không tô (content-word filter).
 - **Tap / hover từ → popup**:
-  - Desktop: hover/click token trên hardsub → `#hardsub-ocr-dict`; bridge `POST /dict` trả senses `gloss_vi` + `gloss_en`; khối câu hiện `cue.vi` / `cue.en`.
+  - Desktop: hover/click token trên hardsub hoặc side panel → popup từ điển hiển thị: **Từ vựng + Cách đọc (Furigana) + Huy hiệu Âm Hán-Việt (`.dict-hanviet-badge`) + Nghĩa tiếng Việt chuẩn Yomitan JA-VI + Định nghĩa tiếng Anh phụ từ JMdict**. Cụm từ/quán ngữ nhiều token được bắt khớp tham lam (Greedy multi-word matching).
   - iPad: tap token trên overlay hoặc side panel → `DictPopupView` / sheet; `DictionaryService.lookup` đọc SQLite bundle (cùng schema bridge); hiện VI + EN gloss và dịch câu của cue; **Lưu từ** → `Vocabulary` (SwiftData).
 - **Default hiển thị hardsub**: Desktop `barShowEn` / `barShowVi` mặc định bật; iPad đồng bộ (`hardsubShowEN.v2` / `hardsubShowVI.v2` = true). Furigana có toggle riêng.
 - **Parity còn thiếu trên iPad**: nút đánh dấu Known / Learning / Ignored / Special trên popup (Desktop có); lemma Sudachi chính xác hơn `NLTagger`.

@@ -602,6 +602,21 @@ textarea.sp-ja {
   font-size: 13px;
 }
 
+.sp-dict .dict-hanviet-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e5c07b;
+  background: rgba(229, 192, 123, 0.14);
+  border: 1px solid rgba(229, 192, 123, 0.28);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .sp-dict .dict-sense {
   padding: 8px 0;
   border-top: 1px solid #2a2a38;
