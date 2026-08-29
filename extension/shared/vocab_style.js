@@ -261,6 +261,36 @@
     }).join("");
   }
 
+  /**
+   * Offline fallback tokenizer using Intl.Segmenter when Bridge is offline.
+   * Splices text into words without furigana / dictionary tags.
+   */
+  function segmentFallback(text) {
+    if (!text || typeof text !== "string") return [];
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      try {
+        const segmenter = new Intl.Segmenter("ja", { granularity: "word" });
+        const segments = segmenter.segment(text);
+        const tokens = [];
+        for (const seg of segments) {
+          const s = seg.segment;
+          if (!s) continue;
+          tokens.push({
+            surface: s,
+            reading: "",
+            lemma: s,
+            pos: seg.isWordLike ? "名詞" : "補助記号",
+            jlpt: "",
+          });
+        }
+        return tokens;
+      } catch (err) {
+        // fallback to character/word split below
+      }
+    }
+    return [{ surface: text, reading: "", lemma: text, pos: "名詞", jlpt: "" }];
+  }
+
   globalThis.HardsubVocab = {
     DEFAULT_VOCAB_COLORS,
     DEFAULT_VOCAB_SETTINGS,
@@ -281,5 +311,6 @@
     applyHighlightVars,
     tokensNeedEnrich,
     renderLevelPreviewHtml,
+    segmentFallback,
   };
 })();
