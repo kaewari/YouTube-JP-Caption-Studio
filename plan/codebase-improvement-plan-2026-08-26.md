@@ -40,15 +40,15 @@ Sau khi hoàn thành CEO review, kiểm tra codebase thực tế và đối chi�
 
 ## 3. Implementation Tasks
 
-- [ ] **T1 (P1, CC: ~10min)** — `extension` — Finalize UMD timedtext parser integration & duration clamping
+- [x] **T1 (P1, CC: ~10min)** — `extension` — Finalize UMD timedtext parser integration & duration clamping
   - Enforce minimum 0.2s duration on ASR cue collisions
   - Clean up direct calls in `content.js` and `service_worker.js`
-- [ ] **T2 (P1, CC: ~10min)** — `bridge` — Hardened atomic file IO in script_store
+- [x] **T2 (P1, CC: ~10min)** — `bridge` — Hardened atomic file IO in script_store
   - Ensure temp staging uses `dir=path.parent` for `script_store.py` and `bootstrap.py`
-- [ ] **T3 (P2, CC: ~10min)** — `ios` — iOS allowlist expansion & cue ID alignment
+- [x] **T3 (P2, CC: ~10min)** — `ios` — iOS allowlist expansion & cue ID alignment
   - Add Google auth, consent, and googlevideo hosts to `YouTubePlayerView.swift`
   - Align cue ID generation in `SubtitleParser.swift`
-- [ ] **T4 (P2, CC: ~10min)** — `extension` — Offline 5k dictionary & video overlay status pill
+- [x] **T4 (P2, CC: ~10min)** — `extension` — Offline 5k dictionary & video overlay status pill
   - Integrate `Intl.Segmenter` fallback lemma lookup in `vocab_style.js`
   - Inject isolated bridge status indicator pill in `content.js`
 

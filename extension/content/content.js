@@ -3351,6 +3351,7 @@
     const showEn = settings.barShowEn !== false;
     const showVi = settings.barShowVi !== false;
     bar.innerHTML = `
+      <div class="hardsub-bridge-pill ${bridgeReady ? "ready" : "offline"}" title="${bridgeReady ? "Local Bridge: Connected" : "Local Bridge: Offline (Intl.Segmenter fallback)"}"></div>
       <div class="bar-body">
         ${showJa ? `<div class="bar-ja">${rubyHtml(cue)}</div>` : ""}
         ${showEn && en ? `<div class="bar-en">${escapeHtml(en)}</div>` : ""}
@@ -3365,6 +3366,14 @@
         }
       </div>
     `;
+    const pill = bar.querySelector(".hardsub-bridge-pill");
+    if (pill) {
+      pill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        syncHealth();
+      });
+    }
     ensureBarResizeHandle(bar);
     bindBarTokenDict(bar);
     applyBarPosition();
@@ -3442,24 +3451,36 @@
       results = null;
     }
 
-    // Fallback: single /tokenize per cue (older bridge without batch).
+    // Fallback: single /tokenize per cue (older bridge without batch), or offline segmentFallback.
     if (!results) {
       results = [];
       for (const c of targets) {
+        let gotTokens = false;
         try {
           const one = await bridgeFetch("/tokenize", {
             method: "POST",
             body: { text: c.source },
           });
-          if (one?.ok && one.data) {
+          if (one?.ok && one.data && Array.isArray(one.data.tokens) && one.data.tokens.length) {
             results.push({
               id: c.id,
               source: c.source,
-              tokens: one.data.tokens || [],
+              tokens: one.data.tokens,
             });
+            gotTokens = true;
           }
         } catch (_) {
           /* skip */
+        }
+        if (!gotTokens && typeof Vocab.segmentFallback === "function") {
+          const fallbackToks = Vocab.segmentFallback(c.source);
+          if (fallbackToks.length) {
+            results.push({
+              id: c.id,
+              source: c.source,
+              tokens: fallbackToks,
+            });
+          }
         }
       }
     }

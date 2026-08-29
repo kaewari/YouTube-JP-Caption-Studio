@@ -295,7 +295,15 @@ struct YouTubePlayerView: UIViewRepresentable {
                 return
             }
             let host = url.host?.lowercased() ?? ""
-            let allowed = ["youtube.com", "youtu.be", "netflix.com", "abema.tv"]
+            let allowed = [
+                "youtube.com",
+                "youtu.be",
+                "netflix.com",
+                "abema.tv",
+                "accounts.google.com",
+                "consent.youtube.com",
+                "googlevideo.com",
+            ]
             let isAllowed = allowed.contains { host == $0 || host.hasSuffix("." + $0) }
             decisionHandler(isAllowed ? .allow : .cancel)
         }

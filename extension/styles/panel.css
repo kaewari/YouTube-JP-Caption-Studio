@@ -273,6 +273,32 @@
   color: #f0f0f5;
 }
 
+.hardsub-bridge-pill {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  z-index: 4;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+  transition: background-color 0.2s ease;
+}
+
+.hardsub-bridge-pill.ready {
+  background-color: #2ed573;
+}
+
+.hardsub-bridge-pill.offline {
+  background-color: #ff4757;
+}
+
+.hardsub-bridge-pill.busy {
+  background-color: #ffa502;
+}
+
 .hardsub-dict {
   position: fixed;
   z-index: 2147483646;
