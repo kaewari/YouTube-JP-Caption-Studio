@@ -1,7 +1,7 @@
-# AGENTS — mandatory for every agent (Cursor, Copilot, Claude, DeepSeek, …)
+# AGENTS — mandatory for every agent (Claude, Codex, DeepSeek, …)
 
 This file is the single source of truth for cross-tool instructions.  
-Keep in sync with: root `CLAUDE.md`. (`.cursor/rules/*.mdc` are untracked local Cursor conveniences — this file wins on conflict.)
+Keep in sync with: root `CLAUDE.md`.
 
 ---
 
@@ -58,7 +58,7 @@ Header:
 <!-- source: chat:<id> · user: <short ask> -->
 ```
 
-`.agents/` is old teamwork scratch — not where plans, reviews, or instructions live. Don’t leave the only copy under `.cursor/plans/` (gitignored) or a random root filename.
+`.agents/` is old teamwork scratch — not where plans, reviews, or instructions live. Always keep durable copies under `plan/` or `review/`.
 
 ---
 
@@ -133,7 +133,7 @@ Optional: Obsidian vault on repo root for graph view — not required.
 
 ## 5. Skills (`skills/`)
 
-Exactly five skills live at repo root (`.cursor/skills` is a local symlink, not tracked):
+Exactly five skills live at repo root (`skills/`):
 
 | Skill | When |
 |-------|------|
@@ -179,8 +179,34 @@ When you add a user-facing feature, update both `walkthrough.md` (what was added
 | Subtitle runtime | `data/subtitles/` | Không |
 | Config máy | `data/config/` | Không |
 | Evidence tạm | `.tmp-*/` hoặc xóa | Không |
-| Research cạnh `web/` | Không giữ — xóa | Không |
-| IDE scratch | `.cursor/plans/`, `.agents/` | Không → bền thì `plan/`/`review/` |
+| IDE scratch | `.agents/` (tạm thời) | Không → bền thì `plan/`/`review/` |
 | Codegraph index | `.codegraph/` | Không (local; skill hướng dẫn dùng) |
 
 Khớp bảng trước khi tạo docs/dataset; không invent top-level folder; runtime data ≠ wiki; lint wiki bắt file mồ côi.
+
+---
+
+# CORE DIRECTIVES: MINIMAL DIFF, RIGOROUS PROOF & ZERO CURSOR
+
+## 1. Minimal Code & Strict YAGNI (Ponytail Mode)
+Code is a liability, not an asset. Always strive for the smallest working diff:
+- **Smallest Working Diff:** Make the minimal change necessary. Prefer a 1–5 line fix over widespread rewrites.
+- **Strict YAGNI:** Never add speculative abstractions, interfaces, factory patterns, DTOs, or config flags. If there is only one implementation, do not create an interface or abstract base class.
+- **Standard Library / Native First:** Use built-in runtime and standard library features before adding new packages or creating custom utility files.
+- **Zero Bloat:** Do not create single-function utility files. Do not refactor adjacent code unprompted.
+
+## 2. Anti-Faking & Evidence-Based Verification
+Zero sycophancy. Never report a task finished or tests passed without real, undeniable terminal proof:
+- **Proof Required:** Every claim of success must include the exact command executed, raw terminal stdout/stderr, and exit code 0.
+- **No Mock/Canned Production Code:** Never write stubs that return hardcoded success (e.g., `{"status": "ok"}`) to pass tests or simulate logic.
+- **Strict TDD Bugfix Loop:**
+  1. **Red:** Execute a test proving the bug exists (must FAIL).
+  2. **Green:** Apply the minimal fix to resolve root cause.
+  3. **Verify:** Re-run test and show raw output proving it PASSES.
+- **Test Integrity:** Never delete assertions, skip tests, or weaken expectations to make test suites pass.
+- **Strict Honesty & Self-Evaluation Rule:** Không bịa kết quả, không bịa số liệu. Trung thực 100%. Luôn tự đánh giá kết quả sau khi làm. Nếu thấp hơn 9/10 thì tự làm lại.
+
+## 3. Strict Machine-Wide Cursor Ban (Zero Tolerance)
+- **Absolute Prohibition:** Never create, edit, suggest, recommend, or maintain any Cursor files or directories (`.cursorrules`, `.cursor/`, `.cursorignore`, etc.).
+- **Auto-Purge:** If any Cursor file or directory is detected in any workspace or repository, delete it immediately without asking.
+- **Standard Alternatives Only:** Use standard configuration files (`AGENTS.md`, `CLAUDE.md`, standard config files).

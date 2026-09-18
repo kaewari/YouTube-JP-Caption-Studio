@@ -87,6 +87,12 @@
   let settings = { ...DEFAULTS };
   /** @type {Record<string, string>} */
   let userVocab = {};
+  /** @type {Record<string, any>} */
+  let savedCues = {};
+  let apLastPausedCueId = "";
+  let barPosIndex = 0;
+  let translatingWithGemini = false;
+  let lrHotkeysBound = false;
   let caps = { max_in_flight: 3, max_fps: 10 };
   let translatingIds = new Set();
   let loopTimer = null;
@@ -344,6 +350,27 @@
   async function applyLoadedCues(rawCues, info, opts = {}) {
     const gen = navigateGen;
     const vid = currentVideoId;
+    // Guard against non-Japanese captions arriving in JA slot:
+    const detected = detectCuesLanguage(rawCues);
+    if (detected === "vi") {
+      applyYtSecondaryFill({ viCues: rawCues });
+      if (cues.length) {
+        listDirty = true;
+        renderList(true);
+        publishSidePanelState({ forceList: true });
+      }
+      return;
+    }
+    if (detected === "en") {
+      applyYtSecondaryFill({ enCues: rawCues });
+      if (cues.length) {
+        listDirty = true;
+        renderList(true);
+        publishSidePanelState({ forceList: true });
+      }
+      return;
+    }
+
     captionsStatus = "ok";
     captionsInfo = info;
     paintPendingT0 = performance.now();
@@ -367,6 +394,7 @@
       renderList(true);
       publishSidePanelState({ forceList: true });
       if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
+      void triggerGeminiTranslationIfNeeded();
       await saveTranscript({ force: true, awaitDisk: !!transcriptMeta.owned });
       return;
     }
@@ -401,6 +429,7 @@
     renderList(true);
     publishSidePanelState({ forceList: true });
     if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
+    void triggerGeminiTranslationIfNeeded();
     // Never auto-save a YT merge that would clobber a richer owned script.
     if (!meta.owned || scriptListScore(cues) >= scriptListScore(cached)) {
       scheduleSaveTranscript();
@@ -430,7 +459,17 @@
 
   function langFromTimedtextUrl(url) {
     try {
-      return new URL(String(url || ""), location.href).searchParams.get("lang") || "";
+      const u = new URL(String(url || ""), location.href);
+      return u.searchParams.get("tlang") || u.searchParams.get("lang") || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function sourceLangFromTimedtextUrl(url) {
+    try {
+      const u = new URL(String(url || ""), location.href);
+      return u.searchParams.get("lang") || "";
     } catch {
       return "";
     }
@@ -440,6 +479,28 @@
     return String(lang || "")
       .toLowerCase()
       .startsWith("ja");
+  }
+
+  function isViLang(lang) {
+    const s = String(lang || "").toLowerCase();
+    return s.startsWith("vi") || s === "vie" || s === "vietnamese";
+  }
+
+  function isEnLang(lang) {
+    const s = String(lang || "").toLowerCase();
+    return s.startsWith("en") || s === "eng" || s === "english";
+  }
+
+  function detectCuesLanguage(list) {
+    if (!Array.isArray(list) || !list.length) return "unknown";
+    const sample = list
+      .slice(0, 50)
+      .map((c) => (c ? c.text || c.source || "" : ""))
+      .join(" ");
+    if (/[\u3040-\u30ff\u4e00-\u9faf]/.test(sample)) return "ja";
+    if (/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/i.test(sample)) return "vi";
+    if (/[a-zA-Z]/.test(sample)) return "en";
+    return "unknown";
   }
 
   function stampSecondaryStatus(enN, viN) {
@@ -671,7 +732,7 @@
       return { ok: true };
     }
     if (cmd === "play") {
-      pageCall("PLAY_AT", { mediaTime: Number(msg.mediaTime) });
+      void seekToTime(Number(msg.mediaTime));
       return { ok: true };
     }
     if (cmd === "copy") {
@@ -732,16 +793,31 @@
       scheduleHideDict(520);
       return { ok: true };
     }
+    if (cmd === "toggle_star_cue") {
+      await toggleStarCue(msg.id);
+      return { ok: true, starred: isCueStarred(msg.id), savedCues };
+    }
+    if (cmd === "open_settings") {
+      openSettingsModal();
+      return { ok: true };
+    }
     return { ok: false, reason: "unknown_cmd" };
   }
   function bridgeFetch(path, opts = {}) {
-    return chrome.runtime.sendMessage({
-      type: "BRIDGE_FETCH",
-      path,
-      method: opts.method || "GET",
-      body: opts.body,
-      isForm: !!opts.isForm,
-    });
+    if (!chrome?.runtime?.sendMessage) {
+      return Promise.reject(new Error("Extension context invalidated"));
+    }
+    try {
+      return chrome.runtime.sendMessage({
+        type: "BRIDGE_FETCH",
+        path,
+        method: opts.method || "GET",
+        body: opts.body,
+        isForm: !!opts.isForm,
+      }).catch((err) => Promise.reject(err));
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   /** Site family this tab belongs to — controls which caption engine runs. */
@@ -839,7 +915,7 @@
   }
 
   async function loadSettings() {
-    const data = await chrome.storage.local.get(["hardsubSettings", "userVocab"]);
+    const data = await chrome.storage.local.get(["hardsubSettings", "userVocab", "savedCues"]);
     settings = { ...DEFAULTS, ...(data.hardsubSettings || {}) };
     if (settings.vocabColors) {
       settings.vocabColors = {
@@ -872,6 +948,7 @@
       settings.barScaleH = Number(settings.barScale) || DEFAULTS.barScaleH;
     }
     userVocab = data.userVocab && typeof data.userVocab === "object" ? data.userVocab : {};
+    savedCues = data.savedCues && typeof data.savedCues === "object" ? data.savedCues : {};
   }
 
   async function saveSettings() {
@@ -924,6 +1001,232 @@
         }
       });
     });
+  }
+
+  function isCueStarred(cueOrId) {
+    const id = typeof cueOrId === "object" && cueOrId ? cueOrId.id : String(cueOrId || "");
+    if (!id) return false;
+    return !!savedCues[id];
+  }
+
+  async function toggleStarCue(cueOrId) {
+    let id = "";
+    let cueObj = null;
+    if (typeof cueOrId === "object" && cueOrId) {
+      id = cueOrId.id;
+      cueObj = cueOrId;
+    } else {
+      id = String(cueOrId || "");
+      cueObj = cues.find((c) => c.id === id) || null;
+    }
+    if (!id) return false;
+
+    if (savedCues[id]) {
+      delete savedCues[id];
+      toast("Đã bỏ lưu câu");
+    } else {
+      savedCues[id] = {
+        id: id,
+        source: cueObj?.source || "",
+        vi: cueObj?.vi || "",
+        en: cueObj?.en || "",
+        start_media_time: Number(cueObj?.start_media_time) || 0,
+        end_media_time: Number(cueObj?.end_media_time) || 0,
+        videoId: currentVideoId || "",
+        savedAt: Date.now(),
+      };
+      toast("Đã lưu câu vào mục Đã lưu ★");
+    }
+    await chrome.storage.local.set({ savedCues: { ...savedCues } });
+    const active = cues.find((c) => c.id === activeCueId);
+    if (active) updateBar(active);
+    publishSidePanelState();
+    return !!savedCues[id];
+  }
+
+  function getSortedCues() {
+    return cues
+      .slice()
+      .sort(
+        (a, b) =>
+          (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
+      );
+  }
+
+  function findVideo() {
+    return (
+      document.querySelector("video.html5-main-video") ||
+      document.querySelector("video")
+    );
+  }
+
+  async function seekToTime(sec) {
+    const t = Math.max(0, Number(sec) || 0);
+    const v = findVideo();
+    if (v) {
+      v.currentTime = t;
+      const p = v.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    }
+    await pageCall("PLAY_AT", { mediaTime: t });
+  }
+
+  async function repeatCurrentCue() {
+    const sorted = getSortedCues();
+    if (!sorted.length) return;
+    const v = findVideo();
+    const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
+    const active = findActiveCue(curTime);
+    if (active) {
+      await seekToTime(active.start_media_time);
+      return;
+    }
+    let target = sorted[0];
+    for (const c of sorted) {
+      if (c.start_media_time <= curTime) target = c;
+      else break;
+    }
+    if (target) await seekToTime(target.start_media_time);
+  }
+
+  async function seekPrevCue() {
+    const sorted = getSortedCues();
+    if (!sorted.length) return;
+    const v = findVideo();
+    const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
+    let prev = null;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (sorted[i].start_media_time < curTime - 0.35) {
+        prev = sorted[i];
+        break;
+      }
+    }
+    if (prev) await seekToTime(prev.start_media_time);
+  }
+
+  async function seekNextCue() {
+    const sorted = getSortedCues();
+    if (!sorted.length) return;
+    const v = findVideo();
+    const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
+    let next = null;
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].start_media_time > curTime + 0.1) {
+        next = sorted[i];
+        break;
+      }
+    }
+    if (next) await seekToTime(next.start_media_time);
+  }
+
+  const BAR_POS_LEVELS = [0.72, 0.55, 0.82];
+  async function toggleBarPosition() {
+    barPosIndex = (barPosIndex + 1) % BAR_POS_LEVELS.length;
+    settings.barPos = { ny: BAR_POS_LEVELS[barPosIndex] };
+    applyBarPosition();
+    await saveSettings();
+  }
+
+  function setupLRControls() {
+    const nextBtn = document.getElementById("lr-btn-next");
+    nextBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      seekNextCue();
+    });
+    const repeatBtn = document.getElementById("lr-btn-repeat");
+    repeatBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      repeatCurrentCue();
+    });
+    const prevBtn = document.getElementById("lr-btn-prev");
+    prevBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      seekPrevCue();
+    });
+    const apToggle = document.getElementById("lr-toggle-ap");
+    apToggle?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      settings.autoPause = !settings.autoPause;
+      syncAPControl();
+      await saveSettings();
+      toast(settings.autoPause ? "Auto-Pause (AP) Bật" : "Auto-Pause (AP) Tắt");
+    });
+    const moveBtn = document.getElementById("lr-btn-move");
+    moveBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleBarPosition();
+    });
+
+    syncAPControl();
+
+    if (!lrHotkeysBound) {
+      lrHotkeysBound = true;
+      window.addEventListener("keydown", (e) => {
+        if (!settings.showOnVideo) return;
+        const tag = e.target?.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea" || e.target?.isContentEditable) return;
+        if (e.key === "s" || e.key === "S") {
+          e.preventDefault();
+          repeatCurrentCue();
+        } else if (e.key === "a" || e.key === "A") {
+          e.preventDefault();
+          seekPrevCue();
+        } else if (e.key === "d" || e.key === "D") {
+          e.preventDefault();
+          seekNextCue();
+        }
+      });
+    }
+  }
+
+  function syncAPControl() {
+    const apToggle = document.getElementById("lr-toggle-ap");
+    if (!apToggle) return;
+    apToggle.classList.toggle("active", !!settings.autoPause);
+  }
+
+  function openSettingsModal() {
+    if (globalThis.HardsubSettingsModal) {
+      globalThis.HardsubSettingsModal.open(settings, async (newSettings) => {
+        if (newSettings.geminiApiKey !== undefined) {
+          triggerGeminiTranslationIfNeeded();
+        }
+        Object.assign(settings, newSettings);
+        await saveSettings();
+        applyBarVisibility();
+      });
+    }
+  }
+
+  async function triggerGeminiTranslationIfNeeded() {
+    if (translatingWithGemini) return;
+    if (!globalThis.HardsubGeminiTranslate) return;
+    const apiKey = await globalThis.HardsubGeminiTranslate.getStoredApiKey();
+    if (!apiKey) return;
+
+    const needsVi = cues.filter(
+      (c) => c && c.source && !String(c.vi || "").trim() && !c.mt_locked
+    );
+    if (!needsVi.length) return;
+
+    translatingWithGemini = true;
+    try {
+      await globalThis.HardsubGeminiTranslate.translateCues(
+        cues,
+        apiKey,
+        ({ done, total }) => {
+          const active = cues.find((c) => c.id === activeCueId);
+          if (active) updateBar(active);
+          publishSidePanelPartial({ cues, activeCueId });
+        }
+      );
+      publishSidePanelState();
+      void persistScriptToStore();
+    } catch (err) {
+      console.warn("[content] Gemini translation error:", err);
+    } finally {
+      translatingWithGemini = false;
+    }
   }
 
   function compactSource(s) {
@@ -1125,7 +1428,8 @@
     const key = `transcript:${tabPrefix()}${videoId}`;
     const mKey = metaStorageKey(videoId);
     const data = await chrome.storage.local.get([key, mKey]);
-    const local = flattenCached(data[key] || []);
+    let local = flattenCached(data[key] || []);
+    if (detectCuesLanguage(local) === "vi") local = [];
     const localMeta = data[mKey] || {};
     const diskMeta = (await loadDiskMeta(videoId)) || {};
     const noteSide = (side) => {
@@ -1145,7 +1449,8 @@
     }
     // A real tie (two writers at one rev) is the only case needing both bodies.
     if (sameRev) {
-      const disk = await loadDiskScript(videoId);
+      let disk = await loadDiskScript(videoId);
+      if (detectCuesLanguage(disk) === "vi") disk = [];
       const side = noteSide(
         pickCacheSide(
           { rev: localMeta.rev, score: scriptListScore(local), deviceId: localMeta.deviceId },
@@ -1160,7 +1465,8 @@
     if (noteSide(pickCacheSide(localMeta, diskMeta)) === "local" && local.length) {
       return hydrateTokens(videoId, local);
     }
-    const disk = await loadDiskScript(videoId);
+    let disk = await loadDiskScript(videoId);
+    if (detectCuesLanguage(disk) === "vi") disk = [];
     noteSide(disk.length ? "disk" : "local");
     return hydrateTokens(videoId, disk.length ? disk : local);
   }
@@ -1358,9 +1664,12 @@
    * Owned scripts: keep saved timing/source; skip tombstones; never append YT.
    */
   function mergeCache(ytCues, cached, meta = transcriptMeta) {
-    const cacheList = cached || [];
+    let cacheList = cached || [];
+    if (detectCuesLanguage(cacheList) === "vi") {
+      cacheList = [];
+    }
     const stones = new Set(meta?.tombstones || []);
-    const owned = !!meta?.owned || cacheList.some(isOwnedCue);
+    const owned = !cacheList.length ? false : (!!meta?.owned || cacheList.some(isOwnedCue));
 
     if (owned && cacheList.length) {
       // Owned/import timeline is authoritative — keep script start/end exactly.
@@ -1546,6 +1855,7 @@
   function ensureVideoLayoutSync() {
     if (videoLayoutTimer) return;
     videoLayoutTimer = setInterval(() => {
+      ensureUI();
       applyBarPosition();
       applyDim();
       ensurePlayerToggle();
@@ -1567,27 +1877,57 @@
     if (!_listenersAttached) {
       _listenersAttached = true;
       window.addEventListener("resize", applyBarPosition);
-      document.addEventListener("fullscreenchange", applyBarPosition);
+      document.addEventListener("fullscreenchange", syncFullscreenMount);
+      document.addEventListener("webkitfullscreenchange", syncFullscreenMount);
     }
+  }
+
+  function syncFullscreenMount() {
+    const root = document.getElementById("hardsub-ocr-root");
+    if (!root) return;
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl && fsEl !== root.parentElement) {
+      fsEl.appendChild(root);
+    } else if (!fsEl && root.parentElement !== document.documentElement && root.parentElement !== document.body) {
+      document.documentElement.appendChild(root);
+    }
+    applyBarPosition();
+    applyBarVisibility();
   }
 
   function ensureUI() {
     if (document.getElementById("hardsub-ocr-root")) return;
     const root = document.createElement("div");
     root.id = "hardsub-ocr-root";
-    // On-video overlay only — cue list lives in Chrome Side Panel (right).
+    // On-video overlay with Language Reactor 5.1.8 design
     root.innerHTML = `
-      <div id="hardsub-ocr-bar" class="hardsub-bar" hidden></div>
+      <div id="hardsub-ocr-bar" class="hardsub-bar lr-bar-container" hidden></div>
+      <div id="lr-nav-left" class="lr-nav-left" hidden>
+        <button type="button" class="lr-nav-btn" id="lr-btn-next" title="Next sub (D)">&gt;</button>
+        <button type="button" class="lr-nav-btn" id="lr-btn-repeat" title="Repeat sub (S)">
+          ↻<span class="lr-tooltip">Repeat ['S' key]</span>
+        </button>
+        <button type="button" class="lr-nav-btn" id="lr-btn-prev" title="Prev sub (A)">&lt;</button>
+      </div>
+      <div id="lr-ctrl-right" class="lr-ctrl-right" hidden>
+        <div class="lr-ap-toggle" id="lr-toggle-ap" title="Auto-Pause (stop video when sub finishes)">
+          <div class="lr-ap-switch"></div>
+          <span class="lr-ap-label">AP</span>
+        </div>
+        <button type="button" class="lr-move-btn" id="lr-btn-move" title="Move subtitle position">↕</button>
+      </div>
       <div id="hardsub-ocr-dict" class="hardsub-dict" hidden></div>
       <div id="hardsub-dim" class="hardsub-dim" hidden></div>
     `;
-    document.documentElement.appendChild(root);
+    (document.body || document.documentElement).appendChild(root);
     setupBarDrag();
     setupBarDict();
+    setupLRControls();
     ensureVideoLayoutSync();
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     applyBarPosition();
+    applyBarVisibility();
   }
 
   function applyPanelWidth() {
@@ -1731,6 +2071,22 @@
       dim.style.top = `${rect.top + rect.height * 0.78}px`;
       dim.style.bottom = "auto";
       dim.style.height = `${rect.height * 0.18}px`;
+    }
+
+    const navLeft = document.getElementById("lr-nav-left");
+    const ctrlRight = document.getElementById("lr-ctrl-right");
+    if (navLeft) {
+      navLeft.style.position = "fixed";
+      navLeft.style.left = `${Math.max(10, rect.left + 14)}px`;
+      navLeft.style.top = `${rect.top + rect.height / 2}px`;
+      navLeft.style.transform = "translateY(-50%)";
+    }
+    if (ctrlRight) {
+      ctrlRight.style.position = "fixed";
+      ctrlRight.style.left = "auto";
+      ctrlRight.style.right = `${Math.max(10, window.innerWidth - rect.right + 14)}px`;
+      ctrlRight.style.top = `${rect.top + rect.height / 2}px`;
+      ctrlRight.style.transform = "translateY(-50%)";
     }
   }
 
@@ -2230,6 +2586,7 @@
   async function ensureContentTabId() {
     if (contentTabId != null) return contentTabId;
     try {
+      if (!chrome?.runtime?.sendMessage) return null;
       const r = await chrome.runtime.sendMessage({ type: "CONTENT_GET_TAB_ID" });
       if (r?.tabId != null) contentTabId = r.tabId;
     } catch (_) {}
@@ -2259,6 +2616,7 @@
       levelHighlightEnabled: settings.levelHighlightEnabled !== false,
       levelColors: settings.levelColors,
       userVocab,
+      savedCues: savedCues || [],
       scriptSource,
       ...extra,
       _seq: seq,
@@ -2280,27 +2638,34 @@
       listDirty = false;
     }
     ensureContentTabId().then((tabId) => {
-      chrome.runtime
-        .sendMessage({ type: "SP_STATE", tabId, forceList: !!forceCues, payload })
-        .catch(() => {});
+      try {
+        if (!chrome?.runtime?.sendMessage) return;
+        chrome.runtime
+          .sendMessage({ type: "SP_STATE", tabId, forceList: !!forceCues, payload })
+          .catch(() => {});
+      } catch (_) {}
     });
   }
 
   /** Status/toast only — omit cues so side panel does not rebuild mid-edit. */
   function publishSidePanelPartial(extra = {}) {
     ensureContentTabId().then((tabId) => {
-      chrome.runtime
-        .sendMessage({
-          type: "SP_STATE",
-          tabId,
-          payload: {
-            status: lastStatusText,
-            activeCueId,
-            bridgeReady: !!bridgeReady,
-            ...extra,
-          },
-        })
-        .catch(() => {});
+      try {
+        if (!chrome?.runtime?.sendMessage) return;
+        chrome.runtime
+          .sendMessage({
+            type: "SP_STATE",
+            tabId,
+            payload: {
+              status: lastStatusText,
+              activeCueId,
+              bridgeReady: !!bridgeReady,
+              savedCues: savedCues || [],
+              ...extra,
+            },
+          })
+          .catch(() => {});
+      } catch (_) {}
     });
   }
 
@@ -2325,17 +2690,31 @@
   }
 
   function applyBarVisibility() {
+    ensureUI();
     const bar = document.getElementById("hardsub-ocr-bar");
+    const on = !!settings.showOnVideo;
+    document.body.classList.toggle("lr-hide-native-subs", on);
+    const navLeft = document.getElementById("lr-nav-left");
+    const ctrlRight = document.getElementById("lr-ctrl-right");
+    const showCtrl = on && settings.showSubControls !== false;
+    if (navLeft) {
+      navLeft.hidden = !showCtrl;
+      navLeft.style.display = showCtrl ? "" : "none";
+    }
+    if (ctrlRight) {
+      ctrlRight.hidden = !showCtrl;
+      ctrlRight.style.display = showCtrl ? "" : "none";
+    }
     if (bar) {
       applyBarStyle(bar);
-      if (!settings.showOnVideo) bar.hidden = true;
+      if (!on) bar.hidden = true;
       else bar.hidden = !bar.dataset.hasText;
     }
     syncPlayerToggle();
   }
 
   function playerToggleLabel() {
-    return settings.showOnVideo ? "DỊCH ON" : "DỊCH OFF";
+    return settings.showOnVideo ? "ON" : "OFF";
   }
 
   function syncPlayerToggle() {
@@ -2345,10 +2724,12 @@
     btn.classList.toggle("hardsub-ytp-toggle--on", on);
     btn.classList.toggle("hardsub-ytp-toggle--off", !on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
-    btn.title = on ? "Tắt overlay trên video" : "Bật overlay trên video (+ mở side panel)";
+    btn.title = on
+      ? "Language Reactor: BẬT (Bấm để tắt, ⚙ cài đặt)"
+      : "Language Reactor: TẮT (Bấm để bật, ⚙ cài đặt)";
     btn.setAttribute(
       "aria-label",
-      on ? "Tắt overlay dịch" : "Bật overlay dịch"
+      on ? "Language Reactor ON" : "Language Reactor OFF"
     );
     const label = btn.querySelector(".hardsub-ytp-toggle__label");
     if (label) label.textContent = playerToggleLabel();
@@ -2442,15 +2823,20 @@
     btn.className = isFloating
       ? "hardsub-generic-toggle hardsub-ytp-toggle"
       : "ytp-button hardsub-ytp-toggle";
-    btn.setAttribute("aria-label", "Bật/tắt overlay dịch");
+    btn.setAttribute("aria-label", "Language Reactor");
     btn.innerHTML =
       '<span class="hardsub-ytp-toggle__pill" aria-hidden="true">' +
-      '<span class="hardsub-ytp-toggle__badge">VI</span>' +
-      '<span class="hardsub-ytp-toggle__label"></span></span>';
+      '<span class="hardsub-ytp-toggle__badge">LR</span>' +
+      '<span class="hardsub-ytp-toggle__label">' + playerToggleLabel() + '</span>' +
+      '<span class="hardsub-ytp-toggle__gear" title="Cài đặt">⚙</span></span>';
     const stopBubble = (e) => e.stopPropagation();
     btn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (e.target && e.target.closest(".hardsub-ytp-toggle__gear")) {
+        openSettingsModal();
+        return;
+      }
       await toggleShowOnVideo();
     });
     btn.addEventListener("mousedown", stopBubble);
@@ -2594,9 +2980,17 @@
         const lemma = escapeAttr(t.lemma || t.surface);
         const surfaceAttr = escapeAttr(t.surface);
         const cls = Vocab.classForToken(t, settings, userVocab);
-        const classAttr = cls ? ` tok ${cls}` : " tok";
-        if (settings.showFurigana && t.reading) {
-          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(t.reading)}</rt></ruby>`;
+        const classAttr = cls ? `tok ${cls}` : "tok";
+        if (settings.showFurigana) {
+          const Romaji = globalThis.HardsubRomajiKana;
+          const kana = t.reading || (t.pos && !Vocab.isSkipPos(t.pos) ? t.surface : "");
+          const romaji =
+            Romaji && typeof Romaji.toRomaji === "function"
+              ? Romaji.toRomaji(kana)
+              : (t.reading || "");
+          if (romaji && !Vocab.isSkipPos(t.pos)) {
+            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(romaji)}</rt></ruby>`;
+          }
         }
         return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
       })
@@ -3297,6 +3691,8 @@
     const showVi = settings.barShowVi !== false ? "1" : "0";
     const en = stripStubPrefix(cue.en);
     const vi = stripStubPrefix(cue.vi);
+    const furigana = settings.showFurigana ? 1 : 0;
+    const starred = isCueStarred(cue.id) ? 1 : 0;
     const tokKey = (cue.tokens || [])
       .map((t) => `${t.surface || ""}|${t.reading || ""}|${t.jlpt || ""}|${t.lemma || ""}`)
       .join(",");
@@ -3309,10 +3705,13 @@
       showJa,
       showEn,
       showVi,
+      furigana,
+      starred,
     ].join("\0");
   }
 
   function updateBar(cue) {
+    ensureUI();
     const bar = document.getElementById("hardsub-ocr-bar");
     if (!bar) return;
     if (!cue) {
@@ -3341,23 +3740,34 @@
     const en = stripStubPrefix(cue.en);
     const vi = stripStubPrefix(cue.vi);
     bar.dataset.hasText = "1";
+    bar.classList.add("lr-bar-container");
     Vocab.applyHighlightVars(bar, settings);
     applyBarStyle(bar);
     const showJa = settings.barShowJa !== false;
     const showEn = settings.barShowEn !== false;
     const showVi = settings.barShowVi !== false;
+    const starred = isCueStarred(cue.id);
+
     bar.innerHTML = `
       <div class="hardsub-bridge-pill ${bridgeReady ? "ready" : "offline"}" title="${bridgeReady ? "Local Bridge: Connected" : "Local Bridge: Offline (Intl.Segmenter fallback)"}"></div>
-      <div class="bar-body">
-        ${showJa ? `<div class="bar-ja">${rubyHtml(cue)}</div>` : ""}
-        ${showEn && en ? `<div class="bar-en">${escapeHtml(en)}</div>` : ""}
+      <div class="lr-overlay-wrap">
         ${
-          showVi
-            ? vi
-              ? `<div class="bar-vi">${escapeHtml(vi)}</div>`
-              : showJa
-                ? ""
-                : `<div class="bar-vi">${escapeHtml(cue.source)}</div>`
+          showJa
+            ? `<div class="lr-card-ja">
+                <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
+                <div class="lr-text-ja">${rubyHtml(cue)}</div>
+                <div class="lr-card-actions">
+                  <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
+                  <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
+                </div>
+              </div>`
+            : ""
+        }
+        ${
+          showVi && (vi || en)
+            ? `<div class="lr-card-vi">
+                <div class="lr-text-vi">${escapeHtml(vi || en)}</div>
+              </div>`
             : ""
         }
       </div>
@@ -3370,6 +3780,34 @@
         syncHealth();
       });
     }
+    const replayBtn = bar.querySelector(".lr-replay-btn");
+    if (replayBtn) {
+      replayBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        repeatCurrentCue();
+      });
+    }
+    const starBtn = bar.querySelector(".lr-star-btn");
+    if (starBtn) {
+      starBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        await toggleStarCue(cue.id);
+        const nowStarred = isCueStarred(cue.id);
+        starBtn.classList.toggle("active", nowStarred);
+        starBtn.textContent = nowStarred ? "★" : "☆";
+      });
+    }
+    const moreBtn = bar.querySelector(".lr-more-btn");
+    if (moreBtn) {
+      moreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openSettingsModal();
+      });
+    }
+
     ensureBarResizeHandle(bar);
     bindBarTokenDict(bar);
     applyBarPosition();
@@ -3377,8 +3815,8 @@
   }
 
   /**
-   * Playhead match — hold through gaps until next cue starts (YT durations often end early).
-   * Last cue: +150ms grace past end. Last match wins on ties. (iPad ScriptCue.active)
+   * Playhead match — active strictly within authentic [start, end + grace].
+   * Does NOT artificially hold across silence gaps until the next cue.
    */
   function findActiveCue(mediaTime) {
     const t = Number(mediaTime) || 0;
@@ -3394,11 +3832,9 @@
       const c = live[i];
       const start = Number(c.start_media_time) || 0;
       const end = Number(c.end_media_time) || start;
-      const holdEnd =
-        i + 1 < live.length
-          ? Number(live[i + 1].start_media_time) || 0
-          : end + grace;
-      if (t >= start && t < holdEnd) hit = c;
+      if (t >= start && t <= end + grace) {
+        hit = c;
+      }
     }
     return hit;
   }
@@ -3968,7 +4404,42 @@
       updateBar(null);
     }
 
+    // Auto-pause (AP): if enabled, pause video when active subtitle finishes
+    if (settings.autoPause && active) {
+      const end = Number(active.end_media_time) || 0;
+      if (end > 0 && mediaTime >= end - 0.10 && apLastPausedCueId !== active.id) {
+        apLastPausedCueId = active.id;
+        const video = findVideo();
+        if (video && !video.paused) {
+          video.pause();
+        }
+      }
+    }
+
+    bindVideoEvents();
+
     if (listDirty) renderList(true);
+  }
+
+  let boundVideoEl = null;
+  function bindVideoEvents() {
+    const v = findVideo();
+    if (v && v !== boundVideoEl) {
+      boundVideoEl = v;
+      v.addEventListener("timeupdate", () => {
+        if (settings.autoPause) {
+          const curTime = v.currentTime || 0;
+          const curCue = findActiveCue(curTime);
+          if (curCue) {
+            const end = Number(curCue.end_media_time) || 0;
+            if (end > 0 && curTime >= end - 0.08 && apLastPausedCueId !== curCue.id) {
+              apLastPausedCueId = curCue.id;
+              if (!v.paused) v.pause();
+            }
+          }
+        }
+      }, { passive: true });
+    }
   }
 
   function startLoop() {
@@ -4034,6 +4505,7 @@
     if (gen !== navigateGen) return;
     if (!restored) renderList(true);
 
+    ensureUI();
     ensurePlayerToggleObserver();
     ensurePlayerToggle();
     void maybeAutoOpenOnNavigate();
@@ -4088,13 +4560,15 @@
       void saveSettings();
     }
     // Prove which unpacked build is live after chrome://extensions Reload.
-    void bridgeFetch("/log", {
-      method: "POST",
-      body: {
-        level: "INFO",
-        message: `ext content boot v=${chrome.runtime.getManifest().version} api=${PAGE_API_VER} tabId=${contentTabId}`,
-      },
-    }).catch(() => {});
+    try {
+      void bridgeFetch("/log", {
+        method: "POST",
+        body: {
+          level: "INFO",
+          message: `ext content boot v=${chrome?.runtime?.getManifest?.()?.version || "?"} api=${PAGE_API_VER} tabId=${contentTabId}`,
+        },
+      }).catch(() => {});
+    } catch (_) {}
     ensureUI();
     injectPageScript();
     applyDim();
@@ -4110,9 +4584,55 @@
       if (e.source !== window) return;
       if (e.data?.type !== "__HARDSUB_TIMEDTEXT_CAPTURED__") return;
       if (pageCapToken && e.data.cap && e.data.cap !== pageCapToken) return;
-      if (Array.isArray(e.data.cues) && e.data.cues.length) {
-        // Direct payload from intercept: apply immediately without refetching
-        void applyLoadedCues(e.data.cues, `ja intercept · ${e.data.cues.length} cues`);
+
+      const payloadCues = e.data.cues;
+      if (Array.isArray(payloadCues) && payloadCues.length) {
+        const url = e.data.url || "";
+        const detectedLang = e.data.lang || langFromTimedtextUrl(url);
+
+        if (isViLang(detectedLang)) {
+          // Route intercepted Vietnamese timedtext to secondary fill, NEVER to JA source!
+          if (!cues.length) {
+            void loadAllCaptions(true).then(() => {
+              applyYtSecondaryFill({ viCues: payloadCues });
+              listDirty = true;
+              renderList(true);
+              publishSidePanelState({ forceList: true });
+            });
+          } else {
+            applyYtSecondaryFill({ viCues: payloadCues });
+            stampSecondaryStatus(
+              cues.filter((c) => String(c.en || "").trim()).length,
+              cues.filter((c) => String(c.vi || "").trim()).length
+            );
+            listDirty = true;
+            renderList(true);
+            publishSidePanelState({ forceList: true });
+            const curTime = Number(getMediaTime()?.mediaTime) || 0;
+            updateBar(findActiveCue(curTime));
+          }
+          return;
+        }
+
+        if (isEnLang(detectedLang)) {
+          // Route intercepted English timedtext to secondary fill
+          applyYtSecondaryFill({ enCues: payloadCues });
+          stampSecondaryStatus(
+            cues.filter((c) => String(c.en || "").trim()).length,
+            cues.filter((c) => String(c.vi || "").trim()).length
+          );
+          listDirty = true;
+          renderList(true);
+          publishSidePanelState({ forceList: true });
+          const curTime = Number(getMediaTime()?.mediaTime) || 0;
+          updateBar(findActiveCue(curTime));
+          return;
+        }
+
+        if (isJaLang(detectedLang) || (!detectedLang && !String(url).includes("tlang="))) {
+          // Direct payload from intercept: apply immediately without refetching
+          void applyLoadedCues(payloadCues, `ja intercept · ${payloadCues.length} cues`);
+        }
       } else if (!cues.length || captionsStatus !== "ok") {
         void loadAllCaptions(true);
       }

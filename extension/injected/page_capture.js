@@ -393,7 +393,13 @@
       const n = textNodes[i];
       if (!n.text) continue;
       const next = textNodes[i + 1];
-      const end = next ? next.start : n.start + Math.max(0.2, n.dur || 2);
+      const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
+      let end = hasDur
+        ? Math.round((n.start + n.dur) * 1000) / 1000
+        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+      if (next && end > next.start) {
+        end = Math.max(n.start + 0.2, next.start - 0.05);
+      }
       textCues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
     }
     if (textCues.length) return textCues;
@@ -404,8 +410,39 @@
     while ((m = pRe.exec(xml))) {
       const attrs = m[1] || "";
       const inner = m[2] || "";
-      const t = Number((attrs.match(/\bt="(\d+)"/) || [])[1] || 0) / 1000;
+      const tMatch = attrs.match(/\bt="(\d+)"/);
+      const beginMatch = attrs.match(/\bbegin="([^"]+)"/);
+      let t = 0;
+      if (tMatch) {
+        t = Number(tMatch[1]) / 1000;
+      } else if (beginMatch) {
+        let val = String(beginMatch[1]).trim();
+        if (val.endsWith("s")) val = val.slice(0, -1);
+        if (val.includes(":")) {
+          const parts = val.split(":").map(Number);
+          t = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+        } else {
+          t = Number(val) || 0;
+        }
+      }
+
       const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
+      const endMatch = attrs.match(/\bend="([^"]+)"/);
+      let durMs = dRaw != null ? Number(dRaw) : null;
+      if (durMs == null && endMatch) {
+        let val = String(endMatch[1]).trim();
+        if (val.endsWith("s")) val = val.slice(0, -1);
+        let endSec = 0;
+        if (val.includes(":")) {
+          const parts = val.split(":").map(Number);
+          endSec = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+        } else {
+          endSec = Number(val) || 0;
+        }
+        if (endSec > t) {
+          durMs = Math.round((endSec - t) * 1000);
+        }
+      }
       const text = decodeEntities(
         inner
           .replace(/<br\s*\/?>/gi, " ")
@@ -417,19 +454,20 @@
       if (!text) continue;
       pNodes.push({
         start: t,
-        durMs: dRaw != null ? Number(dRaw) : null,
+        durMs: durMs,
         text,
       });
     }
     for (let i = 0; i < pNodes.length; i += 1) {
       const n = pNodes[i];
       const next = pNodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
+      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
+      let end = hasDur
+        ? Math.round((n.start + n.durMs / 1000) * 1000) / 1000
+        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+      if (next && end > next.start) {
+        end = Math.max(n.start + 0.2, next.start - 0.05);
+      }
       cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
     }
     return cues;
@@ -628,8 +666,13 @@
   function noteTimedtext(url, body) {
     if (!url || !String(url).includes("/api/timedtext")) return;
     let vid = "";
+    let lang = "";
+    let tlang = "";
     try {
-      vid = new URL(String(url), location.origin).searchParams.get("v") || "";
+      const u = new URL(String(url), location.origin);
+      vid = u.searchParams.get("v") || "";
+      lang = u.searchParams.get("lang") || "";
+      tlang = u.searchParams.get("tlang") || "";
     } catch (_) {}
     state.timedtext.url = String(url);
     state.timedtext.videoId = vid || videoIdFromLocation();
@@ -646,6 +689,9 @@
               videoId: state.timedtext.videoId,
               count: cues.length,
               url: state.timedtext.url,
+              lang: tlang || lang,
+              sourceLang: lang,
+              tlang: tlang,
               cues,
               cap: CAP_TOKEN,
             },
@@ -1256,15 +1302,18 @@
       tryEnablePlayerCaptions(videoId, preferLang);
       const intercepted = await waitForInterceptedCues(videoId, 900);
       if (intercepted?.length) {
-        return okCaptionResult(
-          intercepted,
-          {
-            languageCode: preferLang,
-            kind: "asr",
-            name: "intercept",
-          },
-          { via: "intercept", baseUrl: state.timedtext.url || "" }
-        );
+        const detected = detectSubtitleLang(state.timedtext.body, intercepted, state.timedtext.url) || "";
+        if (matchLangFamily(detected, preferLang) || (!detected && preferLang === "ja")) {
+          return okCaptionResult(
+            intercepted,
+            {
+              languageCode: detected || preferLang,
+              kind: "asr",
+              name: "intercept",
+            },
+            { via: "intercept", baseUrl: state.timedtext.url || "" }
+          );
+        }
       }
 
       const { track, tracks } = await waitForCaptionTracks(videoId, preferLang, 8000);
@@ -1272,16 +1321,19 @@
 
       const tryTracks = [];
       if (state.timedtext.url && (!state.timedtext.videoId || state.timedtext.videoId === videoId)) {
-        tryTracks.push({
-          baseUrl: state.timedtext.url,
-          languageCode: preferLang,
-          kind: "asr",
-          name: { simpleText: "intercept-url" },
-        });
+        const ttLang = detectSubtitleLang(state.timedtext.body, state.timedtext.cues, state.timedtext.url);
+        if (matchLangFamily(ttLang, preferLang)) {
+          tryTracks.push({
+            baseUrl: state.timedtext.url,
+            languageCode: ttLang,
+            kind: "asr",
+            name: { simpleText: "intercept-url" },
+          });
+        }
       }
-      if (track?.baseUrl) tryTracks.push(track);
+      if (track?.baseUrl && matchLangFamily(track.languageCode, preferLang)) tryTracks.push(track);
       for (const t of tracks || []) {
-        if (t?.baseUrl && t !== track) tryTracks.push(t);
+        if (t?.baseUrl && t !== track && matchLangFamily(t.languageCode, preferLang)) tryTracks.push(t);
       }
 
       for (const t of tryTracks) {

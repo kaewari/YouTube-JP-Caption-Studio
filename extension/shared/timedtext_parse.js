@@ -51,15 +51,29 @@
     for (let i = 0; i < nodes.length; i += 1) {
       const n = nodes[i];
       const next = nodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
+      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
+      let end = hasDur
+        ? n.start + n.durMs / 1000
+        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+      if (next && end > next.start) {
+        end = Math.max(n.start + 0.2, next.start - 0.05);
+      }
       cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
     }
     return cues;
+  }
+
+  function parseTimeStr(val) {
+    if (!val) return null;
+    val = String(val).trim();
+    if (val.endsWith("s")) val = val.slice(0, -1);
+    if (val.includes(":")) {
+      const parts = val.split(":").map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+    }
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
   }
 
   function parseTimedtextXml(xml) {
@@ -89,7 +103,13 @@
         const n = textNodes[i];
         if (!n.text) continue;
         const next = textNodes[i + 1];
-        const end = next ? next.start : n.start + Math.max(0.2, n.dur || 2);
+        const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
+        let end = hasDur
+          ? n.start + n.dur
+          : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+        if (next && end > next.start) {
+          end = Math.max(n.start + 0.2, next.start - 0.05);
+        }
         cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
       }
       if (cues.length) return cues;
@@ -101,8 +121,24 @@
     while ((m = pRe.exec(xml))) {
       const attrs = m[1] || "";
       const inner = m[2] || "";
-      const t = Number((attrs.match(/\bt="(\d+)"/) || [])[1] || 0) / 1000;
+      const tMatch = attrs.match(/\bt="(\d+)"/);
+      const beginMatch = attrs.match(/\bbegin="([^"]+)"/);
+      let t = 0;
+      if (tMatch) {
+        t = Number(tMatch[1]) / 1000;
+      } else if (beginMatch) {
+        t = parseTimeStr(beginMatch[1]) || 0;
+      }
+
       const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
+      const endMatch = attrs.match(/\bend="([^"]+)"/);
+      let durMs = dRaw != null ? Number(dRaw) : null;
+      if (durMs == null && endMatch) {
+        const endSec = parseTimeStr(endMatch[1]);
+        if (endSec != null && endSec > t) {
+          durMs = Math.round((endSec - t) * 1000);
+        }
+      }
       const text = decodeEntities(
         inner
           .replace(/<br\s*\/?>/gi, " ")
@@ -114,19 +150,20 @@
       if (!text) continue;
       pNodes.push({
         start: t,
-        durMs: dRaw != null ? Number(dRaw) : null,
+        durMs: durMs,
         text: text,
       });
     }
     for (let i = 0; i < pNodes.length; i += 1) {
       const n = pNodes[i];
       const next = pNodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
+      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
+      let end = hasDur
+        ? n.start + n.durMs / 1000
+        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+      if (next && end > next.start) {
+        end = Math.max(n.start + 0.2, next.start - 0.05);
+      }
       cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
     }
     return cues;

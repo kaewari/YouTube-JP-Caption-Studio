@@ -37,8 +37,8 @@ assert(
 );
 assert(rolling[2].end === 10.84, `last cue keeps YT end ${rolling[2].end}`);
 
-// Scrolling ASR: YouTube dDurationMs=3s but next cue at ~10.36 (VTT window).
-const scrolling = clampCueEndsToNextStart([
+// Non-overlapping cues preserve their true end time (no artificial stretch into silence)
+const naturalTiming = clampCueEndsToNextStart([
   {
     id: "a",
     start_media_time: 0.12,
@@ -52,21 +52,21 @@ const scrolling = clampCueEndsToNextStart([
     source: "ええやん。",
   },
 ]);
-assert(scrolling[0].start_media_time === 0.12, "scrolling start preserved");
+assert(naturalTiming[0].start_media_time === 0.12, "start preserved");
 assert(
-  Math.abs(scrolling[0].end_media_time - (10.36 - GAP)) < 1e-9,
-  `scrolling end extended to next.start-GAP got ${scrolling[0].end_media_time}`
+  naturalTiming[0].end_media_time === 3.12,
+  `cue 0 end keeps authentic duration (3.12), got ${naturalTiming[0].end_media_time}`
 );
-assert(scrolling[1].end_media_time === 13.36, "last scrolling end kept");
+assert(naturalTiming[1].end_media_time === 13.36, "last end kept");
 
-// Already abutting stays near next.start - GAP.
+// Clean non-overlapping cues stay at their own end times.
 const clean = clampCueEndsToNextStart([
   { start: 1, end: 2, text: "a" },
   { start: 2.5, end: 3.5, text: "b" },
 ]);
 assert(
-  Math.abs(clean[0].end - (2.5 - GAP)) < 1e-9,
-  `abut snap got ${clean[0].end}`
+  clean[0].end === 2,
+  `clean end kept authentic end 2, got ${clean[0].end}`
 );
 assert(clean[1].end === 3.5, "last end kept");
 

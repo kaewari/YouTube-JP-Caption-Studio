@@ -75,10 +75,9 @@
       const next = out[i + 1];
       if (next) {
         const nextStart = startOf(next);
-        if (nextStart > start) {
-          // Own [start, nextStart) — match VTT cue boundaries, not raw dDurationMs.
-          end = nextStart - GAP;
-          if (end <= start) end = start + Math.min(MIN_DUR, nextStart - start);
+        if (nextStart > start && end > nextStart) {
+          // Clamp overlapping cues so they don't collide
+          end = Math.max(start + 0.2, nextStart - GAP);
         }
       }
       c.start = start;

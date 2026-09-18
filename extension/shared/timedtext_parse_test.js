@@ -22,6 +22,19 @@ assert.strictEqual(cues1[1].start, 3.0);
 assert.strictEqual(cues1[1].end, 4.5);
 assert.strictEqual(cues1[1].text, "World");
 
+// Test 1b: Cues with silence gap must NOT stretch end to next.start
+const json3Gap = {
+  events: [
+    { tStartMs: 1000, dDurationMs: 2000, segs: [{ utf8: "First sentence" }] },
+    { tStartMs: 10000, dDurationMs: 3000, segs: [{ utf8: "Second sentence" }] },
+  ],
+};
+const cuesGap = parseJson3Cues(json3Gap);
+assert.strictEqual(cuesGap[0].start, 1.0);
+assert.strictEqual(cuesGap[0].end, 3.0, "First cue must end at 3.0, NOT stretched to 10.0");
+assert.strictEqual(cuesGap[1].start, 10.0);
+assert.strictEqual(cuesGap[1].end, 13.0);
+
 // Test 2: Zero-duration / collision ASR cues (same start time or next start <= start)
 const json3Collision = {
   events: [

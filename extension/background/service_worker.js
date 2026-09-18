@@ -28,22 +28,47 @@ async function ensureDriveUploadAlarm() {
   } catch (_) {}
 }
 
-/** Icon click opens side panel; Saved Items popup accessible via side panel. */
-chrome.runtime.onInstalled.addListener(async () => {
+async function ensureSidePanelReady() {
   try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    if (chrome.sidePanel?.setOptions) {
+      await chrome.sidePanel.setOptions({
+        path: "sidepanel/sidepanel.html",
+        enabled: true,
+      });
+    }
   } catch (_) {}
+  try {
+    if (chrome.sidePanel?.setPanelBehavior) {
+      await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+    }
+  } catch (_) {}
+}
+
+/** Icon click opens dedicated options/saved page in a tab; Sidepanel opened via player toggle. */
+chrome.runtime.onInstalled.addListener(async () => {
+  await ensureSidePanelReady();
   await ensureBridgePollAlarm();
   await ensureDriveUploadAlarm();
 });
 
 chrome.runtime.onStartup?.addListener?.(async () => {
-  try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  } catch (_) {}
+  await ensureSidePanelReady();
   await ensureBridgePollAlarm();
   await ensureDriveUploadAlarm();
 });
+
+// Immediate top-level initialization so side panel is ready on SW wake.
+void ensureSidePanelReady();
+
+// Extension toolbar icon click: opens dedicated options/saved page in a tab.
+if (chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    try {
+      const url = chrome.runtime.getURL("popup/index.html");
+      await chrome.tabs.create({ url });
+    } catch (_) {}
+  });
+}
 
 /** Site families the extension supports (content scripts + side panel gate). */
 function platformFromUrl(url) {
@@ -82,23 +107,16 @@ async function isPlatformEnabledForUrl(url) {
   }
 }
 
-/** Enable side panel only on supported sites; disable (+ close) everywhere else. */
-async function syncSidePanelForTab(tabId, url) {
+/** Ensure side panel is configured for tab without locking user out on other sites. */
+async function syncSidePanelForTab(tabId, _url) {
   if (tabId == null) return;
-  const enabledByPlat = await isPlatformEnabledForUrl(url);
-  const onSupported = isSupportedUrl(url) && enabledByPlat;
   try {
     await chrome.sidePanel.setOptions({
       tabId,
       path: "sidepanel/sidepanel.html",
-      enabled: onSupported,
+      enabled: true,
     });
   } catch (_) {}
-  if (!onSupported) {
-    try {
-      await closeSidePanel(tabId);
-    } catch (_) {}
-  }
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
@@ -106,7 +124,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
   await syncSidePanelForTab(tabId, tab.url);
 });
 
-// onUpdated misses plain tab switches — close panel when leaving YouTube.
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -153,14 +170,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "OPEN_SIDE_PANEL") {
     const tabId = sender?.tab?.id;
-    if (tabId == null) {
+    const windowId = sender?.tab?.windowId;
+    if (tabId == null && windowId == null) {
       sendResponse({ ok: false, error: "no_tab" });
       return false;
     }
-    chrome.sidePanel
-      .open({ tabId })
+    const openPromise = tabId != null
+      ? chrome.sidePanel.open({ tabId })
+      : chrome.sidePanel.open({ windowId });
+    openPromise
       .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => {
+        if (windowId != null && tabId != null) {
+          chrome.sidePanel
+            .open({ windowId })
+            .then(() => sendResponse({ ok: true }))
+            .catch((e2) => sendResponse({ ok: false, error: String(e2) }));
+          return;
+        }
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
   if (msg?.type === "CLOSE_SIDE_PANEL") {
@@ -291,10 +320,6 @@ async function imeViaNative(cmd) {
     return { ok: false, error: String(err?.message || err), missing: true };
   }
 }
-
-try {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-} catch (_) {}
 
 /** Mirror chrome.storage → bridge so localhost:3000 Saved Items can poll. */
 let _applyingBridgeState = false;

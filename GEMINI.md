@@ -1,0 +1,1 @@
+/Users/hoangson/Projects/YouTube JP Caption Studio/AGENTS.md

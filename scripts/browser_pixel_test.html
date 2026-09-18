@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel-Perfect UI Parity Verification</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <link rel="stylesheet" href="../extension/sidepanel/sidepanel.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      display: flex;
+    }
+    #mock-player {
+      position: relative;
+      flex: 1;
+      height: 100%;
+      background: #050508;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    #mock-sidepanel {
+      width: 400px;
+      height: 100%;
+      background: #14141a;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+    }
+    /* Video controls mock at bottom */
+    .yt-bottom-bar {
+      height: 48px;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+    .yt-progress {
+      position: absolute;
+      top: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: #444;
+    }
+    .yt-progress-fill {
+      width: 42%;
+      height: 100%;
+      background: #ff0000;
+      position: relative;
+    }
+    .yt-progress-fill::after {
+      content: '';
+      position: absolute;
+      right: -6px;
+      top: -4px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #ff0000;
+    }
+    .yt-icon {
+      font-size: 18px;
+      color: #fff;
+      cursor: pointer;
+    }
+    .yt-time {
+      font-size: 12px;
+      color: #ddd;
+    }
+  </style>
+</head>
+<body>
+  <!-- Video Player Viewport -->
+  <div id="mock-player">
+    <!-- Left Navigation Bar -->
+    <div id="lr-nav-left" class="lr-nav-left" style="display:flex; left: 18px; top: 48%;">
+      <button type="button" class="lr-nav-btn" id="lr-btn-next" title="Next sub (D)">&gt;</button>
+      <button type="button" class="lr-nav-btn" id="lr-btn-repeat" title="Repeat sub (S)">
+        ↻<span class="lr-tooltip" style="opacity:1; visibility:visible;">Repeat ['S' key]</span>
+      </button>
+      <button type="button" class="lr-nav-btn" id="lr-btn-prev" title="Prev sub (A)">&lt;</button>
+    </div>
+
+    <!-- Center Language Reactor Overlay -->
+    <div id="hardsub-ocr-bar" class="hardsub-bar lr-bar-container" style="display:flex; position:absolute; bottom: 85px; left: 50%; transform: translateX(-50%);">
+      <div class="lr-overlay-wrap">
+        <div class="lr-card-ja">
+          <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
+          <div class="lr-text-ja">
+            <ruby class="tok rank-mid" style="color:#ff7675;">(佐々木)<rt>sasaki</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">前<rt>mae</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">に<rt>ni</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">あんな<rt>anna</rt></ruby>
+            <ruby class="tok rank-upper" style="color:#b39ddb;">気色<rt>keshiki</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">の<rt>no</rt></ruby>
+            <ruby class="tok rank-mid" style="color:#ff9f43;">悪い<rt>warui</rt></ruby>
+            <br>
+            <ruby class="tok rank-upper" style="color:#b39ddb;">痴態<rt>chitai</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">を<rt>wo</rt></ruby>
+            <ruby class="tok rank-mid" style="color:#ff9f43;">さらした<rt>sarashita</rt></ruby>
+            <ruby class="tok rank-common" style="color:#f5e6d3;">のに<rt>noni</rt></ruby>
+          </div>
+          <div class="lr-card-actions">
+            <button type="button" class="lr-star-btn active" title="Đã lưu">★</button>
+            <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
+          </div>
+        </div>
+        <div class="lr-card-vi">
+          <div class="lr-text-vi">Tự biến mình thành gã lóng ngóng dở hơi</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Controls -->
+    <div id="lr-ctrl-right" class="lr-ctrl-right" style="display:flex; right: 18px; top: 48%;">
+      <div class="lr-ap-toggle active" id="lr-toggle-ap" title="Auto-Pause">
+        <div class="lr-ap-switch"></div>
+        <span class="lr-ap-label">AP</span>
+      </div>
+      <button type="button" class="lr-move-btn" id="lr-btn-move" title="Move subtitle position">↕</button>
+    </div>
+
+    <!-- Bottom YouTube Bar with LR Pill -->
+    <div class="yt-bottom-bar">
+      <div class="yt-progress"><div class="yt-progress-fill"></div></div>
+      <span class="yt-icon">▶</span>
+      <span class="yt-icon">↺10</span>
+      <span class="yt-icon">↻10</span>
+      <span class="yt-icon">🔊</span>
+      <span class="yt-time">3:35 / 8:52</span>
+      <!-- LR Player Toggle Pill -->
+      <div class="hardsub-ytp-toggle hardsub-ytp-toggle--on" style="display:inline-flex;">
+        <span class="hardsub-ytp-toggle__pill">
+          <span class="hardsub-ytp-toggle__badge">LR</span>
+          <span class="hardsub-ytp-toggle__label">ON</span>
+          <span class="hardsub-ytp-toggle__gear">⚙</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidepanel Mockup -->
+  <div id="mock-sidepanel">
+    <header class="sp-header">
+      <div class="sp-tabs">
+        <button type="button" class="sp-tab" id="tab-sub">Subtitles</button>
+        <button type="button" class="sp-tab" id="tab-words">Words</button>
+        <button type="button" class="sp-tab active" id="tab-saved">Saved</button>
+      </div>
+      <div class="sp-header-actions">
+        <button type="button" class="sp-header-btn">⚙</button>
+        <button type="button" class="sp-header-btn">↗</button>
+        <button type="button" class="sp-header-btn">✕</button>
+      </div>
+    </header>
+
+    <!-- Saved View Active -->
+    <main id="sp-view-saved" class="sp-view active" style="display:flex; flex-direction:column; flex:1;">
+      <div class="sp-saved-actions-top">
+        <button type="button" class="sp-saved-top-btn"><span class="sp-saved-icon">▤</span> View All</button>
+        <button type="button" class="sp-saved-top-btn"><span class="sp-saved-icon">🕒</span> Practice</button>
+      </div>
+      <div class="sp-saved-subbar">
+        <span class="sp-saved-last-label">Last saved:</span>
+        <label class="sp-saved-toggle-wrap">
+          <span>Show context</span>
+          <input type="checkbox" checked class="sp-toggle-input">
+          <span class="sp-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="sp-saved-list">
+        <!-- Row 1: Word with context -->
+        <div class="lr-saved-row">
+          <div class="lr-saved-row-badge"><span class="lr-badge-w">W</span></div>
+          <div class="lr-saved-row-text">
+            <span class="lr-saved-word-box"><ruby>ポジティブ<rt>pojiteibu</rt></ruby></span>
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn">🗑</button>
+            <button type="button" class="lr-saved-menu-btn">⋮</button>
+          </div>
+        </div>
+        <!-- Row 2: Word with sentence context -->
+        <div class="lr-saved-row">
+          <div class="lr-saved-row-badge"><span class="lr-badge-w">W</span></div>
+          <div class="lr-saved-row-text">
+            <ruby>に<rt>ni</rt></ruby> <span class="lr-saved-word-box"><ruby>行き来<rt>ikiki</rt></ruby></span> <ruby>できるようになった<rt>dekiruyouninatta</rt></ruby>
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn">🗑</button>
+            <button type="button" class="lr-saved-menu-btn">⋮</button>
+          </div>
+        </div>
+        <!-- Row 3: Word with sentence context -->
+        <div class="lr-saved-row">
+          <div class="lr-saved-row-badge"><span class="lr-badge-w">W</span></div>
+          <div class="lr-saved-row-text">
+            <ruby>裏手の山<rt>uratetoyama</rt></ruby> <ruby>には<rt>niwa</rt></ruby> <span class="lr-saved-word-box"><ruby>秘湯<rt>hiyu</rt></ruby></span> <ruby>があると言っていました<rt>gaarutoittemashita</rt></ruby>
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn">🗑</button>
+            <button type="button" class="lr-saved-menu-btn">⋮</button>
+          </div>
+        </div>
+        <!-- Row 4: Saved Sentence -->
+        <div class="lr-saved-row">
+          <div class="lr-saved-row-badge">
+            <button type="button" class="lr-saved-play-icon">▶</button>
+          </div>
+          <div class="lr-saved-row-text">
+            <div class="lr-saved-sentence-ja">朝起きて、ちょっと作業して、</div>
+            <div class="lr-saved-sentence-vi">Buổi sáng tôi thức dậy, làm một chút việc,</div>
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn">🗑</button>
+            <button type="button" class="lr-saved-menu-btn">⋮</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

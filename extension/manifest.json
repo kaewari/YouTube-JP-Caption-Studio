@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube JP Caption Studio",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "Load captions (YouTube, ABEMA, Netflix, and other video sites), manual JA→EN/VI translate, Language Reactor-style dual captions locally.",
   "permissions": ["storage", "cookies", "sidePanel", "tabs", "nativeMessaging", "alarms", "identity"],
   "host_permissions": [
@@ -15,7 +15,8 @@
     "http://localhost:8765/*",
     "http://127.0.0.1:3000/*",
     "http://localhost:3000/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "oauth2": {
     "client_id": "886146342458-g0tav91opprcvkivnmabh3p3c2f7qjns.apps.googleusercontent.com",
@@ -25,7 +26,15 @@
     "service_worker": "background/service_worker.js"
   },
   "action": {
-    "default_title": "Caption Studio — Open Side Panel"
+    "default_title": "Caption Studio — Settings & Saved Items"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      }
+    }
   },
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
@@ -57,9 +66,12 @@
         "shared/vocab_style.js",
         "shared/dfxp_parser.js",
         "shared/timedtext_parse.js",
+        "shared/romaji_kana.js",
+        "shared/gemini_translate.js",
         "content/normalize_cues.js",
         "content/cue_timing.js",
         "content/fill_yt_secondary.js",
+        "content/settings_modal.js",
         "content/content.js"
       ],
       "css": ["styles/panel.css"],

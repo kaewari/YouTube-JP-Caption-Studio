@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Player - Bh6e3BT-YuQ</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      position: relative;
+    }
+    .yt-video-area {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 48px;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(circle at center, #18192b 0%, #050508 100%);
+    }
+    .yt-video-title {
+      position: absolute;
+      top: 24px; left: 28px;
+      font-size: 20px; font-weight: 600;
+      color: #f1f1f1;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .yt-video-badge {
+      background: #c00; color: #fff;
+      font-size: 11px; font-weight: bold;
+      padding: 3px 8px; border-radius: 4px;
+    }
+    .yt-bottom-bar {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 48px;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex; align-items: center;
+      padding: 0 20px; gap: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      z-index: 10;
+    }
+    .yt-progress {
+      position: absolute; top: -3px; left: 0; right: 0;
+      height: 3px; background: #333;
+    }
+    .yt-progress-fill {
+      width: 12%; height: 100%;
+      background: #ff0000; position: relative;
+    }
+    .yt-progress-fill::after {
+      content: "";
+      position: absolute; right: -6px; top: -4px;
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #ff0000;
+    }
+    .yt-icon { font-size: 18px; color: #fff; }
+    .yt-time { font-size: 13px; color: #ddd; }
+  </style>
+</head>
+<body>
+  <div class="yt-video-area">
+    <div class="yt-video-title">
+      <span class="yt-video-badge">PODCAST</span>
+      <span>【日本語】メキシコ独立記念日とお祝い (Bh6e3BT-YuQ)</span>
+    </div>
+
+    <!-- LEFT NAVIGATION -->
+    <div id="lr-nav-left" class="lr-nav-left">
+      <button class="lr-nav-btn" title="Next sub [D key]">&gt;</button>
+      <div class="lr-repeat-wrap">
+        <button class="lr-nav-btn lr-repeat-btn" title="Repeat sub">↻</button>
+        <div class="lr-tooltip">Repeat ['S' key]</div>
+      </div>
+      <button class="lr-nav-btn" title="Previous sub [A key]">&lt;</button>
+    </div>
+
+    <!-- RIGHT CONTROLS: AP & VPOS -->
+    <div id="lr-ctrl-right" class="lr-ctrl-right">
+      <label class="lr-ap-toggle" title="Auto-pause when subtitle ends">
+        <input type="checkbox" id="lr-ap-checkbox" checked>
+        <span class="lr-ap-slider"></span>
+        <span class="lr-ap-label">AP</span>
+      </label>
+      <button class="lr-ctrl-btn" id="lr-vpos-btn" title="Shift subtitle vertically (up/down)">↕</button>
+    </div>
+
+    <!-- LANGUAGE REACTOR DUAL CARD OVERLAY -->
+    <div id="hardsub-container" class="active vpos-default" style="display: flex;">
+      <div class="hardsub-bar lr-dual-card">
+        <div class="lr-card-ja">
+          <button class="lr-play-btn" title="Play subtitle (S)">▶</button>
+          <div class="lr-ja-content">
+            <span class="lr-token"><ruby>はい<rt>hai</rt></ruby></span>、
+            <span class="lr-token jlpt-n4"><ruby>皆さん<rt>minasan</rt></ruby></span>
+            <span class="lr-token"><ruby>こんにちは<rt>konnichiwa</rt></ruby></span>。
+            <span class="lr-token"><ruby>U<rt>yuu</rt></ruby></span>
+            <span class="lr-token"><ruby>の<rt>no</rt></ruby></span>
+            <span class="lr-token jlpt-n5"><ruby>日本語<rt>nihongo</rt></ruby></span>
+            <span class="lr-token jlpt-n3"><ruby>ポッドキャスト<rt>poddokyasuto</rt></ruby></span>
+            <span class="lr-token"><ruby>の<rt>no</rt></ruby></span>
+            <span class="lr-token jlpt-n4"><ruby>お時間<rt>ojikan</rt></ruby></span>
+            <span class="lr-token"><ruby>です<rt>desu</rt></ruby></span>。
+          </div>
+          <button class="lr-star-btn active" title="Save subtitle">★</button>
+          <button class="lr-more-btn" title="Options">⋮</button>
+        </div>
+
+        <div class="lr-card-vi">
+          <span>Vâng, xin chào mọi người. Đã đến giờ nghe Podcast tiếng Nhật của U rồi.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="yt-bottom-bar">
+    <div class="yt-progress"><div class="yt-progress-fill"></div></div>
+    <span class="yt-icon">▶</span>
+    <span class="yt-icon">↺10</span>
+    <span class="yt-icon">↻10</span>
+    <span class="yt-icon">🔊</span>
+    <span class="yt-time">0:01 / 1:19:49</span>
+
+    <div class="lr-yt-pill active" style="margin-left: 14px;">
+      <span class="lr-yt-pill-tag">LR</span>
+      <span class="lr-yt-pill-state">ON</span>
+      <span class="lr-yt-pill-cog" title="Cài đặt Language Reactor">⚙</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Pixel Verification: Bh6e3BT-YuQ</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <link rel="stylesheet" href="../extension/sidepanel/sidepanel.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      display: flex;
+    }
+    #mock-player {
+      position: relative;
+      flex: 1;
+      height: 100%;
+      background: #080810;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    #mock-sidepanel {
+      width: 420px;
+      height: 100%;
+      background: #14141a;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+    }
+    .yt-video-area {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #18192b 0%, #080810 100%);
+    }
+    .yt-video-title {
+      position: absolute;
+      top: 20px;
+      left: 24px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f1f1;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .yt-video-badge {
+      background: #c00;
+      color: #fff;
+      font-size: 11px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .yt-bottom-bar {
+      height: 48px;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+      z-index: 10;
+    }
+    .yt-progress {
+      position: absolute;
+      top: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: #444;
+    }
+    .yt-progress-fill {
+      width: 15%;
+      height: 100%;
+      background: #ff0000;
+      position: relative;
+    }
+    .yt-progress-fill::after {
+      content: "";
+      position: absolute;
+      right: -6px;
+      top: -4px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #ff0000;
+    }
+    .yt-icon {
+      font-size: 18px;
+      color: #fff;
+    }
+    .yt-time {
+      font-size: 12px;
+      color: #ddd;
+    }
+    .sp-header-tabs {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      gap: 12px;
+    }
+    .sp-tab {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #aaa;
+    }
+    .sp-tab.active {
+      background: #7c4dff;
+      color: #fff;
+    }
+    .sp-cue-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sp-cue-item {
+      background: #1c1c24;
+      border-radius: 8px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sp-cue-item.current {
+      border-color: #7c4dff;
+      background: rgba(124, 77, 255, 0.1);
+    }
+    .sp-cue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #888;
+    }
+    .sp-cue-ja {
+      font-size: 15px;
+      line-height: 1.4;
+      color: #fff;
+    }
+    .sp-cue-vi {
+      font-size: 13px;
+      color: #bbb;
+      line-height: 1.3;
+    }
+  
+    .yt-video-area { position: relative !important; }
+    .lr-nav-left { position: absolute !important; left: 24px !important; z-index: 100 !important; }
+    .lr-ctrl-right { position: absolute !important; right: 24px !important; z-index: 100 !important; }
+    #hardsub-container { position: absolute !important; }
+  </style>
+</head>
+<body>
+  <div id="mock-player">
+    <div class="yt-video-area">
+      <div class="yt-video-title">
+        <span class="yt-video-badge">PODCAST</span>
+        <span>【日本語】メキシコ独立記念日とお祝い (Bh6e3BT-YuQ)</span>
+      </div>
+
+      <div id="lr-nav-left" class="lr-nav-left">
+        <button class="lr-nav-btn" title="Next sub [D key]">&gt;</button>
+        <div class="lr-repeat-wrap">
+          <button class="lr-nav-btn lr-repeat-btn" title="Repeat sub">↻</button>
+          <div class="lr-tooltip">Repeat ['S' key]</div>
+        </div>
+        <button class="lr-nav-btn" title="Previous sub [A key]">&lt;</button>
+      </div>
+
+      <div id="lr-ctrl-right" class="lr-ctrl-right">
+        <label class="lr-ap-toggle" title="Auto-pause when subtitle ends">
+          <input type="checkbox" id="lr-ap-checkbox" checked>
+          <span class="lr-ap-slider"></span>
+          <span class="lr-ap-label">AP</span>
+        </label>
+        <button class="lr-ctrl-btn" id="lr-vpos-btn" title="Shift subtitle vertically (up/down)">↕</button>
+      </div>
+
+      <div id="hardsub-container" class="active vpos-default" style="display: flex; bottom: 80px;">
+        <div class="hardsub-bar lr-dual-card">
+          <div class="lr-card-ja">
+            <button class="lr-play-btn" title="Play subtitle (S)">▶</button>
+            <div class="lr-ja-content">
+              <span class="lr-token"><ruby>はい<rt>hai</rt></ruby></span>
+              <span class="lr-token jlpt-n4"><ruby>皆さん<rt>minasan</rt></ruby></span>
+              <span class="lr-token"><ruby>こんにちは<rt>konnichiwa</rt></ruby></span>。
+              <span class="lr-token"><ruby>U<rt>yuu</rt></ruby></span>
+              <span class="lr-token"><ruby>の<rt>no</rt></ruby></span>
+              <span class="lr-token jlpt-n5"><ruby>日本語<rt>nihongo</rt></ruby></span>
+              <span class="lr-token jlpt-n3"><ruby>ポッドキャスト<rt>poddokyasuto</rt></ruby></span>
+              <span class="lr-token"><ruby>の<rt>no</rt></ruby></span>
+              <span class="lr-token jlpt-n4"><ruby>お時間<rt>ojikan</rt></ruby></span>
+              <span class="lr-token"><ruby>です<rt>desu</rt></ruby></span>。
+            </div>
+            <button class="lr-star-btn active" title="Save subtitle">★</button>
+            <button class="lr-more-btn" title="Options">⋮</button>
+          </div>
+
+          <div class="lr-card-vi">
+            <span>Vâng, xin chào mọi người. Đã đến giờ nghe Podcast tiếng Nhật của U rồi.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="yt-bottom-bar">
+      <div class="yt-progress">
+        <div class="yt-progress-fill"></div>
+      </div>
+      <span class="yt-icon">▶</span>
+      <span class="yt-icon">↺10</span>
+      <span class="yt-icon">↻10</span>
+      <span class="yt-icon">🔊</span>
+      <span class="yt-time">0:01 / 1:19:49</span>
+
+      <div class="lr-yt-pill active" style="margin-left: 14px;">
+        <span class="lr-yt-pill-tag">LR</span>
+        <span class="lr-yt-pill-state">ON</span>
+        <span class="lr-yt-pill-cog" title="Cài đặt Language Reactor">⚙</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="mock-sidepanel">
+    <div class="sp-header-tabs">
+      <div class="sp-tab active">Subtitles</div>
+      <div class="sp-tab">Words</div>
+      <div class="sp-tab">Saved</div>
+      <span style="margin-left: auto; color: #777; font-size: 14px;">⚙</span>
+    </div>
+
+    <div class="sp-cue-list">
+      <div class="sp-cue-item current">
+        <div class="sp-cue-header">
+          <span style="color: #a78bfa; font-weight: bold;">00:00.640 → 00:02.629</span>
+          <span style="color: #ffd700; cursor: pointer;">★</span>
+        </div>
+        <div class="sp-cue-ja">はい、皆さんこんにちは。Uの日本語</div>
+        <div class="sp-cue-vi">Vâng, xin chào mọi người. Đây là tiếng Nhật của U</div>
+      </div>
+
+      <div class="sp-cue-item">
+        <div class="sp-cue-header">
+          <span>00:02.679 → 00:04.709</span>
+          <span style="color: #666; cursor: pointer;">☆</span>
+        </div>
+        <div class="sp-cue-ja">ポッドキャストのお時間です。皆さん元気</div>
+        <div class="sp-cue-vi">Đã đến giờ nghe Podcast rồi. Mọi người có khỏe</div>
+      </div>
+
+      <div class="sp-cue-item">
+        <div class="sp-cue-header">
+          <span>00:04.759 → 00:07.389</span>
+          <span style="color: #666; cursor: pointer;">☆</span>
+        </div>
+        <div class="sp-cue-ja">にしていますでしょうか?今日は2025</div>
+        <div class="sp-cue-vi">không ạ? Hôm nay là năm 2025</div>
+      </div>
+
+      <div class="sp-cue-item">
+        <div class="sp-cue-header">
+          <span>00:07.439 → 00:09.960</span>
+          <span style="color: #666; cursor: pointer;">☆</span>
+        </div>
+        <div class="sp-cue-ja">年の9月15日月曜日にこの</div>
+        <div class="sp-cue-vi">ngày 15 tháng 9, thứ Hai, tôi đang thu âm</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -17,18 +17,20 @@
 
 **YouTube JP Caption Studio** is a Language Reactor-style tool tailored for learning Japanese via YouTube, ABEMA, and Netflix. It is available as a **Chrome Extension** (Desktop) and **Native iPad / iPhone Apps**. It features Japanese timedtext interception, video overlays, a dedicated side panel for editing, furigana generation (via Sudachi on Desktop or Apple NaturalLanguage on iOS), JMdict dictionary integration (EN + VI glosses), JLPT-colored tokens, and manual EN–VI subtitle import/editing.
 
-**No** OCR. **No** machine translation (NLLB / Opus / Gemini). Translations come from YouTube/Netflix EN/VI tracks when available, Import, or manual edit — never auto-generated MT.
+**Language Reactor 5.1.8 Parity**: Dual-card overlay, accurate authentic cue timelines (no artificial guessing/stretching), fast Vietnamese translation via Google AI Studio Gemini 3.8 Flash, on-screen controls (replay `▶`, star `☆`/`★`, prev/next `<`/`>`, AP auto-pause `AP`, vertical position `↕`), and 3-tab sidepanel (`Subtitles`, `Words` grouped by frequency rank, `Saved`).
 
 ## 🌟 Key Features
-1. **Smart Captions**: Intercepts Japanese timedtext directly from YouTube, displaying them as an overlay on the video and in the Side Panel (JA / EN / VI toggles; EN+VI on by default). When the video also has EN/VI YouTube tracks, they are union-merged into cue rows (±0.35s; unmatched lines become orphan cues; Import/manual edits are never overwritten).
-2. **Furigana & Dictionary**: Real-time JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + local bridge `/dict`. iPad: `NLTagger` + bundled `dict.sqlite`. Tap/click a word → popup with **VI + EN** glosses and the cue’s sentence translation.
-3. **JLPT / frequency coloring**: Tokens are colored by difficulty band (N5→N1 / unknown) from the shared `freq_ja.json` rank map — on both Desktop hardsub and the iPad overlay/side panel.
-4. **Personal Vocabulary Tracker**: Desktop: mark Known / Learning / Ignore / Special (status colors on subtitles). iPad: save looked-up words from the dict popup into SwiftData (status-mark UI still Desktop-first).
-5. **Manual Editing**: Edit JA/EN/VI and timelines in the Side Panel. Bulk Import/Export of `.txt`/`.json`. On iPad, JA shows as tappable tokens; use **Edit JA** to type.
-6. **Local Data Ownership**: Manual translations and edits are prioritized and saved locally (file/SQLite via Bridge on Desktop; SwiftData on iPad). YouTube never overwrites your work. Bridge `script.txt` always shows `JA:` / `EN:` / `VI:` lines per cue (empty allowed).
-7. **Auto IME Switching (macOS Desktop only)**: Automatically switches to the Japanese keyboard when editing Japanese subtitles.
-8. **Native iPad / iPhone**: Standalone SwiftUI apps (`ipad-app/`, `iphone-app/`) — hardsub, side panel, tokenize, dict popup, import/export — no local server. iPhone layout: portrait stacked / landscape split. Not full Desktop parity (no Auto IME; vocab status marks deferred).
-9. **Drive sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder. Extension uses `chrome.identity` + bridge `/backup/snapshot`; native apps use Files bookmark + auto-pull on foreground. Setup: replace OAuth `client_id` in `extension/manifest.json`, Connect Drive, pick the same Drive folder (see `walkthrough.md` §3.5).
+1. **Smart Captions & Exact Timelines**: Intercepts Japanese timedtext directly from YouTube/Netflix/ABEMA, keeping authentic start and end times without artificial stretching across silence gaps.
+2. **Vietnamese Translation via Gemini 3.8 Flash**: Fast batch translation using your Google AI Studio Gemini 3.8 Flash API key (configured in the in-page Settings modal `⚙`).
+3. **Language Reactor 5.1.8 Overlay**: Dual-card layout with purple replay button `(▶)`, Romaji above colored tokens by rank, 1-click star button `☆`/`★`, and lower card with Vietnamese translation.
+4. **On-Screen Navigation & Auto-Pause**: Left vertical navigation bar (`>`, `↻` with "Repeat ['S' key]" tooltip, `<`), hotkeys (S, A, D), right auto-pause switch (`AP`), and vertical shift button `↕`.
+5. **3-Tab Side Panel**: `Subtitles` (timeline with playhead sync and star), `Words` (video vocabulary grouped by frequency rank brackets e.g. Rank 1-500, 501-1000), and `Saved` (all saved words and starred cues with context toggle).
+6. **Player Bar Pill Toggle**: `[ (LR) ON ⚙ ]` / `[ (LR) OFF ⚙ ]`. ON hides native YouTube captions and shows the LR overlay; OFF restores native captions. Clicking `⚙` opens the in-page Settings modal. Clicking the extension toolbar icon opens the dedicated full-page options in a tab.
+7. **Furigana & Dictionary**: Real-time JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + local bridge `/dict`. iPad: `NLTagger` + bundled `dict.sqlite`. Tap/click a word → popup with **VI + EN** glosses and sentence translation.
+8. **JLPT / Frequency Coloring**: Tokens colored by difficulty band (N5→N1 / unknown) from the shared `freq_ja.json` rank map.
+9. **Personal Vocabulary Tracker**: Mark Known / Learning / Ignore / Special, save words and starred sentences into `savedCues`.
+10. **Native iPad / iPhone**: Standalone SwiftUI apps (`ipad-app/`, sibling `iphone-app/`) — hardsub, side panel, tokenize, dict popup, import/export.
+11. **Drive Sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder.
 
 ## 🏗 System Architecture
 The project supports two completely different stacks to cover both Desktop and Mobile (iPad/iPhone) experiences:

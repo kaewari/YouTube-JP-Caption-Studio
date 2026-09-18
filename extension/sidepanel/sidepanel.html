@@ -7,11 +7,54 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
+    <header class="sp-header">
+      <div class="sp-tabs">
+        <button type="button" class="sp-tab active" data-tab="subtitles">Subtitles</button>
+        <button type="button" class="sp-tab" data-tab="words">Words</button>
+        <button type="button" class="sp-tab" data-tab="saved">Saved</button>
+      </div>
+      <div class="sp-header-actions">
+        <button type="button" id="sp-btn-settings" class="sp-header-btn" title="Cài đặt">⚙</button>
+        <button type="button" id="sp-btn-popout" class="sp-header-btn" title="Mở trang đầy đủ">↗</button>
+        <button type="button" id="sp-btn-close" class="sp-header-btn" title="Đóng">✕</button>
+      </div>
+    </header>
+
     <div id="sp-toast" class="sp-toast" hidden></div>
     <div id="sp-empty" class="sp-empty">
       Mở tab YouTube / ABEMA / Netflix đang phát video, rồi bấm Reload nếu cần.
     </div>
-    <div id="sp-list" class="sp-list" hidden></div>
+
+    <!-- View 1: Subtitles Timeline -->
+    <main id="sp-view-subtitles" class="sp-view active">
+      <div id="sp-list" class="sp-list" hidden></div>
+    </main>
+
+    <!-- View 2: Video Words by Rank -->
+    <main id="sp-view-words" class="sp-view" hidden>
+      <div class="sp-words-header">
+        <span class="sp-words-title">Từ vựng trong video theo rank</span>
+        <span id="sp-words-count" class="sp-words-count"></span>
+      </div>
+      <div id="sp-words-list" class="sp-words-list"></div>
+    </main>
+
+    <!-- View 3: Saved Items -->
+    <main id="sp-view-saved" class="sp-view" hidden>
+      <div class="sp-saved-actions-top">
+        <button type="button" id="sp-saved-view-all" class="sp-saved-top-btn"><span class="sp-saved-icon">▤</span> View All</button>
+        <button type="button" id="sp-saved-practice" class="sp-saved-top-btn"><span class="sp-saved-icon">🕒</span> Practice</button>
+      </div>
+      <div class="sp-saved-subbar">
+        <span class="sp-saved-last-label">Last saved:</span>
+        <label class="sp-saved-toggle-wrap">
+          <span>Show context</span>
+          <input type="checkbox" id="sp-saved-show-context" checked class="sp-toggle-input" />
+          <span class="sp-toggle-slider"></span>
+        </label>
+      </div>
+      <div id="sp-saved-list" class="sp-saved-list"></div>
+    </main>
 
     <section id="sp-import-panel" class="sp-import-panel" hidden>
       <div class="sp-import-head">

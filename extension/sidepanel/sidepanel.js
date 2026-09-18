@@ -39,7 +39,13 @@
     levelHighlightEnabled: true,
     levelColors: null,
     userVocab: {},
+    savedCues: [],
   };
+
+  function isCueStarred(id) {
+    if (!id || !Array.isArray(state.savedCues)) return false;
+    return state.savedCues.some((c) => c.id === id);
+  }
 
   /** Fallback mirror of JLPT colors (storage-level settings live in the
    *  popup settings tab now; content SP_STATE carries the live values). */
@@ -401,7 +407,9 @@
         const cls = Vocab.classForToken(t, settings, state.userVocab || {});
         const classAttr = cls ? ` tok ${cls}` : " tok";
         if (state.showFurigana && t.reading) {
-          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(t.reading)}</rt></ruby>`;
+          const Romaji = globalThis.HardsubRomajiKana;
+          const romaji = Romaji?.toRomaji ? Romaji.toRomaji(t.reading) : t.reading;
+          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(romaji)}</rt></ruby>`;
         }
         return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
       })
@@ -409,8 +417,13 @@
   }
 
   async function loadLevelSettings() {
-    const data = await chrome.storage.local.get("hardsubSettings");
-    const s = data.hardsubSettings || {};
+    let s = {};
+    try {
+      if (chrome?.storage?.local) {
+        const data = await chrome.storage.local.get("hardsubSettings");
+        s = data?.hardsubSettings || {};
+      }
+    } catch (_) {}
     levelSettings = {
       levelHighlightEnabled: s.levelHighlightEnabled !== false,
       levelColors: Vocab.normalizeLevelColors(
@@ -1009,6 +1022,7 @@
     const tokFp = toks
       .map((t) => `${t.jlpt ?? ""}:${t.freq_rank ?? ""}`)
       .join(",");
+    const starred = isCueStarred(cue.id) ? "1" : "0";
     return [
       cue.id,
       String(cue.source || ""),
@@ -1019,6 +1033,7 @@
       Number(cue.start_media_time) || 0,
       Number(cue.end_media_time) || 0,
       idx,
+      starred,
     ].join("|");
   }
 
@@ -1029,9 +1044,11 @@
     const t0 = Timing.formatTimeInput(cue.start_media_time);
     const t1 = Timing.formatTimeInput(cue.end_media_time);
     const isActive = cue.id === activeId;
+    const isStarred = isCueStarred(cue.id);
     return `
       <div class="sp-meta">
         <button type="button" class="sp-play" data-t="${cue.start_media_time}" title="Play">▶</button>
+        <button type="button" class="sp-star ${isStarred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${isStarred ? "Bỏ lưu câu" : "Lưu câu"}">${isStarred ? "★" : "☆"}</button>
         <span class="sp-times" title="Chỉnh timeline — Enter để lưu">
           <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t0)}" aria-label="Start" />
           <span class="sp-t-sep">–</span>
@@ -1067,6 +1084,13 @@
     row.querySelectorAll("[data-idx]").forEach((el) => {
       el.dataset.idx = String(idx);
     });
+    const starBtn = row.querySelector(".sp-star");
+    if (starBtn) {
+      const starred = isCueStarred(cue.id);
+      starBtn.classList.toggle("active", starred);
+      starBtn.textContent = starred ? "★" : "☆";
+      starBtn.title = starred ? "Bỏ lưu câu" : "Lưu câu";
+    }
     const view = row.querySelector(".sp-ja-view");
     if (view) {
       view.innerHTML = cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source);
@@ -1102,12 +1126,23 @@
     ensureDictDelegate();
     listEl.addEventListener("click", (e) => {
       const btn = e.target.closest(
-        ".sp-play, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del"
+        ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del"
       );
       if (!btn || !listEl.contains(btn)) return;
       if (btn.classList.contains("sp-play")) {
         setFollowTimeline(true);
         sendCmd("play", { mediaTime: Number(btn.dataset.t) });
+      } else if (btn.classList.contains("sp-star")) {
+        const id = btn.dataset.id;
+        if (!id) return;
+        void (async () => {
+          const r = await sendCmd("toggle_star_cue", { id });
+          if (r?.savedCues) state.savedCues = r.savedCues;
+          const starred = isCueStarred(id);
+          btn.classList.toggle("active", starred);
+          btn.textContent = starred ? "★" : "☆";
+          btn.title = starred ? "Bỏ lưu câu" : "Lưu câu";
+        })();
       } else if (btn.classList.contains("sp-copy")) {
         copyCueById(btn.dataset.id, "full");
       } else if (btn.matches(".sp-copy-menu button")) {
@@ -1246,6 +1281,267 @@
         updateActiveHighlight({ scroll: false });
       }
     }
+
+    if (Array.isArray(incoming.savedCues)) {
+      state.savedCues = incoming.savedCues;
+      if (activeSideTab === "saved") renderSavedTab();
+    }
+    if (Array.isArray(incoming.cues) && activeSideTab === "words") {
+      renderWordsTab();
+    }
+  }
+
+  let activeSideTab = "subtitles"; // "subtitles" | "words" | "saved"
+
+  function switchSideTab(tabName) {
+    activeSideTab = tabName;
+    document.querySelectorAll(".sp-tab").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === tabName);
+    });
+    const subView = document.getElementById("sp-view-subtitles");
+    const wordsView = document.getElementById("sp-view-words");
+    const savedView = document.getElementById("sp-view-saved");
+
+    if (subView) subView.hidden = tabName !== "subtitles";
+    if (wordsView) wordsView.hidden = tabName !== "words";
+    if (savedView) savedView.hidden = tabName !== "saved";
+
+    if (tabName === "words") {
+      renderWordsTab();
+    } else if (tabName === "saved") {
+      renderSavedTab();
+    } else if (tabName === "subtitles") {
+      renderList(true);
+    }
+  }
+
+  function renderWordsTab() {
+    const wordsListEl = document.getElementById("sp-words-list");
+    const wordsCountEl = document.getElementById("sp-words-count");
+    if (!wordsListEl) return;
+
+    const cues = state.cues || [];
+    const wordMap = new Map();
+
+    for (const c of cues) {
+      if (!c.tokens) continue;
+      for (const t of c.tokens) {
+        if (!t.surface || Vocab.isSkipPos(t.pos)) continue;
+        const key = t.lemma || t.surface;
+        if (!wordMap.has(key)) {
+          wordMap.set(key, {
+            lemma: key,
+            surface: t.surface,
+            reading: t.reading || "",
+            jlpt: t.jlpt || "",
+            freq_rank: t.freq_rank != null ? Number(t.freq_rank) : null,
+            count: 0,
+            cue: c,
+          });
+        }
+        const item = wordMap.get(key);
+        item.count++;
+      }
+    }
+
+    const allWords = Array.from(wordMap.values());
+    if (wordsCountEl) wordsCountEl.textContent = `${allWords.length} từ`;
+
+    if (!allWords.length) {
+      wordsListEl.innerHTML = '<div class="sp-saved-empty">Chưa có từ vựng cho video này.</div>';
+      return;
+    }
+
+    // Language Reactor 5.1.8 Frequency Rank Brackets
+    const brackets = [
+      { label: "Rank 1 - 500", min: 1, max: 500 },
+      { label: "Rank 501 - 1000", min: 501, max: 1000 },
+      { label: "Rank 1001 - 1500", min: 1001, max: 1500 },
+      { label: "Rank 1501 - 2000", min: 1501, max: 2000 },
+      { label: "Rank 2001 - 2500", min: 2001, max: 2500 },
+      { label: "Rank 2501 - 3000", min: 2501, max: 3000 },
+      { label: "Rank 3001 - 3500", min: 3001, max: 3500 },
+      { label: "Rank 3501 - 4000", min: 3501, max: 4000 },
+      { label: "Rank 4001 - 4500", min: 4001, max: 4500 },
+      { label: "Rank 4501 - 5000", min: 4501, max: 5000 },
+      { label: "Rank 5000+", min: 5001, max: Infinity },
+      { label: "Chưa phân hạng", min: -1, max: 0 },
+    ];
+
+    function getWordRank(w) {
+      if (w.freq_rank != null && w.freq_rank > 0) return w.freq_rank;
+      const jlpt = String(w.jlpt || "").toLowerCase();
+      if (jlpt === "n5") return 400;
+      if (jlpt === "n4") return 900;
+      if (jlpt === "n3") return 1800;
+      if (jlpt === "n2") return 3500;
+      if (jlpt === "n1") return 6000;
+      return -1;
+    }
+
+    const groups = brackets.map((b) => ({ ...b, words: [] }));
+    for (const w of allWords) {
+      const r = getWordRank(w);
+      const grp = groups.find((g) => (r >= g.min && r <= g.max) || (r <= 0 && g.min < 0));
+      if (grp) grp.words.push(w);
+      else groups[groups.length - 1].words.push(w);
+    }
+
+    const Romaji = globalThis.HardsubRomajiKana;
+    let html = "";
+    for (const grp of groups) {
+      if (!grp.words.length) continue;
+      grp.words.sort((a, b) => b.count - a.count);
+      html += `
+        <div class="sp-word-group">
+          <div class="sp-word-group-banner">
+            <span>${grp.label}</span>
+          </div>
+          <div class="sp-words-flow">
+            ${grp.words
+              .map((w) => {
+                const romaji = Romaji?.toRomaji ? Romaji.toRomaji(w.reading) : w.reading;
+                const isSaved = !!(state.userVocab && state.userVocab[w.lemma]);
+                const rank = getWordRank(w);
+                const colorCls = rank > 0 && rank <= 1000 ? "rank-common" : rank <= 2500 ? "rank-mid" : rank <= 5000 ? "rank-upper" : "rank-rare";
+                return `
+                  <button type="button" class="sp-word-chip ${colorCls} ${isSaved ? "saved" : ""}" data-word-lemma="${escapeAttr(w.lemma)}" title="${escapeAttr(w.surface)} (${escapeAttr(romaji || "")}): ${w.count} lần">
+                    <ruby class="sp-word-ruby">
+                      ${escapeHtml(w.surface)}
+                      <rt>${escapeHtml(romaji || "")}</rt>
+                    </ruby>
+                  </button>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    wordsListEl.innerHTML = html;
+
+    wordsListEl.querySelectorAll("[data-word-lemma]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const lemma = btn.dataset.wordLemma;
+        const current = state.userVocab?.[lemma];
+        const nextStatus = current ? "" : "learning";
+        await sendCmd("set_user_vocab", { lemma, status: nextStatus });
+        if (!state.userVocab) state.userVocab = {};
+        if (nextStatus) state.userVocab[lemma] = nextStatus;
+        else delete state.userVocab[lemma];
+        btn.classList.toggle("saved", !current);
+      });
+    });
+  }
+
+  function renderSavedTab() {
+    const savedListEl = document.getElementById("sp-saved-list");
+    const showContextEl = document.getElementById("sp-saved-show-context");
+    if (!savedListEl) return;
+
+    const showContext = showContextEl ? showContextEl.checked : true;
+    const userVocabEntries = Object.entries(state.userVocab || {}).filter(
+      ([, v]) => v && (v === "learning" || v === "special" || v?.status === "learning" || v?.status === "special")
+    );
+    const savedCues = state.savedCues || [];
+
+    if (!userVocabEntries.length && !savedCues.length) {
+      savedListEl.innerHTML = '<div class="sp-saved-empty">Chưa có từ hoặc câu nào được đánh dấu sao lưu trữ.</div>';
+      return;
+    }
+
+    let html = "";
+
+    // Saved Words
+    for (const [lemma] of userVocabEntries) {
+      const sampleCue =
+        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
+        (savedCues || []).find((c) => c.source && c.source.includes(lemma));
+      const sampleCtx = sampleCue ? sampleCue.source : "";
+
+      let displayHtml = "";
+      if (showContext && sampleCtx) {
+        const escLemma = escapeHtml(lemma);
+        const escCtx = escapeHtml(sampleCtx);
+        const boxed = `<span class="lr-saved-word-box">${escLemma}</span>`;
+        displayHtml = escCtx.includes(escLemma)
+          ? escCtx.replace(escLemma, boxed)
+          : `${boxed} · ${escCtx}`;
+      } else {
+        displayHtml = `<span class="lr-saved-word-box">${escapeHtml(lemma)}</span>`;
+      }
+
+      html += `
+        <div class="lr-saved-row" data-lemma="${escapeAttr(lemma)}">
+          <div class="lr-saved-row-badge">
+            <span class="lr-badge-w">W</span>
+          </div>
+          <div class="lr-saved-row-text">
+            ${displayHtml}
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn" data-del-word="${escapeAttr(lemma)}" title="Xóa khỏi từ đã lưu">🗑</button>
+            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Saved Sentences
+    for (const sc of savedCues) {
+      const vi = stripStub(sc.vi);
+      const en = stripStub(sc.en);
+      html += `
+        <div class="lr-saved-row" data-cue-id="${escapeAttr(sc.id)}">
+          <div class="lr-saved-row-badge">
+            <button type="button" class="lr-saved-play-icon" data-play-time="${sc.start_media_time}" title="Phát câu này">▶</button>
+          </div>
+          <div class="lr-saved-row-text">
+            <div class="lr-saved-sentence-ja">${escapeHtml(sc.source)}</div>
+            ${vi || en ? `<div class="lr-saved-sentence-vi">${escapeHtml(vi || en)}</div>` : ""}
+          </div>
+          <div class="lr-saved-row-actions">
+            <button type="button" class="lr-saved-del-btn" data-del-cue="${escapeAttr(sc.id)}" title="Bỏ lưu câu">🗑</button>
+            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
+          </div>
+        </div>
+      `;
+    }
+
+    savedListEl.innerHTML = html;
+
+    savedListEl.querySelectorAll("[data-del-word]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const lemma = btn.dataset.delWord;
+        await sendCmd("set_user_vocab", { lemma, status: "" });
+        if (state.userVocab) delete state.userVocab[lemma];
+        renderSavedTab();
+      });
+    });
+
+    savedListEl.querySelectorAll("[data-del-cue]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.delCue;
+        await sendCmd("toggle_star_cue", { id });
+        state.savedCues = (state.savedCues || []).filter((c) => c.id !== id);
+        renderSavedTab();
+        renderList(true);
+      });
+    });
+
+    savedListEl.querySelectorAll("[data-play-time]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const t = Number(btn.dataset.playTime);
+        if (Number.isFinite(t)) {
+          await sendCmd("play", { mediaTime: t });
+        }
+      });
+    });
   }
 
   /**
@@ -1547,10 +1843,7 @@
   });
 
   document.getElementById("sp-settings").addEventListener("click", () => {
-    // Coloring + settings live in the popup settings tab (full-width page).
-    chrome.tabs.create({
-      url: chrome.runtime.getURL("popup/popup.html") + "?v=settings",
-    });
+    void sendCmd("open_settings", {});
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
@@ -1636,19 +1929,101 @@
 
   syncFollowBtn();
 
+  function isSupportedVideoUrl(url) {
+    try {
+      const h = new URL(url || "").hostname.toLowerCase();
+      return (
+        h === "www.youtube.com" ||
+        h === "youtube.com" ||
+        h === "m.youtube.com" ||
+        h === "abema.tv" ||
+        h.endsWith(".abema.tv") ||
+        h === "www.netflix.com" ||
+        h === "netflix.com" ||
+        h.endsWith(".netflix.com")
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  document.querySelectorAll(".sp-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      switchSideTab(btn.dataset.tab);
+    });
+  });
+
+  const btnSettings = document.getElementById("sp-btn-settings");
+  if (btnSettings) {
+    btnSettings.addEventListener("click", () => {
+      void sendCmd("open_settings", {});
+    });
+  }
+
+  const btnPopout = document.getElementById("sp-btn-popout");
+  if (btnPopout) {
+    btnPopout.addEventListener("click", () => {
+      window.open(chrome.runtime.getURL("popup/index.html"), "_blank");
+    });
+  }
+
+  const btnClose = document.getElementById("sp-btn-close");
+  if (btnClose) {
+    btnClose.addEventListener("click", () => {
+      window.close();
+    });
+  }
+
+  const showContextEl = document.getElementById("sp-saved-show-context");
+  if (showContextEl) {
+    showContextEl.addEventListener("change", () => {
+      renderSavedTab();
+    });
+  }
+
+  const btnViewAll = document.getElementById("sp-saved-view-all");
+  if (btnViewAll) {
+    btnViewAll.addEventListener("click", () => {
+      showToast("Tất cả từ và câu đã lưu");
+      renderSavedTab();
+    });
+  }
+  const btnPractice = document.getElementById("sp-saved-practice");
+  if (btnPractice) {
+    btnPractice.addEventListener("click", () => {
+      showToast("Chế độ luyện tập từ vựng");
+    });
+  }
+
   // Ask content for current state on open; pull Drive → bridge if newer.
   (async () => {
     await loadLevelSettings();
     void refreshDriveStatus();
     void pullDriveOnOpen();
     setStatus("Đang kết nối…");
-    const id = await resolveTabId();
-    if (id == null) {
-      setStatus("Chưa có tab video hỗ trợ");
+
+    let activeTab = null;
+    try {
+      let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (!tabs?.length) {
+        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      }
+      activeTab = tabs?.[0];
+      if (activeTab?.id != null) {
+        currentActiveTabId = activeTab.id;
+        tabId = activeTab.id;
+      }
+    } catch (_) {}
+
+    if (!activeTab?.url || !isSupportedVideoUrl(activeTab.url)) {
+      setStatus("Sẵn sàng · Mở video để tải phụ đề");
+      if (emptyEl) emptyEl.hidden = false;
+      if (listEl) listEl.hidden = true;
       return;
     }
+
     try {
-      await chrome.tabs.sendMessage(id, { type: "SP_CMD", cmd: "get_state" });
+      await chrome.tabs.sendMessage(activeTab.id, { type: "SP_CMD", cmd: "get_state" });
     } catch {
       setStatus("Refresh tab rồi mở lại panel");
     }
