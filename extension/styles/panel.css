@@ -1308,3 +1308,55 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
 }
 
 
+
+
+/* wiki-pkm-audit-sync: overlay text hierarchy + A-/A+ */
+.hardsub-bar .lr-card-ja {
+  align-items: center;
+}
+
+.hardsub-bar .lr-text-ja {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: calc(24px * var(--bar-scale));
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.hardsub-bar .lr-text-ja rt {
+  font-size: calc(11px * var(--bar-scale));
+  font-weight: 600;
+  line-height: 1;
+}
+
+.hardsub-bar .lr-card-actions {
+  gap: calc(6px * var(--bar-scale));
+}
+
+.hardsub-bar .lr-card-actions .lr-scale-btn {
+  min-width: calc(30px * var(--bar-scale));
+  height: calc(26px * var(--bar-scale));
+  padding: 0 calc(6px * var(--bar-scale));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: calc(6px * var(--bar-scale));
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: calc(11px * var(--bar-scale));
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hardsub-bar .lr-card-actions .lr-scale-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.hardsub-bar .lr-card-vi {
+  text-align: center;
+}
+
+.hardsub-bar .lr-text-vi {
+  font-size: calc(27px * var(--bar-scale));
+  font-weight: 700;
+  line-height: 1.4;
+}

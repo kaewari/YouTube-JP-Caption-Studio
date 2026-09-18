@@ -4,11 +4,11 @@
  */
 (function (root, factory) {
   const api = factory();
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = api;
-  }
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.HardsubTimedtextParse = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  const MISSING_END_MIN_SEC = 0.2;
+
   function decodeEntities(s) {
     return String(s || "")
       .replace(/&nbsp;/g, " ")
@@ -18,176 +18,140 @@
       .replace(/&quot;/g, '"')
       .replace(/&apos;/g, "'")
       .replace(/&#39;/g, "'")
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_, h) {
-        return String.fromCharCode(parseInt(h, 16));
-      })
-      .replace(/&#(\d+);/g, function (_, n) {
-        return String.fromCharCode(Number(n));
-      });
+      .replace(/&#x([0-9a-fA-F]+);/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+      .replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(Number(n)); });
+  }
+
+  function positiveNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function resolveCueEnd(start, durationSec, nextStart, explicitEnd) {
+    const sourceEnd = Number(explicitEnd);
+    if (Number.isFinite(sourceEnd) && sourceEnd > start) return sourceEnd;
+    const duration = positiveNumber(durationSec);
+    if (duration != null) return start + duration;
+    const boundary = Number(nextStart);
+    if (Number.isFinite(boundary) && boundary > start) return boundary;
+    // No source boundary exists for a terminal/same-start cue; avoid inventing 2-3 seconds.
+    return start + MISSING_END_MIN_SEC;
   }
 
   function parseJson3Cues(data) {
-    const events = data?.events || [];
     const nodes = [];
-    for (const ev of events) {
+    for (const ev of data?.events || []) {
       if (!ev || ev.tStartMs == null) continue;
-      const segs = ev.segs || [];
-      const text = segs
-        .map(function (s) {
-          return s && s.utf8 != null ? String(s.utf8) : "";
-        })
+      const start = Number(ev.tStartMs) / 1000;
+      if (!Number.isFinite(start)) continue;
+      const text = (ev.segs || [])
+        .map(function (s) { return s && s.utf8 != null ? String(s.utf8) : ""; })
         .join("")
         .replace(/\n+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
       if (!text) continue;
       nodes.push({
-        start: Number(ev.tStartMs) / 1000,
-        durMs: ev.dDurationMs != null ? Number(ev.dDurationMs) : null,
-        text: text,
+        start,
+        durationSec: ev.dDurationMs != null && Number.isFinite(Number(ev.dDurationMs))
+          ? Number(ev.dDurationMs) / 1000
+          : null,
+        text,
       });
     }
-    const cues = [];
-    for (let i = 0; i < nodes.length; i += 1) {
-      const n = nodes[i];
+    return nodes.map(function (n, i) {
       const next = nodes[i + 1];
-      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
-      let end = hasDur
-        ? n.start + n.durMs / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
-      if (next && end > next.start) {
-        end = Math.max(n.start + 0.2, next.start - 0.05);
-      }
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-    }
-    return cues;
+      return { start: n.start, end: resolveCueEnd(n.start, n.durationSec, next?.start, null), text: n.text };
+    });
   }
 
   function parseTimeStr(val) {
-    if (!val) return null;
-    val = String(val).trim();
-    if (val.endsWith("s")) val = val.slice(0, -1);
-    if (val.includes(":")) {
-      const parts = val.split(":").map(Number);
+    if (val == null || val === "") return null;
+    const raw = String(val).trim();
+    const unit = raw.match(/^([+-]?\d+(?:\.\d+)?)(ms|s|m|h)$/i);
+    if (unit) {
+      const n = Number(unit[1]);
+      const u = unit[2].toLowerCase();
+      if (u === "ms") return n / 1000;
+      if (u === "s") return n;
+      if (u === "m") return n * 60;
+      if (u === "h") return n * 3600;
+    }
+    if (raw.includes(":")) {
+      const parts = raw.split(":").map(Number);
+      if (!parts.every(Number.isFinite)) return null;
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
       if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return null;
     }
-    const n = Number(val);
+    const n = Number(raw);
     return Number.isFinite(n) ? n : null;
+  }
+
+  function cleanXmlText(inner) {
+    return decodeEntities(String(inner || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim());
   }
 
   function parseTimedtextXml(xml) {
     if (!xml || typeof xml !== "string") return [];
 
-    // YSD-style <text start="" dur="">
     const textNodes = [];
     const textRe = /<text\s+([^>]*)>([\s\S]*?)<\/text>/gi;
     let m;
     while ((m = textRe.exec(xml))) {
       const attrs = m[1] || "";
-      const start = Number((attrs.match(/\bstart="([\d.]+)"/) || [])[1] || 0);
-      const dur = Number((attrs.match(/\bdur="([\d.]+)"/) || [])[1] || 0);
-      const text = decodeEntities(
-        (m[2] || "")
-          .replace(/<br\s*\/?>/gi, " ")
-          .replace(/<[^>]+>/g, "")
-          .replace(/\n+/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-      );
-      textNodes.push({ start: start, dur: dur, text: text });
+      const startRaw = (attrs.match(/\bstart="([\d.]+)"/) || [])[1];
+      const durRaw = (attrs.match(/\bdur="([\d.]+)"/) || [])[1];
+      const start = Number(startRaw == null ? 0 : startRaw);
+      if (!Number.isFinite(start)) continue;
+      const text = cleanXmlText(m[2]);
+      if (!text) continue;
+      textNodes.push({ start, durationSec: durRaw == null ? null : Number(durRaw), text });
     }
     if (textNodes.length) {
-      const cues = [];
-      for (let i = 0; i < textNodes.length; i += 1) {
-        const n = textNodes[i];
-        if (!n.text) continue;
+      return textNodes.map(function (n, i) {
         const next = textNodes[i + 1];
-        const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
-        let end = hasDur
-          ? n.start + n.dur
-          : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
-        if (next && end > next.start) {
-          end = Math.max(n.start + 0.2, next.start - 0.05);
-        }
-        cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-      }
-      if (cues.length) return cues;
+        return { start: n.start, end: resolveCueEnd(n.start, n.durationSec, next?.start, null), text: n.text };
+      });
     }
 
-    const cues = [];
     const pNodes = [];
     const pRe = /<p\s+([^>]*)>([\s\S]*?)<\/p>/gi;
     while ((m = pRe.exec(xml))) {
       const attrs = m[1] || "";
-      const inner = m[2] || "";
-      const tMatch = attrs.match(/\bt="(\d+)"/);
-      const beginMatch = attrs.match(/\bbegin="([^"]+)"/);
-      let t = 0;
-      if (tMatch) {
-        t = Number(tMatch[1]) / 1000;
-      } else if (beginMatch) {
-        t = parseTimeStr(beginMatch[1]) || 0;
-      }
-
-      const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
-      const endMatch = attrs.match(/\bend="([^"]+)"/);
-      let durMs = dRaw != null ? Number(dRaw) : null;
-      if (durMs == null && endMatch) {
-        const endSec = parseTimeStr(endMatch[1]);
-        if (endSec != null && endSec > t) {
-          durMs = Math.round((endSec - t) * 1000);
-        }
-      }
-      const text = decodeEntities(
-        inner
-          .replace(/<br\s*\/?>/gi, " ")
-          .replace(/<[^>]+>/g, "")
-          .replace(/\n+/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-      );
+      const tRaw = (attrs.match(/\bt="([\d.]+)"/) || [])[1];
+      const beginRaw = (attrs.match(/\bbegin="([^"]+)"/) || [])[1];
+      const dRaw = (attrs.match(/\bd="([\d.]+)"/) || [])[1];
+      const endRaw = (attrs.match(/\bend="([^"]+)"/) || [])[1];
+      const durRaw = (attrs.match(/\bdur="([^"]+)"/) || [])[1];
+      const start = tRaw != null ? Number(tRaw) / 1000 : (parseTimeStr(beginRaw) ?? 0);
+      if (!Number.isFinite(start)) continue;
+      const durationSec = dRaw != null ? Number(dRaw) / 1000 : parseTimeStr(durRaw);
+      const explicitEnd = parseTimeStr(endRaw);
+      const text = cleanXmlText(m[2]);
       if (!text) continue;
-      pNodes.push({
-        start: t,
-        durMs: durMs,
-        text: text,
-      });
+      pNodes.push({ start, durationSec, explicitEnd, text });
     }
-    for (let i = 0; i < pNodes.length; i += 1) {
-      const n = pNodes[i];
+    return pNodes.map(function (n, i) {
       const next = pNodes[i + 1];
-      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
-      let end = hasDur
-        ? n.start + n.durMs / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
-      if (next && end > next.start) {
-        end = Math.max(n.start + 0.2, next.start - 0.05);
-      }
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
-    }
-    return cues;
+      return { start: n.start, end: resolveCueEnd(n.start, n.durationSec, next?.start, n.explicitEnd), text: n.text };
+    });
   }
 
   function parseTimedtextBody(body) {
     const trimmed = String(body || "").trim();
     if (!trimmed) return [];
     if (trimmed[0] === "{") {
-      try {
-        return parseJson3Cues(JSON.parse(trimmed));
-      } catch {
-        return [];
-      }
+      try { return parseJson3Cues(JSON.parse(trimmed)); } catch { return []; }
     }
     if (trimmed[0] === "<") return parseTimedtextXml(trimmed);
     return [];
   }
 
-  return {
-    decodeEntities: decodeEntities,
-    parseJson3Cues: parseJson3Cues,
-    parseJson3: parseJson3Cues,
-    parseTimedtextXml: parseTimedtextXml,
-    parseTimedtextBody: parseTimedtextBody,
-  };
+  return { decodeEntities, parseJson3Cues, parseJson3: parseJson3Cues, parseTimedtextXml, parseTimedtextBody };
 });
