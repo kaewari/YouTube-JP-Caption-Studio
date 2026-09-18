@@ -2981,15 +2981,15 @@
         const surfaceAttr = escapeAttr(t.surface);
         const cls = Vocab.classForToken(t, settings, userVocab);
         const classAttr = cls ? `tok ${cls}` : "tok";
-        if (settings.showFurigana) {
-          const Romaji = globalThis.HardsubRomajiKana;
-          const kana = t.reading || (t.pos && !Vocab.isSkipPos(t.pos) ? t.surface : "");
-          const romaji =
-            Romaji && typeof Romaji.toRomaji === "function"
-              ? Romaji.toRomaji(kana)
-              : (t.reading || "");
-          if (romaji && !Vocab.isSkipPos(t.pos)) {
-            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(romaji)}</rt></ruby>`;
+        if (settings.showFurigana && t.reading && !Vocab.isSkipPos(t.pos)) {
+          const Kana = globalThis.HardsubRomajiKana;
+          const rawReading = t.reading || "";
+          const hiragana =
+            Kana && typeof Kana.katakanaToHiragana === "function"
+              ? Kana.katakanaToHiragana(rawReading)
+              : rawReading;
+          if (hiragana) {
+            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
           }
         }
         return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
@@ -3757,6 +3757,8 @@
                 <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
                 <div class="lr-text-ja">${rubyHtml(cue)}</div>
                 <div class="lr-card-actions">
+                  <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ (A-)">A-</button>
+                  <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ (A+)">A+</button>
                   <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
                   <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
                 </div>
@@ -3778,6 +3780,30 @@
         e.stopPropagation();
         e.preventDefault();
         syncHealth();
+      });
+    }
+    const scaleDownBtn = bar.querySelector(".lr-scale-down-btn");
+    if (scaleDownBtn) {
+      scaleDownBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const cur = userBarScale();
+        const next = Math.max(0.55, Math.min(2.4, Math.round((cur - 0.1) * 100) / 100));
+        settings.barScale = next;
+        await saveSettings();
+        applyBarPosition();
+      });
+    }
+    const scaleUpBtn = bar.querySelector(".lr-scale-up-btn");
+    if (scaleUpBtn) {
+      scaleUpBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const cur = userBarScale();
+        const next = Math.max(0.55, Math.min(2.4, Math.round((cur + 0.1) * 100) / 100));
+        settings.barScale = next;
+        await saveSettings();
+        applyBarPosition();
       });
     }
     const replayBtn = bar.querySelector(".lr-replay-btn");

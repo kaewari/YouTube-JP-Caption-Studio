@@ -250,12 +250,17 @@
 
   /** Render sample JA with ruby for the level-color preview box. */
   function renderLevelPreviewHtml(showFurigana = true) {
+    const Kana = globalThis.HardsubRomajiKana;
     return SAMPLE_PREVIEW_TOKENS.map((t) => {
       const s = escapeHtml(t.surface);
       const cls = jlptClassForToken(t);
       const classAttr = cls ? ` tok ${cls}` : " tok";
       if (showFurigana && t.reading && !isSkipPos(t.pos)) {
-        return `<ruby class="${classAttr.trim()}">${s}<rt>${escapeHtml(t.reading)}</rt></ruby>`;
+        const reading =
+          Kana && typeof Kana.katakanaToHiragana === "function"
+            ? Kana.katakanaToHiragana(t.reading)
+            : t.reading;
+        return `<ruby class="${classAttr.trim()}">${s}<rt>${escapeHtml(reading)}</rt></ruby>`;
       }
       return `<span class="${classAttr.trim()}">${s}</span>`;
     }).join("");

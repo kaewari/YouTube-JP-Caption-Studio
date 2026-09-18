@@ -26,6 +26,8 @@
       });
   }
 
+  const FALLBACK_LAST_CUE_DUR = 2.0;
+
   function parseJson3Cues(data) {
     const events = data?.events || [];
     const nodes = [];
@@ -54,11 +56,12 @@
       const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
       let end = hasDur
         ? n.start + n.durMs / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+        : (next ? (next.start > n.start ? next.start : n.start + 0.2) : n.start + FALLBACK_LAST_CUE_DUR);
       if (next && end > next.start) {
         end = Math.max(n.start + 0.2, next.start - 0.05);
       }
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      end = Math.round(Math.max(n.start + 0.2, end) * 1000) / 1000;
+      cues.push({ start: n.start, end: end, text: n.text });
     }
     return cues;
   }
@@ -86,7 +89,8 @@
     while ((m = textRe.exec(xml))) {
       const attrs = m[1] || "";
       const start = Number((attrs.match(/\bstart="([\d.]+)"/) || [])[1] || 0);
-      const dur = Number((attrs.match(/\bdur="([\d.]+)"/) || [])[1] || 0);
+      const durMatch = attrs.match(/\bdur="([\d.]+)"/);
+      const dur = durMatch ? Number(durMatch[1]) : null;
       const text = decodeEntities(
         (m[2] || "")
           .replace(/<br\s*\/?>/gi, " ")
@@ -106,11 +110,12 @@
         const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
         let end = hasDur
           ? n.start + n.dur
-          : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+          : (next ? (next.start > n.start ? next.start : n.start + 0.2) : n.start + FALLBACK_LAST_CUE_DUR);
         if (next && end > next.start) {
           end = Math.max(n.start + 0.2, next.start - 0.05);
         }
-        cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+        end = Math.round(Math.max(n.start + 0.2, end) * 1000) / 1000;
+        cues.push({ start: n.start, end: end, text: n.text });
       }
       if (cues.length) return cues;
     }
@@ -132,7 +137,14 @@
 
       const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
       const endMatch = attrs.match(/\bend="([^"]+)"/);
+      const durMatch = attrs.match(/\bdur="([^"]+)"/);
       let durMs = dRaw != null ? Number(dRaw) : null;
+      if (durMs == null && durMatch) {
+        const durSec = parseTimeStr(durMatch[1]);
+        if (durSec != null && durSec > 0) {
+          durMs = Math.round(durSec * 1000);
+        }
+      }
       if (durMs == null && endMatch) {
         const endSec = parseTimeStr(endMatch[1]);
         if (endSec != null && endSec > t) {
@@ -160,11 +172,12 @@
       const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
       let end = hasDur
         ? n.start + n.durMs / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
+        : (next ? (next.start > n.start ? next.start : n.start + 0.2) : n.start + FALLBACK_LAST_CUE_DUR);
       if (next && end > next.start) {
         end = Math.max(n.start + 0.2, next.start - 0.05);
       }
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      end = Math.round(Math.max(n.start + 0.2, end) * 1000) / 1000;
+      cues.push({ start: n.start, end: end, text: n.text });
     }
     return cues;
   }

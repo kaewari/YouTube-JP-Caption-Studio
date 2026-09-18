@@ -406,10 +406,15 @@
         const surfaceAttr = escapeAttr(t.surface);
         const cls = Vocab.classForToken(t, settings, state.userVocab || {});
         const classAttr = cls ? ` tok ${cls}` : " tok";
-        if (state.showFurigana && t.reading) {
-          const Romaji = globalThis.HardsubRomajiKana;
-          const romaji = Romaji?.toRomaji ? Romaji.toRomaji(t.reading) : t.reading;
-          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(romaji)}</rt></ruby>`;
+        if (state.showFurigana && t.reading && !Vocab.isSkipPos(t.pos)) {
+          const Kana = globalThis.HardsubRomajiKana;
+          const hiragana =
+            Kana && typeof Kana.katakanaToHiragana === "function"
+              ? Kana.katakanaToHiragana(t.reading)
+              : t.reading;
+          if (hiragana) {
+            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
+          }
         }
         return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
       })
@@ -1400,15 +1405,19 @@
           <div class="sp-words-flow">
             ${grp.words
               .map((w) => {
-                const romaji = Romaji?.toRomaji ? Romaji.toRomaji(w.reading) : w.reading;
+                const Kana = globalThis.HardsubRomajiKana;
+                const reading =
+                  Kana && typeof Kana.katakanaToHiragana === "function"
+                    ? Kana.katakanaToHiragana(w.reading)
+                    : (w.reading || "");
                 const isSaved = !!(state.userVocab && state.userVocab[w.lemma]);
                 const rank = getWordRank(w);
                 const colorCls = rank > 0 && rank <= 1000 ? "rank-common" : rank <= 2500 ? "rank-mid" : rank <= 5000 ? "rank-upper" : "rank-rare";
                 return `
-                  <button type="button" class="sp-word-chip ${colorCls} ${isSaved ? "saved" : ""}" data-word-lemma="${escapeAttr(w.lemma)}" title="${escapeAttr(w.surface)} (${escapeAttr(romaji || "")}): ${w.count} lần">
+                  <button type="button" class="sp-word-chip ${colorCls} ${isSaved ? "saved" : ""}" data-word-lemma="${escapeAttr(w.lemma)}" title="${escapeAttr(w.surface)} (${escapeAttr(reading)}): ${w.count} lần">
                     <ruby class="sp-word-ruby">
                       ${escapeHtml(w.surface)}
-                      <rt>${escapeHtml(romaji || "")}</rt>
+                      <rt>${escapeHtml(reading)}</rt>
                     </ruby>
                   </button>
                 `;
