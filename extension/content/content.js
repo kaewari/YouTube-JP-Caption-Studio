@@ -2151,8 +2151,8 @@
         e.stopPropagation();
         return;
       }
-      // Keep token hover / dict clicks from starting a drag.
-      if (e.target.closest("ruby, .tok")) return;
+      // Keep token hover / dict clicks and action buttons from starting a drag.
+      if (e.target.closest("ruby, .tok, button, .lr-card-actions, .hardsub-bridge-pill")) return;
       dragging = true;
       bar.classList.add("dragging");
       const rect = bar.getBoundingClientRect();
