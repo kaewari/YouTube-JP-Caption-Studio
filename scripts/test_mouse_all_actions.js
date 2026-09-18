@@ -17,12 +17,31 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Convert webpage client coordinates to macOS screen coordinates
-// Based on empirical window measurements: screenX = clientX + 8, screenY = clientY + 120
+let screenOffset = { offsetX: 8, offsetY: 41 };
+
+function calibrateScreenOffset() {
+  runChromeJs(`(() => {
+    window.__probe = null;
+    window.addEventListener("mousemove", e => { window.__probe = { cx: e.clientX, cy: e.clientY }; }, { once: true });
+  })()`);
+  execSync('osascript -e \'tell application "Google Chrome" to activate\'');
+  execSync('python3 scripts/mouse.py move 500 300');
+  try {
+    const probe = JSON.parse(runChromeJs('JSON.stringify(window.__probe)'));
+    if (probe && probe.cx != null) {
+      screenOffset = {
+        offsetX: 500 - probe.cx,
+        offsetY: 300 - probe.cy
+      };
+    }
+  } catch (_) {}
+  console.log(`Calibrated screen offset: (${screenOffset.offsetX}, ${screenOffset.offsetY})`);
+}
+
 function toScreen(clientPt) {
   return {
-    x: Math.round(clientPt.x + 8),
-    y: Math.round(clientPt.y + 120),
+    x: Math.round(clientPt.x + screenOffset.offsetX),
+    y: Math.round(clientPt.y + screenOffset.offsetY),
   };
 }
 
@@ -30,6 +49,8 @@ async function main() {
   console.log("===============================================================");
   console.log("NATIVE MOUSE QA: CLICK, KÉO THẢ (DRAG), GIỮ (HOLD), HOVER");
   console.log("===============================================================\n");
+
+  calibrateScreenOffset();
 
   // Verify Chrome connection & pause video to keep layout static
   runChromeJs('document.querySelector("video").pause()');
