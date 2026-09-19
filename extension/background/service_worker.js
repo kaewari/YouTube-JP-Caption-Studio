@@ -720,6 +720,16 @@ async function handleYtLoadCaptions(msg) {
     );
   }
 
+  const jaCand = candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext"));
+  if (jaCand) {
+    const rawJaUrl = jaCand.url;
+    const json3Url = rawJaUrl.includes("fmt=")
+      ? rawJaUrl.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+      : `${rawJaUrl}${rawJaUrl.includes("?") ? "&" : "?"}fmt=json3`;
+    pushUrl(`${json3Url}&tlang=vi`, "vi", jaCand.asr, `${jaCand.via}_tlang`);
+    pushUrl(`${json3Url}&tlang=en`, "en", jaCand.asr, `${jaCand.via}_tlang`);
+  }
+
   const hasEn = candidates.some((c) => matchLangFamily(c.lang, "en"));
   const hasVi = candidates.some((c) => matchLangFamily(c.lang, "vi"));
 

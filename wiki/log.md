@@ -2,6 +2,14 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
+## [2026-09-19] ingest | Fix Overlay Resize Freedom & Dual Subtitles (VI & EN)
+
+- Filed: `plan/fix-overlay-resize-and-subtitles-2026-09-19.md`
+- Sửa lỗi không kéo giãn được overlay: bỏ `width: auto !important;` trong `panel.css`, đổi sang `calc(var(--bar-box-w0) * var(--bar-user-scale-w, 1)) !important;`, đặt `width: 100%` cho `.lr-card-ja`, `.lr-card-vi`, `.lr-card-en`, và `position: relative; z-index: 5;` cho `.lr-card-actions`.
+- Sửa lỗi thiếu sub VI/EN: thêm fallback `&tlang=vi` và `&tlang=en` trên signed Japanese `baseUrl` trong `page_capture.js` và `service_worker.js`; render đồng thời cả 2 thẻ `.lr-card-vi` và `.lr-card-en` trong `content.js`; bổ sung đầy đủ CSS cho `.lr-card-en`.
+- Furigana guard: kiểm tra Kanji `hasKanji(t.surface)` trước khi sinh `<rt>` hiragana, tránh sinh furigana thừa cho từ mượn Katakana.
+- Kiểm thử thực tế: bộ test headless Google Chrome DOM thật (`scripts/test_real_resize_and_sub.js`) đo kích thước pixel thật và URL parameter format; toàn bộ gate anti-fake và sanity test PASS với exit code 0.
+
 ## [2026-08-23] ingest | Codebase review & improvement plan execution
 
 - Filed: `review/codebase-review-2026-08-23.md` và `plan/codebase-improvement-plan-2026-08-23.md`.

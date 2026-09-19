@@ -255,7 +255,7 @@
       const s = escapeHtml(t.surface);
       const cls = jlptClassForToken(t);
       const classAttr = cls ? ` tok ${cls}` : " tok";
-      if (showFurigana && t.reading && !isSkipPos(t.pos)) {
+      if (showFurigana && t.reading && !isSkipPos(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
         const reading =
           Kana && typeof Kana.katakanaToHiragana === "function"
             ? Kana.katakanaToHiragana(t.reading)

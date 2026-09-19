@@ -2981,7 +2981,7 @@
         const surfaceAttr = escapeAttr(t.surface);
         const cls = Vocab.classForToken(t, settings, userVocab);
         const classAttr = cls ? `tok ${cls}` : "tok";
-        if (settings.showFurigana && t.reading && !Vocab.isSkipPos(t.pos)) {
+        if (settings.showFurigana && t.reading && !Vocab.isSkipPos(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
           const Kana = globalThis.HardsubRomajiKana;
           const rawReading = t.reading || "";
           const hiragana =
@@ -3766,9 +3766,23 @@
             : ""
         }
         ${
-          showVi && (vi || en)
+          showVi && vi
             ? `<div class="lr-card-vi">
-                <div class="lr-text-vi">${escapeHtml(vi || en)}</div>
+                <div class="lr-text-vi">${escapeHtml(vi)}</div>
+              </div>`
+            : ""
+        }
+        ${
+          showEn && en
+            ? `<div class="lr-card-en">
+                <div class="lr-text-en">${escapeHtml(en)}</div>
+              </div>`
+            : ""
+        }
+        ${
+          showVi && !vi && en && !showEn
+            ? `<div class="lr-card-vi">
+                <div class="lr-text-vi">${escapeHtml(en)}</div>
               </div>`
             : ""
         }

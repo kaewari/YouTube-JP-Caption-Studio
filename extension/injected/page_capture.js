@@ -603,14 +603,24 @@
       };
     }
 
+    function toTlangUrl(baseUrl, tlang) {
+      if (!baseUrl) return null;
+      const base = baseUrl.includes("fmt=")
+        ? baseUrl.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+        : `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}fmt=json3`;
+      return `${base}&tlang=${encodeURIComponent(tlang)}`;
+    }
+
     async function packsFromTracks(tracks) {
       const ja = pickBestTrackByPrefix(tracks, "ja");
       const en = pickBestTrackByPrefix(tracks, "en");
       const vi = pickBestTrackByPrefix(tracks, "vi");
+      const enUrl = en?.baseUrl || toTlangUrl(ja?.baseUrl, "en");
+      const viUrl = vi?.baseUrl || toTlangUrl(ja?.baseUrl, "vi");
       const [jaGot, enGot, viGot] = await Promise.all([
         ja?.baseUrl ? fetchJson3Cues(ja.baseUrl) : Promise.resolve({ cues: [] }),
-        en?.baseUrl ? fetchJson3Cues(en.baseUrl) : Promise.resolve({ cues: [] }),
-        vi?.baseUrl ? fetchJson3Cues(vi.baseUrl) : Promise.resolve({ cues: [] }),
+        enUrl ? fetchJson3Cues(enUrl) : Promise.resolve({ cues: [] }),
+        viUrl ? fetchJson3Cues(viUrl) : Promise.resolve({ cues: [] }),
       ]);
       return { ja, en, vi, jaGot, enGot, viGot };
     }

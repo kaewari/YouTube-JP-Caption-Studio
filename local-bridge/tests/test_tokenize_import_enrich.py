@@ -1,18 +1,19 @@
 """PASS: post-import token enrich keeps EN/VI and fills reading + jlpt/freq.
 
 Simulates import replace (locked EN/VI, empty tokens) then /tokenize_batch.
-Run: cd local-bridge && .venv/bin/python test_tokenize_import_enrich.py
-Requires bridge on 127.0.0.1:8765 (or starts tokenize in-process).
+Run from the repository root: cd local-bridge && python3 tests/test_tokenize_import_enrich.py
+Requires bridge on 127.0.0.1:8765.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-BRIDGE = "http://127.0.0.1:8765"
+BRIDGE = os.environ.get("BRIDGE_URL", "http://127.0.0.1:8765").rstrip("/")
 KANJI_RE = __import__("re").compile(r"[\u3400-\u9fff]")
 
 
@@ -24,6 +25,17 @@ def post(path: str, body: dict) -> dict:
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"POST {path} returned HTTP {resp.status}")
+        print(f"HTTP {resp.status} POST {path}")
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def get(path: str) -> dict:
+    with urllib.request.urlopen(f"{BRIDGE}{path}", timeout=5) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"GET {path} returned HTTP {resp.status}")
+        print(f"HTTP {resp.status} GET {path}")
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -130,24 +142,27 @@ def assert_pass(cues: list[dict], original: list[dict]) -> None:
 
 
 def main() -> int:
-    # Health / endpoint availability
+    # Verify readiness, then exercise the lazy tokenizer before checking health again.
     try:
-        with urllib.request.urlopen(f"{BRIDGE}/health", timeout=5) as resp:
-            health = json.loads(resp.read().decode("utf-8"))
+        health = get("/health")
+        if health.get("ready") is not True:
+            print("FAIL: bridge health is not ready")
+            return 1
+        probe = post("/tokenize", {"text": "日本語"})
+        if not probe.get("tokens"):
+            print("FAIL: tokenize returned empty")
+            return 1
+        health = get("/health")
     except Exception as exc:
-        print(f"FAIL: bridge not reachable at {BRIDGE}: {exc}")
+        if isinstance(exc, urllib.error.HTTPError):
+            body = exc.read().decode("utf-8", errors="replace")
+            print(f"FAIL: bridge HTTP {exc.code}: {body}")
+        else:
+            print(f"FAIL: bridge request at {BRIDGE}: {exc}")
         return 1
     if not health.get("models_loaded", {}).get("sudachi"):
-        print("FAIL: sudachi not loaded")
+        print("FAIL: tokenize endpoint did not load sudachi")
         return 1
-
-    # Probe tokenize endpoint (restart bridge if 404)
-    try:
-        probe = post("/tokenize", {"text": "日本語"})
-    except urllib.error.HTTPError as exc:
-        print(f"FAIL: /tokenize HTTP {exc.code} — restart local-bridge to load new route")
-        return 1
-    assert probe.get("tokens"), "tokenize returned empty"
 
     sample = [
         {

@@ -24,6 +24,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 
 | Status | Topic | Plan | Review |
 |--------|-------|------|--------|
+| done | Fix Overlay Resize & Dual Subtitles | [plan/fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md) | — |
 | done | Netflix Caption Support & Replay | [plan/netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md) | [review/netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md) |
 | done | Plans completion inventory | all `plan/*.md` | [review/plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md) |
 | partial | Local-bridge audit (5/10 fixed, LB-6 tracked in perf audit) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
@@ -42,6 +43,8 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 Do not rewrite these from the wiki. Link only.
 
 ### Plans (`plan/`)
+
+- [fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
 
 - [auto-dich-sau-edit-2026-07-28.md](../plan/auto-dich-sau-edit-2026-07-28.md)
 - [bridge-ram-sqlite-2026-08-01.md](../plan/bridge-ram-sqlite-2026-08-01.md)

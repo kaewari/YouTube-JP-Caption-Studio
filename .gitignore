@@ -3,7 +3,11 @@
 .cursor/
 .claude/
 .obsidian/
-.agents/
+.agents/*
+!.agents/rules/
+!.agents/rules/verification.md
+!.agents/agents/
+!.agents/agents/backend-reviewer.md
 .vscode/
 .codegraph/
 .nodegraph/

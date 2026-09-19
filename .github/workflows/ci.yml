@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bridge-test-suite:
+    name: bridge-test-suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: local-bridge/requirements.txt
+      - name: Install bridge dependencies
+        run: python -m pip install -r requirements.txt
+        working-directory: local-bridge
+      - name: Run bridge tests
+        run: python -m pytest -q tests/
+        working-directory: local-bridge
+      - name: Run real bridge HTTP/tokenize integration
+        working-directory: local-bridge
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+          import socket
+          import urllib.error
+          import urllib.request
+
+          with socket.socket() as probe:
+              probe.bind(("127.0.0.1", 0))
+              port = probe.getsockname()[1]
+          health_url = f"http://127.0.0.1:{port}/health"
+          server = subprocess.Popen(
+              [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
+          )
+          try:
+              for _ in range(30):
+                  if server.poll() is not None:
+                      raise RuntimeError(f"uvicorn exited with code {server.returncode}")
+                  try:
+                      with urllib.request.urlopen(health_url, timeout=2) as response:
+                          payload = json.load(response)
+                          if response.status != 200 or payload.get("ready") is not True:
+                              raise RuntimeError(f"unexpected health response: HTTP {response.status} {payload!r}")
+                          if not isinstance(payload.get("models_loaded"), dict):
+                              raise RuntimeError(f"health response has no models_loaded object: {payload!r}")
+                          print(f"HTTP {response.status} /health; ready=true; models_loaded={payload['models_loaded']}")
+                          env = os.environ.copy()
+                          env["BRIDGE_URL"] = f"http://127.0.0.1:{port}"
+                          subprocess.run([sys.executable, "tests/test_tokenize_import_enrich.py"], env=env, check=True)
+                          break
+                  except urllib.error.HTTPError as exc:
+                      body = exc.read().decode("utf-8", errors="replace")
+                      raise RuntimeError(f"HTTP {exc.code} {health_url}: {body}") from exc
+                  except urllib.error.URLError:
+                      time.sleep(1)
+              else:
+                  raise TimeoutError(f"bridge did not answer {health_url} within 30 seconds")
+          finally:
+              if server.poll() is None:
+                  server.terminate()
+                  try:
+                      server.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      server.kill()
+                      server.wait()
+          PY
+
+  saved-items-check:
+    name: saved-items-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web/saved-items
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/saved-items/package-lock.json
+      - run: npm ci
+      - run: npm run check

@@ -1,7 +1,7 @@
-# AGENTS — mandatory for every agent (Claude, Codex, DeepSeek, …)
+# AGENTS — shared instructions for all coding agents and IDEs
 
 This file is the single source of truth for cross-tool instructions.  
-Keep in sync with: root `CLAUDE.md`.
+Root `CLAUDE.md` imports this file, and root `GEMINI.md` links directly to it. Edit this file only; do not maintain copied rules for individual IDEs.
 
 ---
 
@@ -64,7 +64,7 @@ Header:
 
 ## 2. Verify live code (cache ≠ disk)
 
-Especially DeepSeek / review / bugfix: index or chat cache can disagree with files on disk.
+Especially during reviews and bug fixes: an index or chat cache can disagree with files on disk.
 
 Before claiming a bug or writing a fix:
 
@@ -81,6 +81,9 @@ Before claiming a bug or writing a fix:
 
 - iPad deploy / signing: `ipad-app/Scripts/COMMANDS.md`
 - iPhone deploy / signing: `iphone-app/Scripts/COMMANDS.md`
+- Local bridge backend (Python 3.10+): first setup from `local-bridge/` with `python3 -m venv .venv`, `source .venv/bin/activate`, and `python -m pip install -r requirements.txt`; run `python -m pytest -q tests/` (includes real caption HTTP checks).
+- Tokenize/import integration: start the local bridge, then run `cd local-bridge && python3 tests/test_tokenize_import_enrich.py` (requires local runtime data).
+- Saved Items app: `web/saved-items/` (Next.js); read the installed guides in `node_modules/next/dist/docs/` and run `npm run check` from that directory.
 - Never delete the app on device just to update — overwrite install only (SwiftData wipe).
 
 ---
@@ -179,7 +182,8 @@ When you add a user-facing feature, update both `walkthrough.md` (what was added
 | Subtitle runtime | `data/subtitles/` | Không |
 | Config máy | `data/config/` | Không |
 | Evidence tạm | `.tmp-*/` hoặc xóa | Không |
-| IDE scratch | `.agents/` (tạm thời) | Không → bền thì `plan/`/`review/` |
+| Shared agent config | `.agents/rules/`, `.agents/agents/` | Có |
+| IDE scratch | `.agents/` ngoài hai thư mục trên | Không |
 | Codegraph index | `.codegraph/` | Không (local; skill hướng dẫn dùng) |
 
 Khớp bảng trước khi tạo docs/dataset; không invent top-level folder; runtime data ≠ wiki; lint wiki bắt file mồ côi.
@@ -188,14 +192,7 @@ Khớp bảng trước khi tạo docs/dataset; không invent top-level folder; r
 
 # CORE DIRECTIVES: MINIMAL DIFF, RIGOROUS PROOF & ZERO CURSOR
 
-## 1. Minimal Code & Strict YAGNI (Ponytail Mode)
-Code is a liability, not an asset. Always strive for the smallest working diff:
-- **Smallest Working Diff:** Make the minimal change necessary. Prefer a 1–5 line fix over widespread rewrites.
-- **Strict YAGNI:** Never add speculative abstractions, interfaces, factory patterns, DTOs, or config flags. If there is only one implementation, do not create an interface or abstract base class.
-- **Standard Library / Native First:** Use built-in runtime and standard library features before adding new packages or creating custom utility files.
-- **Zero Bloat:** Do not create single-function utility files. Do not refactor adjacent code unprompted.
-
-## 2. Anti-Faking & Evidence-Based Verification
+## 1. Anti-Faking & Evidence-Based Verification
 Zero sycophancy. Never report a task finished or tests passed without real, undeniable terminal proof:
 - **Proof Required:** Every claim of success must include the exact command executed, raw terminal stdout/stderr, and exit code 0.
 - **No Mock/Canned Production Code:** Never write stubs that return hardcoded success (e.g., `{"status": "ok"}`) to pass tests or simulate logic.
@@ -205,8 +202,55 @@ Zero sycophancy. Never report a task finished or tests passed without real, unde
   3. **Verify:** Re-run test and show raw output proving it PASSES.
 - **Test Integrity:** Never delete assertions, skip tests, or weaken expectations to make test suites pass.
 - **Strict Honesty & Self-Evaluation Rule:** Không bịa kết quả, không bịa số liệu. Trung thực 100%. Luôn tự đánh giá kết quả sau khi làm. Nếu thấp hơn 9/10 thì tự làm lại.
+- **Tuyệt Đối Cấm Test Giả Mạo (No Pseudo / String-Matching Tests):**
+  - Nghiêm cấm viết script test chỉ đọc source code qua `fs.readFileSync`, `grep`, regex hoặc `string.includes()` để kiểm tra xem file code có chứa chuỗi đó hay không rồi kết luận "Test PASSED". Việc kiểm tra file text chứa chuỗi chỉ là static inspection, KHÔNG PHẢI là kiểm thử phần mềm (software verification).
+  - Mọi bài test UI, layout, kéo giãn (resize), kéo thả (drag), phím tắt, hiển thị phụ đề PHẢI được chạy trong môi trường runtime thực tế (trình duyệt thật qua CDP/Playwright, hoặc headless DOM thật). Bắt buộc phải đo đạc thay đổi kích thước pixel (`getBoundingClientRect().width/height/top/left`) trước và sau khi tương tác.
+  - Mọi bài test mạng/API/phụ đề timedtext PHẢI kiểm tra mã phản hồi HTTP thực tế và parse dữ liệu thật, không được mock dữ liệu tĩnh trả về `status: ok` khi máy chủ thật đang trả về HTTP 429/404.
+  - Tuyệt đối không tự cho điểm 9/10 hay 10/10 dựa trên các bài test chuỗi tĩnh hoặc kết quả giả mạo. Mọi bài test ngụy tạo chuỗi tĩnh đều bị đánh giá 0/10 và bắt buộc phải xóa bỏ ngay lập tức.
 
-## 3. Strict Machine-Wide Cursor Ban (Zero Tolerance)
+### Independent review
+- For code changes, use a separate reviewer agent or session when available. It must read the original request, current on-disk diff, and affected code, and must not rely on the implementer's claims.
+- Before backend changes, map the request → route/controller → service → repository/model → database → response path; list acceptance criteria, error/permission cases, test commands, and risks. If the user asks for planning only, stop before edits; an implementation request already authorizes implementation.
+- The reviewer is read-only. It independently checks each acceptance criterion, changed-file scope, test quality, skipped/only tests, regressions, and relevant runtime behavior. Report each criterion as `VERIFIED`, `NOT VERIFIED`, or `CONTRADICTED` with command, exit code, and actual output.
+- Run build, unit, and integration/API checks that apply. For backend changes, inspect the actual HTTP status and parsed response, and verify database effects using an isolated test database. Never use production data or run destructive migration/DELETE operations against production.
+- Run `git diff` and `git diff --check`; unexplained changes, missing evidence, skipped required checks, or unavailable reviewer prevent `PASS`.
+- Overall status is `PASS` only when applicable checks and criteria have evidence and no blocking finding remains; use `FAIL` for a confirmed defect and `NOT VERIFIED` when reviewer or evidence is unavailable.
+- Report in this format:
+
+  ```text
+  STATUS: PASS / FAIL / NOT VERIFIED
+  REQUIREMENTS: criterion, expected, actual, evidence
+  COMMANDS: exact command, exit code, actual output
+  API_CHECKS: endpoint, method, HTTP status, parsed response
+  DATABASE_CHECKS: expected state, actual state, evidence
+  PROBLEMS / REQUIRED_FIXES: ...
+  ```
+
+- Do not call review automatic unless an actual hook or CI run produced evidence.
+- Keep shell execution inside the IDE's workspace sandbox or approval mode; do not use unrestricted auto-execution for project commands.
+- Root GitHub CI status checks are `bridge-test-suite` and `saved-items-check`; both should be required on the default branch before merging.
+
+Reusable prompts for any IDE:
+
+**Plan only:**
+
+```text
+Chưa sửa file. Phân tích task backend theo request → route/controller → service → repository/model → database → response. Liệt kê file liên quan, acceptance criteria, test/build/API cần chạy, rủi ro và thao tác dữ liệu cần tránh. Sau đó dừng lại.
+```
+
+**Implement after authorization:**
+
+```text
+Triển khai task trong phạm vi đã thống nhất. Viết/cập nhật test phù hợp; chạy build, unit và integration/API checks liên quan; kiểm tra HTTP status và parse response thật; xác minh database bằng dữ liệu test riêng; chạy git diff và git diff --check. Nếu thiếu bằng chứng, ghi NOT VERIFIED.
+```
+
+**Independent review:**
+
+```text
+Review độc lập yêu cầu gốc, diff hiện tại trên disk và code liên quan. Không tin báo cáo của agent sửa code. Tự chạy các kiểm tra liên quan; xác minh HTTP response và database side effect khi cần. Không sửa file. Trả về PASS, FAIL hoặc NOT VERIFIED cùng requirement, command, exit code, output thật, vấn đề và sửa chữa cần thiết.
+```
+
+## 2. Strict Machine-Wide Cursor Ban (Zero Tolerance)
 - **Absolute Prohibition:** Never create, edit, suggest, recommend, or maintain any Cursor files or directories (`.cursorrules`, `.cursor/`, `.cursorignore`, etc.).
 - **Auto-Purge:** If any Cursor file or directory is detected in any workspace or repository, delete it immediately without asking.
 - **Standard Alternatives Only:** Use standard configuration files (`AGENTS.md`, `CLAUDE.md`, standard config files).

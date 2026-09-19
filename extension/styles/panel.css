@@ -720,16 +720,26 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
   flex-direction: column !important;
   align-items: center !important;
   gap: 8px !important;
-  width: auto !important;
+  width: calc(var(--bar-box-w0) * var(--bar-user-scale-w, 1)) !important;
+  min-width: 280px !important;
+  max-width: min(1050px, 96vw) !important;
   height: auto !important;
-  min-width: 0 !important;
   min-height: 0 !important;
-  max-width: min(940px, 92vw) !important;
   max-height: none !important;
   overflow: visible !important;
 }
 
+.hardsub-bar .lr-overlay-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
 .hardsub-bar .lr-card-ja {
+  width: 100%;
+  box-sizing: border-box;
   position: relative;
   background: rgba(16, 16, 20, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -738,17 +748,20 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 14px;
-  max-width: 100%;
 }
 
 .hardsub-bar .lr-card-ja .lr-text-ja {
   font-size: calc(26px * var(--bar-scale));
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 700;
-  line-height: 1.9;
+  line-height: 1.8;
   letter-spacing: 0.01em;
   color: #f5f5f7;
+  text-align: center;
+  word-break: break-word;
 }
 
 .hardsub-bar .lr-card-ja .lr-text-ja ruby {
@@ -758,9 +771,13 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
 .hardsub-bar .lr-card-ja .lr-text-ja ruby rt {
   font-size: 0.52em;
   font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
 }
 
-.hardsub-bar .lr-card-vi {
+.hardsub-bar .lr-card-vi,
+.hardsub-bar .lr-card-en {
+  width: 100%;
+  box-sizing: border-box;
   background: rgba(18, 18, 22, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
@@ -770,15 +787,24 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
   font-weight: 500;
   line-height: 1.4;
   text-align: center;
-  max-width: 100%;
 }
 
 .hardsub-bar .lr-card-vi .lr-text-vi {
   font-size: calc(16px * var(--bar-scale));
+  color: #ffffff;
+  word-break: break-word;
+}
+
+.hardsub-bar .lr-card-en .lr-text-en {
+  font-size: calc(16px * var(--bar-scale));
+  color: #ffffff;
+  word-break: break-word;
 }
 
 /* Play/Replay Button on Left of Card */
 .hardsub-bar .lr-replay-btn {
+  position: relative;
+  z-index: 5;
   flex-shrink: 0;
   width: 22px;
   height: 22px;
@@ -807,6 +833,8 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
 
 /* Star & Actions on Right of Card */
 .hardsub-bar .lr-card-actions {
+  position: relative;
+  z-index: 5;
   flex-shrink: 0;
   display: flex;
   align-items: center;

@@ -406,7 +406,7 @@
         const surfaceAttr = escapeAttr(t.surface);
         const cls = Vocab.classForToken(t, settings, state.userVocab || {});
         const classAttr = cls ? ` tok ${cls}` : " tok";
-        if (state.showFurigana && t.reading && !Vocab.isSkipPos(t.pos)) {
+        if (state.showFurigana && t.reading && !Vocab.isSkipPos?.(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
           const Kana = globalThis.HardsubRomajiKana;
           const hiragana =
             Kana && typeof Kana.katakanaToHiragana === "function"
