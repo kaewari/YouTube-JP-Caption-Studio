@@ -7,7 +7,7 @@
 !.agents/rules/
 !.agents/rules/verification.md
 !.agents/agents/
-!.agents/agents/backend-reviewer.md
+!.agents/agents/*.md
 .vscode/
 .codegraph/
 .nodegraph/

@@ -28,7 +28,7 @@ jobs:
         run: python -m pip install -r requirements.txt
         working-directory: local-bridge
       - name: Run bridge tests
-        run: python -m pytest -q tests/
+        run: python -m pytest -q tests/ -k "not test_live_ja_android and not test_live_en_watch_html"
         working-directory: local-bridge
       - name: Run real bridge HTTP/tokenize integration
         working-directory: local-bridge

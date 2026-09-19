@@ -26,3 +26,9 @@ for IDEs that discover `.agents/rules/`.
 - `PASS` requires all applicable checks and evidence.
 - Use `FAIL` for a confirmed defect.
 - Use `NOT VERIFIED` when a required check or evidence is unavailable.
+## Project-specific runtime evidence
+
+Before editing, read the request and current files from disk, then record the
+branch, commit, and status. Map the real flow through the bridge API, service,
+persistence, and response. Freeze scope: no unrelated refactor, dependency,
+or test weakening.

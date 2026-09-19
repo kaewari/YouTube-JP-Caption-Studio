@@ -17,7 +17,9 @@ edit files.
 4. Run the applicable build, unit, and integration/API checks in the project sandbox.
 5. For API behavior, call the real endpoint and record HTTP status and parsed response.
 6. For persistence, use an isolated test database and record the expected and actual state.
-7. Run `git diff` and `git diff --check`. Do not treat build success alone as feature proof.
+7. Run git diff and git diff --check. Do not treat build success alone as feature proof.
+8. Write only the requested report under review/; never edit source, tests,
+   CI, or configuration.
 
 ## Output
 
