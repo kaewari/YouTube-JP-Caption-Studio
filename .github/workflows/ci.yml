@@ -27,6 +27,9 @@ jobs:
       - name: Install bridge dependencies
         run: python -m pip install -r requirements.txt
         working-directory: local-bridge
+      - name: Build test dictionary database
+        run: python app/scripts/build_dict_sqlite.py
+        working-directory: local-bridge
       - name: Run bridge tests
         run: python -m pytest -q tests/ -k "not test_live_ja_android and not test_live_en_watch_html"
         working-directory: local-bridge
