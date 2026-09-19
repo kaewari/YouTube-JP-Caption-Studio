@@ -1943,6 +1943,14 @@
     return Number.isFinite(n) ? Math.max(0.55, Math.min(2.4, n)) : 1;
   }
 
+  async function adjustBarScale(delta) {
+    const raw = Number(settings.barScale);
+    const current = Number.isFinite(raw) ? raw : DEFAULTS.barScale;
+    const next = Math.round((current + Number(delta || 0)) * 10) / 10;
+    settings.barScale = Math.max(0.55, Math.min(2.4, next));
+    await saveSettings();
+    applyBarPosition();
+  }
   function clampBarBoxScale(n) {
     const x = Number(n);
     return Number.isFinite(x) ? Math.max(0.55, Math.min(2.4, x)) : 1;
@@ -2232,7 +2240,7 @@
       await saveSettings();
     });
     bar.addEventListener("dblclick", async (e) => {
-      if (e.target.closest("ruby, .tok, .bar-resize")) return;
+      if (e.target.closest("ruby, .tok, .bar-resize, button")) return;
       settings.barPos = null;
       settings.barScale = 1;
       settings.barScaleW = 1;
@@ -3828,6 +3836,18 @@
         repeatCurrentCue();
       });
     }
+    const scaleDownBtn = bar.querySelector(".lr-scale-down");
+    scaleDownBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      await adjustBarScale(-0.1);
+    });
+    const scaleUpBtn = bar.querySelector(".lr-scale-up");
+    scaleUpBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      await adjustBarScale(0.1);
+    });
     const starBtn = bar.querySelector(".lr-star-btn");
     if (starBtn) {
       starBtn.addEventListener("click", async (e) => {

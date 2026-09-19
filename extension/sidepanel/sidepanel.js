@@ -1392,7 +1392,6 @@
       else groups[groups.length - 1].words.push(w);
     }
 
-    const Romaji = globalThis.HardsubRomajiKana;
     let html = "";
     for (const grp of groups) {
       if (!grp.words.length) continue;
