@@ -34,6 +34,20 @@
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       }
+    },
+    "toggle_overlay": {
+      "suggested_key": {
+        "default": "Alt+H",
+        "mac": "Alt+H"
+      },
+      "description": "Bật/tắt thanh phụ đề overlay trên video"
+    },
+    "toggle_pip": {
+      "suggested_key": {
+        "default": "Alt+P",
+        "mac": "Alt+P"
+      },
+      "description": "Bật/tắt chế độ Picture-in-Picture"
     }
   },
   "side_panel": {

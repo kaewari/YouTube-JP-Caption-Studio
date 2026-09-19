@@ -24,6 +24,7 @@ _ext_state_lock = threading.Lock()
 _ext_state: dict[str, Any] = {
     "userVocab": {},
     "hardsubSettings": None,
+    "savedCues": {},
     "updatedAt": 0.0,
     "source": "",
 }
@@ -42,6 +43,9 @@ def load_ext_state_disk() -> None:
                     "hardsubSettings": raw.get("hardsubSettings")
                     if isinstance(raw.get("hardsubSettings"), dict)
                     else None,
+                    "savedCues": raw.get("savedCues")
+                    if isinstance(raw.get("savedCues"), dict)
+                    else {},
                     "updatedAt": float(raw.get("updatedAt") or 0),
                     "source": str(raw.get("source") or ""),
                 }
@@ -70,6 +74,7 @@ def _ext_state_response() -> ExtensionStateResponse:
         ok=True,
         userVocab=dict(_ext_state.get("userVocab") or {}),
         hardsubSettings=_ext_state.get("hardsubSettings"),
+        savedCues=dict(_ext_state.get("savedCues") or {}),
         updatedAt=float(_ext_state.get("updatedAt") or 0),
         source=str(_ext_state.get("source") or ""),
     )
@@ -95,6 +100,8 @@ def post_extension_state(body: ExtensionStateRequest) -> ExtensionStateResponse:
             _ext_state["userVocab"] = cleaned
         if body.hardsubSettings is not None:
             _ext_state["hardsubSettings"] = dict(body.hardsubSettings)
+        if body.savedCues is not None:
+            _ext_state["savedCues"] = dict(body.savedCues)
         _ext_state["updatedAt"] = time.time()
         if body.source:
             _ext_state["source"] = body.source
@@ -102,6 +109,35 @@ def post_extension_state(body: ExtensionStateRequest) -> ExtensionStateResponse:
             _ext_state["source"] = "api"
         _save_ext_state_disk()
     return _ext_state_response()
+
+
+@router.get("/api/saved-items")
+def get_saved_items() -> dict[str, Any]:
+    """Return all saved cues and learning vocab."""
+    with _ext_state_lock:
+        return {
+            "ok": True,
+            "savedCues": list((_ext_state.get("savedCues") or {}).values()),
+            "userVocab": dict(_ext_state.get("userVocab") or {}),
+            "updatedAt": float(_ext_state.get("updatedAt") or 0),
+        }
+
+
+@router.post("/api/saved-items")
+def post_saved_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Add or update a single saved cue."""
+    global _ext_state
+    item_id = str(item.get("id") or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=400, detail="Missing item id")
+    with _ext_state_lock:
+        cues = dict(_ext_state.get("savedCues") or {})
+        cues[item_id] = item
+        _ext_state["savedCues"] = cues
+        _ext_state["updatedAt"] = time.time()
+        _ext_state["source"] = "api"
+        _save_ext_state_disk()
+    return {"ok": True, "id": item_id}
 
 
 @router.get("/backup/snapshot")

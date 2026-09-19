@@ -42,9 +42,17 @@
     savedCues: [],
   };
 
+  function normalizeSavedCues(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === "object") return Object.values(val);
+    return [];
+  }
+
   function isCueStarred(id) {
-    if (!id || !Array.isArray(state.savedCues)) return false;
-    return state.savedCues.some((c) => c.id === id);
+    if (!id) return false;
+    const list = normalizeSavedCues(state.savedCues);
+    return list.some((c) => c && c.id === id);
   }
 
   /** Fallback mirror of JLPT colors (storage-level settings live in the
@@ -150,14 +158,24 @@
   }
 
   function setDriveStatus(text) {
-    if (!driveStatusEl) return;
     const t = String(text || "");
-    driveStatusEl.textContent = t;
-    driveStatusEl.classList.toggle("is-error", /^error/i.test(t));
-    driveStatusEl.classList.toggle(
-      "is-ok",
-      /^(Connected|Uploaded|Restored)/i.test(t)
-    );
+    if (driveStatusEl) {
+      driveStatusEl.textContent = t;
+      driveStatusEl.classList.toggle("is-error", /^error/i.test(t));
+      driveStatusEl.classList.toggle(
+        "is-ok",
+        /^(Connected|Uploaded|Restored)/i.test(t)
+      );
+    }
+    if (driveUploadBtn) {
+      if (/^error/i.test(t) || /auth/i.test(t)) {
+        driveUploadBtn.classList.add("sp-btn-warn");
+        driveUploadBtn.title = `Drive: ${t} — Bấm để kết nối / cấp quyền lại`;
+      } else if (/^(Connected|Uploaded)/i.test(t)) {
+        driveUploadBtn.classList.remove("sp-btn-warn");
+        driveUploadBtn.title = `Drive: ${t} (Bấm để upload ngay)`;
+      }
+    }
   }
 
   function agoText(iso) {
@@ -780,13 +798,6 @@
       clearSpDictHideTimer();
       showDict(e, tok);
     });
-    listEl.addEventListener("mouseout", (e) => {
-      const tok = tokenFromEventTarget(e.target);
-      if (!tok || !listEl.contains(tok)) return;
-      const to = tokenFromEventTarget(e.relatedTarget);
-      if (to && listEl.contains(to)) return;
-      scheduleHideDict();
-    });
     listEl.addEventListener("click", (e) => {
       const tok = tokenFromEventTarget(e.target);
       if (!tok || !listEl.contains(tok)) return;
@@ -1230,7 +1241,7 @@
         if (!id) return;
         void (async () => {
           const r = await sendCmd("toggle_star_cue", { id });
-          if (r?.savedCues) state.savedCues = r.savedCues;
+          if (r?.savedCues) state.savedCues = normalizeSavedCues(r.savedCues);
           const starred = isCueStarred(id);
           btn.classList.toggle("active", starred);
           btn.textContent = starred ? "★" : "☆";
@@ -1375,8 +1386,8 @@
       }
     }
 
-    if (Array.isArray(incoming.savedCues)) {
-      state.savedCues = incoming.savedCues;
+    if (incoming.savedCues) {
+      state.savedCues = normalizeSavedCues(incoming.savedCues);
       if (activeSideTab === "saved") renderSavedTab();
     }
     if (Array.isArray(incoming.cues) && activeSideTab === "words") {
@@ -1538,7 +1549,7 @@
     const userVocabEntries = Object.entries(state.userVocab || {}).filter(
       ([, v]) => v && (v === "learning" || v === "special" || v?.status === "learning" || v?.status === "special")
     );
-    const savedCues = state.savedCues || [];
+    const savedCues = normalizeSavedCues(state.savedCues);
 
     if (!userVocabEntries.length && !savedCues.length) {
       savedListEl.innerHTML = '<div class="sp-saved-empty">Chưa có từ hoặc câu nào được đánh dấu sao lưu trữ.</div>';
@@ -1710,12 +1721,7 @@
 
   function scheduleHideDict() {
     clearSpDictHideTimer();
-    // Grace so pointer can leave the side panel and land on the page popup.
-    spDictHideTimer = setTimeout(() => {
-      sendCmd("HIDE_PAGE_DICT");
-      clearSpDictTokActive();
-      spDictHideTimer = null;
-    }, 380);
+    // NO-OP: Dictionary popup NEVER auto-hides on timer or mouseout while user is viewing it.
   }
 
   listEl.addEventListener("wheel", pauseFollowFromUser, { passive: true });
@@ -1761,7 +1767,7 @@
       const r = await chrome.runtime.sendMessage({ type: "DRIVE_UPLOAD_NOW" });
       if (r?.ok && r?.uploaded) {
         setDriveStatus(r.status || "Uploaded");
-        toast("Uploaded lên Drive", 1600);
+        toast("Uploaded lên Drive thành công", 1600);
       } else if (r?.ok && r?.deferred) {
         setDriveStatus("Uploading…");
       } else if (r?.ok) {
@@ -1772,16 +1778,35 @@
         let errMsg = rawErr;
         if (rawErr.toLowerCase().includes("bridge") || r?.skipped === "bridge_offline") {
           errMsg = "Bridge chưa kết nối / snapshot offline";
+          setDriveStatus(`error: ${errMsg.slice(0, 50)}`);
+          toast(`Upload Drive lỗi: ${errMsg}`, 4000);
         } else if (
           rawErr.toLowerCase().includes("auth") ||
           rawErr.toLowerCase().includes("token") ||
           rawErr.includes("401") ||
           rawErr.includes("403")
         ) {
-          errMsg = "Google OAuth hết hạn hoặc chưa cấp quyền Drive";
+          errMsg = "Google OAuth cần cấp quyền — Đang mở popup Google...";
+          setDriveStatus("Auth required…");
+          toast(errMsg, 3000);
+          const authRes = await chrome.runtime.sendMessage({ type: "DRIVE_CONNECT" });
+          if (authRes?.ok) {
+            toast("Đã kết nối Google Drive! Đang thử upload lại...", 2000);
+            const retryRes = await chrome.runtime.sendMessage({ type: "DRIVE_UPLOAD_NOW" });
+            if (retryRes?.ok) {
+              setDriveStatus(retryRes.status || "Uploaded");
+              toast("Uploaded lên Drive thành công!", 2000);
+              return;
+            }
+          } else {
+            errMsg = "Chưa cấp quyền Google OAuth";
+            setDriveStatus("error: OAuth failed");
+            toast(`Upload Drive lỗi: ${authRes?.error || errMsg}`, 4000);
+          }
+        } else {
+          setDriveStatus(`error: ${errMsg.slice(0, 50)}`);
+          toast(`Upload Drive lỗi: ${errMsg}`, 4000);
         }
-        setDriveStatus(`error: ${errMsg.slice(0, 50)}`);
-        toast(`Upload Drive lỗi: ${errMsg}`, 4000);
       }
     } catch (err) {
       const msg = String(err?.message || err);
@@ -1814,6 +1839,9 @@
   });
   document.getElementById("sp-overlay").addEventListener("click", async () => {
     await sendCmd("toggle_overlay");
+  });
+  document.getElementById("sp-pip")?.addEventListener("click", async () => {
+    await sendCmd("toggle_pip");
   });
   document.getElementById("sp-clear-mt").addEventListener("click", async () => {
     if (!confirm("Xóa tất cả bản dịch EN/VI của video này? (JA giữ nguyên)")) return;
@@ -2175,6 +2203,61 @@
           : "Đã tắt chế độ Flashcard"
       );
       renderSavedTab();
+    });
+  }
+
+  function exportAnkiTsv() {
+    const savedCues = normalizeSavedCues(state.savedCues);
+    const userVocabEntries = Object.entries(state.userVocab || {}).filter(
+      ([, v]) => v && (v === "learning" || v === "special" || v?.status === "learning" || v?.status === "special")
+    );
+
+    if (!savedCues.length && !userVocabEntries.length) {
+      toast("Chưa có từ hoặc câu nào được lưu để xuất Anki");
+      return;
+    }
+
+    const rows = [];
+    rows.push("#separator:tab");
+    rows.push("#html:true");
+    rows.push("#tags column:3");
+
+    // Words
+    for (const [lemma] of userVocabEntries) {
+      const sampleCue =
+        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
+        (savedCues || []).find((c) => c.source && c.source.includes(lemma));
+      const sampleCtx = sampleCue ? sampleCue.source : "";
+      const cleanLemma = lemma.replace(/[\t\r\n]/g, " ").trim();
+      const cleanBack = (sampleCtx ? `Ngữ cảnh: ${sampleCtx}` : cleanLemma).replace(/[\t\r\n]/g, " ").trim();
+      rows.push(`${cleanLemma}\t${cleanBack}\tcaption_studio vocab`);
+    }
+
+    // Sentences
+    for (const sc of savedCues) {
+      const ja = (sc.source || "").replace(/[\t\r\n]/g, " ").trim();
+      const trans = (stripStub(sc.vi) || stripStub(sc.en) || "").replace(/[\t\r\n]/g, " ").trim();
+      if (!ja) continue;
+      rows.push(`${ja}\t${trans}\tcaption_studio sentence`);
+    }
+
+    const blob = new Blob([rows.join("\n")], { type: "text/tab-separated-values;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `caption_studio_anki_${dateStr}.tsv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(`Đã xuất ${rows.length - 3} mục sang file Anki TSV`);
+  }
+
+  const btnExportAnki = document.getElementById("sp-saved-export-anki");
+  if (btnExportAnki) {
+    btnExportAnki.addEventListener("click", () => {
+      exportAnkiTsv();
     });
   }
 

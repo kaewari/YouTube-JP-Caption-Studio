@@ -40,7 +40,7 @@
     barScaleW: 1,
     barScaleH: 1,
     /** Overlay background alpha (0–1). */
-    barBgOpacity: 0.82,
+    barBgOpacity: 0.4,
     /** Overlay text alpha (0–1). */
     barTextOpacity: 1,
     barShowJa: true,
@@ -675,6 +675,16 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg?.type === "TOGGLE_OVERLAY") {
+      void toggleShowOnVideo();
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg?.type === "TOGGLE_PIP") {
+      void togglePictureInPicture();
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg?.type !== "SP_CMD") return;
     handleSidePanelCmd(msg)
       .then((r) => sendResponse(r || { ok: true }))
@@ -722,6 +732,10 @@
     if (cmd === "toggle_overlay") {
       const showOnVideo = await toggleShowOnVideo();
       return { ok: true, showOnVideo };
+    }
+    if (cmd === "toggle_pip") {
+      await togglePictureInPicture();
+      return { ok: true };
     }
     if (cmd === "export") {
       exportTxt();
@@ -785,13 +799,12 @@
       return { ok: true };
     }
     if (cmd === "HIDE_PAGE_DICT" || cmd === "hide_dict") {
-      // Longer grace: pointer must cross from side panel chrome onto the page popup.
-      scheduleHideDict(520);
+      // Never auto-hide popup on timer or mouseout — dismiss only on Esc, close button ✕, or outside click.
       return { ok: true };
     }
     if (cmd === "toggle_star_cue") {
       await toggleStarCue(msg.id);
-      return { ok: true, starred: isCueStarred(msg.id), savedCues };
+      return { ok: true, starred: isCueStarred(msg.id), savedCues: Object.values(savedCues || {}) };
     }
     if (cmd === "open_settings") {
       openSettingsModal();
@@ -2319,18 +2332,21 @@
     );
   }
 
-  function scheduleHideDict(ms = 400) {
+  function hideDictImmediately() {
     clearDictHideTimer();
-    dictHideTimer = setTimeout(() => {
-      const dictEl = document.getElementById("hardsub-ocr-dict");
-      if (!dictEl) return;
-      // Keep open while pointer is on the page popup (side-panel → page hop).
-      if (dictEl.matches(":hover")) return;
-      dictEl.hidden = true;
-      dictEl.innerHTML = "";
-      dictEl.dataset.dictSource = "";
-      clearDictTokActive();
-    }, ms);
+    const dictEl = document.getElementById("hardsub-ocr-dict");
+    if (!dictEl) return;
+    dictEl.hidden = true;
+    dictEl.style.setProperty("display", "none", "important");
+    dictEl.innerHTML = "";
+    dictEl.dataset.dictSource = "";
+    clearDictTokActive();
+  }
+
+  function scheduleHideDict() {
+    clearDictHideTimer();
+    // NO-OP: Dictionary popup NEVER auto-hides on a timer or mouseleave.
+    // Dismiss ONLY on Esc key, clicking close button ✕, or clicking outside.
   }
 
   function setupBarDict() {
@@ -2339,10 +2355,7 @@
     dictEl.dataset.bound = "1";
     dictEl.addEventListener("pointerenter", clearDictHideTimer);
     dictEl.addEventListener("mouseenter", clearDictHideTimer);
-    dictEl.addEventListener("mouseleave", (e) => {
-      if (isInsideDictOrToken(e.relatedTarget)) return;
-      scheduleHideDict(400);
-    });
+    // Popup persists until user clicks outside, clicks Escape, or clicks the close button.
   }
 
   function isPunctuationSurface(surface) {
@@ -2487,6 +2500,16 @@
     const sentenceHtml = sentenceBlockHtml(ctx);
     const hasSentence = !!sentenceHtml;
 
+    function bindDictClose(dictEl) {
+      const btn = dictEl.querySelector(".dict-close-btn");
+      if (!btn) return;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        hideDictImmediately();
+      });
+    }
+
     if (!d?.found) {
       dictEl.innerHTML = `<div class="dict-top">
           ${dictSentToggleHtml(hasSentence)}
@@ -2494,8 +2517,10 @@
             <strong class="dict-head">${escapeHtml(surface)}</strong>
             <span class="dict-gloss">${escapeHtml(d?.message || "không có trong từ điển")}</span>
           </div>
+          <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
         </div>${sentenceHtml}`;
       bindDictSentenceToggle(dictEl);
+      bindDictClose(dictEl);
       return;
     }
 
@@ -2510,13 +2535,16 @@
             reading ? `<span class="dict-reading-top">${escapeHtml(reading)}</span>` : ""
           }
         </div>
+        <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
       </div>${glossHtml}${sentenceHtml}${markButtonsHtml(markLemma)}`;
     bindDictMarks(dictEl);
     bindDictSentenceToggle(dictEl);
+    bindDictClose(dictEl);
   }
 
   async function fetchAndFillDict(dictEl, surface, lemma, place, ctx = {}) {
     dictEl.hidden = false;
+    dictEl.style.removeProperty("display");
     dictEl.classList.toggle("dict-hide-sentence", settings.dictShowSentence === false);
     const sentenceHtml = sentenceBlockHtml(ctx);
     dictEl.innerHTML = `<div class="dict-top">
@@ -2525,8 +2553,17 @@
           <strong class="dict-head">${escapeHtml(surface)}</strong>
           <span class="dict-gloss">…</span>
         </div>
+        <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
       </div>${sentenceHtml}`;
     bindDictSentenceToggle(dictEl);
+    const closeBtn = dictEl.querySelector(".dict-close-btn");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        hideDictImmediately();
+      });
+    }
     place();
 
     const seq = ++dictReqSeq;
@@ -2604,14 +2641,12 @@
     bar.querySelectorAll("ruby, .tok").forEach((tok) => {
       tok.addEventListener("mouseenter", (e) => {
         clearDictHideTimer();
-        showBarDict(e, tok);
-      });
-      tok.addEventListener("mouseleave", (e) => {
-        if (isInsideDictOrToken(e.relatedTarget)) {
-          clearDictHideTimer();
-          return;
+        const dictEl = document.getElementById("hardsub-ocr-dict");
+        // If popup is already open, do not overwrite or flicker on casual mouse brush!
+        if (dictEl && !dictEl.hidden) return;
+        if (settings.showMiniDict !== false) {
+          showBarDict(e, tok);
         }
-        scheduleHideDict(400);
       });
       tok.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2620,6 +2655,55 @@
       });
     });
   }
+
+  async function togglePictureInPicture() {
+    const video =
+      document.querySelector("video.html5-main-video") ||
+      document.querySelector("video");
+    if (!video) {
+      toast("Không tìm thấy video để bật PiP");
+      return;
+    }
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        toast("Đã thoát Picture-in-Picture");
+      } else if (document.pictureInPictureEnabled && !video.disablePictureInPicture) {
+        await video.requestPictureInPicture();
+        toast("Đã bật Picture-in-Picture");
+      } else {
+        toast("Trình duyệt không hỗ trợ PiP cho video này");
+      }
+    } catch (err) {
+      toast(`PiP: ${err?.message || err}`);
+    }
+  }
+
+  // Global listeners: close dict on Esc or clicking outside, plus Alt+H and Alt+P shortcuts
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const dictEl = document.getElementById("hardsub-ocr-dict");
+      if (dictEl && !dictEl.hidden) {
+        hideDictImmediately();
+      }
+    }
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.code === "KeyH" || e.key === "h" || e.key === "H") {
+        e.preventDefault();
+        void toggleShowOnVideo();
+      } else if (e.code === "KeyP" || e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        void togglePictureInPicture();
+      }
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    const dictEl = document.getElementById("hardsub-ocr-dict");
+    if (!dictEl || dictEl.hidden) return;
+    if (e.target.closest("#hardsub-ocr-dict") || e.target.closest(".tok, ruby, .sp-sentence, .sp-ja-wrap")) return;
+    hideDictImmediately();
+  });
 
   let lastStatusText = "";
   let contentTabId = null;
@@ -2659,7 +2743,7 @@
       levelHighlightEnabled: settings.levelHighlightEnabled !== false,
       levelColors: settings.levelColors,
       userVocab,
-      savedCues: savedCues || [],
+      savedCues: Object.values(savedCues || {}),
       scriptSource,
       ...extra,
       _seq: seq,
@@ -2703,7 +2787,7 @@
               status: lastStatusText,
               activeCueId,
               bridgeReady: !!bridgeReady,
-              savedCues: savedCues || [],
+              savedCues: Object.values(savedCues || {}),
               ...extra,
             },
           })
@@ -3760,11 +3844,6 @@
       } else {
         bar.innerHTML = "";
         ensureBarResizeHandle(bar);
-      }
-      const dictEl = document.getElementById("hardsub-ocr-dict");
-      if (dictEl) {
-        dictEl.hidden = true;
-        dictEl.innerHTML = "";
       }
       return;
     }

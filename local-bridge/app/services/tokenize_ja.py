@@ -84,7 +84,7 @@ def tokenize(text: str) -> list[Token]:
                 end=len(text),
                 freq_rank=rank,
                 pos="",
-                jlpt=jlpt_of(rank, lemma=lemma),
+                jlpt=jlpt_of(rank, lemma=lemma, reading="", surface=text),
             )
         ]
 
@@ -100,8 +100,11 @@ def tokenize(text: str) -> list[Token]:
         reading = ""
         if _KANJI_RE.search(surface):
             reading = _kata_to_hira(m.reading_form() or "")
+        else:
+            # Kana reading for phonetics
+            reading = _kata_to_hira(m.reading_form() or "")
         pos = _pos_label(m)
-        rank = rank_of(lemma, surface)
+        rank = rank_of(lemma, surface, reading)
         tokens.append(
             Token(
                 surface=surface,
@@ -111,7 +114,7 @@ def tokenize(text: str) -> list[Token]:
                 end=end,
                 freq_rank=rank,
                 pos=pos,
-                jlpt=jlpt_of(rank, lemma=lemma),
+                jlpt=jlpt_of(rank, lemma=lemma, reading=reading, surface=surface),
             )
         )
     return tokens

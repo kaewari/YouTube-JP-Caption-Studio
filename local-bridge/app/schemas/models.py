@@ -201,6 +201,7 @@ class ExtensionStateRequest(BaseModel):
 
     userVocab: Optional[dict[str, str]] = None
     hardsubSettings: Optional[dict[str, Any]] = None
+    savedCues: Optional[dict[str, Any]] = None
     source: str = ""
 
     @model_validator(mode="before")
@@ -222,5 +223,6 @@ class ExtensionStateResponse(BaseModel):
     ok: bool = True
     userVocab: dict[str, str] = Field(default_factory=dict)
     hardsubSettings: Optional[dict[str, Any]] = None
+    savedCues: dict[str, Any] = Field(default_factory=dict)
     updatedAt: float = 0.0
     source: str = ""

@@ -119,6 +119,13 @@
     "皆さん": "n5", "みなさん": "n5", "みんな": "n5", "先生": "n5", "せんせい": "n5", "学生": "n5", "がくせい": "n5",
     "友達": "n5", "ともだち": "n5", "時間": "n5", "じかん": "n5", "時": "n5", "とき": "n5",
     "日": "n5", "年": "n5", "月": "n5", "円": "n5", "本": "n5", "車": "n5", "家": "n5",
+    "食べる": "n5", "たべる": "n5", "飲む": "n5", "のむ": "n5", "行く": "n5", "いく": "n5",
+    "来る": "n5", "くる": "n5", "見る": "n5", "みる": "n5", "聞く": "n5", "きく": "n5",
+    "言う": "n5", "いう": "n5", "話す": "n5", "はなす": "n5", "読む": "n5", "よむ": "n5",
+    "書く": "n5", "かく": "n5", "買う": "n5", "かう": "n5", "する": "n5", "いる": "n5",
+    "ある": "n5", "なる": "n5", "です": "n5", "ます": "n5", "だ": "n5", "た": "n5", "て": "n5",
+    "美味しい": "n5", "おいしい": "n5", "ご飯": "n5", "ごはん": "n5", "大きい": "n5", "おおきい": "n5",
+    "小さい": "n5", "ちいさい": "n5", "良い": "n5", "よい": "n5", "いい": "n5",
 
     // N4
     "彼": "n4", "かれ": "n4", "彼女": "n4", "かのじょ": "n4", "自分": "n4", "じぶん": "n4",
@@ -225,6 +232,8 @@
     if (Object.hasOwn(COMMON_JLPT_WORDS, lemma)) return COMMON_JLPT_WORDS[lemma];
     const surface = String(token?.surface || "");
     if (Object.hasOwn(COMMON_JLPT_WORDS, surface)) return COMMON_JLPT_WORDS[surface];
+    const reading = String(token?.reading || "");
+    if (reading && Object.hasOwn(COMMON_JLPT_WORDS, reading)) return COMMON_JLPT_WORDS[reading];
     return "";
   }
 

@@ -70,6 +70,21 @@ if (chrome.action?.onClicked) {
   });
 }
 
+// Keyboard shortcuts (manifest commands)
+if (chrome.commands?.onCommand) {
+  chrome.commands.onCommand.addListener(async (command) => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      if (command === "toggle_overlay") {
+        chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" }).catch(() => {});
+      } else if (command === "toggle_pip") {
+        chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PIP" }).catch(() => {});
+      }
+    } catch (_) {}
+  });
+}
+
 /** Site families the extension supports (content scripts + side panel gate). */
 function platformFromUrl(url) {
   try {
@@ -358,7 +373,7 @@ function schedulePushExtensionState() {
 async function pushExtensionStateToBridge() {
   if (_applyingBridgeState) return;
   try {
-    const data = await chrome.storage.local.get(["userVocab", "hardsubSettings"]);
+    const data = await chrome.storage.local.get(["userVocab", "hardsubSettings", "savedCues"]);
     const body = {};
     // Never push a missing key over a non-empty bridge — an empty/fresh local
     // store must not wipe the bridge's vocab copy (see pull-first at startup).
@@ -367,6 +382,9 @@ async function pushExtensionStateToBridge() {
     }
     if (data.hardsubSettings && typeof data.hardsubSettings === "object") {
       body.hardsubSettings = data.hardsubSettings;
+    }
+    if (data.savedCues && typeof data.savedCues === "object") {
+      body.savedCues = data.savedCues;
     }
     body.source = "extension";
     const j = JSON.stringify(body);
@@ -409,18 +427,24 @@ async function pullExtensionStateFromBridge() {
     if (remote.hardsubSettings && typeof remote.hardsubSettings === "object") {
       patch.hardsubSettings = remote.hardsubSettings;
     }
+    if (remote.savedCues && typeof remote.savedCues === "object") {
+      patch.savedCues = remote.savedCues;
+    }
     if (!Object.keys(patch).length) {
       _lastBridgeUpdatedAt = updatedAt;
       await saveSwState();
       return;
     }
-    const local = await chrome.storage.local.get(["userVocab", "hardsubSettings"]);
+    const local = await chrome.storage.local.get(["userVocab", "hardsubSettings", "savedCues"]);
     const sameVocab =
       JSON.stringify(local.userVocab || {}) === JSON.stringify(patch.userVocab || local.userVocab || {});
     const sameSettings =
       !patch.hardsubSettings ||
       JSON.stringify(local.hardsubSettings || {}) === JSON.stringify(patch.hardsubSettings);
-    if (sameVocab && sameSettings) {
+    const sameSaved =
+      !patch.savedCues ||
+      JSON.stringify(local.savedCues || {}) === JSON.stringify(patch.savedCues);
+    if (sameVocab && sameSettings && sameSaved) {
       _lastBridgeUpdatedAt = updatedAt;
       await saveSwState();
       return;
@@ -1494,7 +1518,7 @@ async function buildLocalSettingsSnapshot() {
     barShowEn: s.barShowEn !== false,
     barShowVi: s.barShowVi !== false,
     barScale: Number(s.barScale) || 1,
-    barBgOpacity: s.barBgOpacity != null ? Number(s.barBgOpacity) : 0.82,
+    barBgOpacity: s.barBgOpacity != null ? Number(s.barBgOpacity) : 0.4,
     barTextOpacity: s.barTextOpacity != null ? Number(s.barTextOpacity) : 1,
     dimHardsub: !!s.dimHardsub,
     dictShowSentence: s.dictShowSentence !== false,
