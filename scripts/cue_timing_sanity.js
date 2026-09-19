@@ -19,7 +19,7 @@ function assert(cond, msg) {
   }
 }
 
-// Rolling ASR overlaps → snap end to next.start - GAP (shorten).
+// Authentic timing: start and end are preserved 100% as provided by YouTube timedtext.
 const rolling = clampCueEndsToNextStart([
   { start: 0.0, end: 5.56, text: "Hello and welcome" },
   { start: 2.6, end: 8.56, text: "So, do you want" },
@@ -27,14 +27,8 @@ const rolling = clampCueEndsToNextStart([
 ]);
 assert(rolling.length === 3, `kept ${rolling.length} cues`);
 assert(rolling[0].start === 0.0 && rolling[0].text === "Hello and welcome", "start/text unchanged");
-assert(
-  Math.abs(rolling[0].end - (2.6 - GAP)) < 1e-9,
-  `cue0 end snapped to next.start-GAP got ${rolling[0].end}`
-);
-assert(
-  Math.abs(rolling[1].end - (5.56 - GAP)) < 1e-9,
-  `cue1 end snapped got ${rolling[1].end}`
-);
+assert(rolling[0].end === 5.56, `cue0 end preserved authentic 5.56, got ${rolling[0].end}`);
+assert(rolling[1].end === 8.56, `cue1 end preserved authentic 8.56, got ${rolling[1].end}`);
 assert(rolling[2].end === 10.84, `last cue keeps YT end ${rolling[2].end}`);
 
 // Non-overlapping cues preserve their true end time (no artificial stretch into silence)

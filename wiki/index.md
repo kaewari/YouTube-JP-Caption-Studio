@@ -18,25 +18,15 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/vietnamese-caption-loading.md](topics/vietnamese-caption-loading.md) | VI caption load fixes + Netflix parallel fetch — **shipped code, chờ test thật** (2026-08-21) |
 | [topics/codebase-improvements-2026-08-22.md](topics/codebase-improvements-2026-08-22.md) | Codebase improvement plan (behavior-preserving) — **partial** (2026-08-23) |
 | [topics/perf-ux-audit-2026-08-23.md](topics/perf-ux-audit-2026-08-23.md) | Multi-agent perf sweep + UX benchmark — **open** (2026-08-23) |
+| [topics/overlay-resize-and-dual-subtitles.md](topics/overlay-resize-and-dual-subtitles.md) | Overlay resize + dual subtitles — **done** (2026-09-19) |
+| [topics/studio-caption-fixes-and-ux-optimization.md](topics/studio-caption-fixes-and-ux-optimization.md) | Studio caption fixes, performance & UX optimization — **done** (2026-09-19) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
 
 | Status | Topic | Plan | Review |
 |--------|-------|------|--------|
-| done | Fix Overlay Resize & Dual Subtitles | [plan/fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md) | — |
-| done | Netflix Caption Support & Replay | [plan/netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md) | [review/netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md) |
-| done | Plans completion inventory | all `plan/*.md` | [review/plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md) |
-| partial | Local-bridge audit (5/10 fixed, LB-6 tracked in perf audit) | — | [review/local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md) |
-| done | Full codebase review 2026-08-07 (C1, H1–H8, M1–M10 fixed) | — | [review/codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md) |
-| done | Flatten repo layout | [plan/flatten-repo-layout-2026-08-05.md](../plan/flatten-repo-layout-2026-08-05.md) | [review/flatten-repo-layout-execute-2026-08-05.md](../review/flatten-repo-layout-execute-2026-08-05.md) |
-| done | P0 data-loss (cue-merge) | [plan/p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md) | [review/p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md) |
-| done | P0 DeepSeek vocab/rev DTO | [plan/p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md) | [review/p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md) |
-| source | Full codebase review (Fable) | — | [review/codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md) |
-| partial | Codebase improvements 2026-08-22 (priority guards shipped) | [plan/codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md) | — |
-| open | Full codebase review & improvement plan 2026-08-23 | [plan/codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md) | [review/codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md) |
-| open | Multi-agent perf sweep + UX benchmark 2026-08-23 | — | [review/perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md) |
-| done | Codebase improvement plan 2026-08-26 (T1-T4) | [plan/codebase-improvement-plan-2026-08-26.md](../plan/codebase-improvement-plan-2026-08-26.md) | — |
+| done | Studio Caption Fixes, Performance & UX Optimization | [plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md) | [review/code-review-2026-09-19.md](../review/code-review-2026-09-19.md) |
 
 ## Raw catalogs (immutable)
 
@@ -44,11 +34,18 @@ Do not rewrite these from the wiki. Link only.
 
 ### Plans (`plan/`)
 
-- [fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
-
 - [auto-dich-sau-edit-2026-07-28.md](../plan/auto-dich-sau-edit-2026-07-28.md)
 - [bridge-ram-sqlite-2026-08-01.md](../plan/bridge-ram-sqlite-2026-08-01.md)
+- [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
+- [codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md)
+- [codebase-improvement-plan-2026-08-26.md](../plan/codebase-improvement-plan-2026-08-26.md)
 - [drive-folder-mirror-2026-08-02.md](../plan/drive-folder-mirror-2026-08-02.md)
+- [fix-caption-throttle-stall-2026-08-24.md](../plan/fix-caption-throttle-stall-2026-08-24.md)
+- [fix-missing-netflix-subs-2026-08-21.md](../plan/fix-missing-netflix-subs-2026-08-21.md)
+- [fix-sidepanel-format-and-jp-only-overlay-2026-09-19.md](../plan/fix-sidepanel-format-and-jp-only-overlay-2026-09-19.md)
+- [fix-sub-loading-blackout-2026-08-21.md](../plan/fix-sub-loading-blackout-2026-08-21.md)
+- [fix-sub-loading-multitab-sidepanel-ui-2026-08-21.md](../plan/fix-sub-loading-multitab-sidepanel-ui-2026-08-21.md)
+- [fix-yt-timedtext-empty-caption-2026-08-24.md](../plan/fix-yt-timedtext-empty-caption-2026-08-24.md)
 - [flatten-repo-layout-2026-08-05.md](../plan/flatten-repo-layout-2026-08-05.md)
 - [ipad-app-review-and-fix-plan-2026-08-04.md](../plan/ipad-app-review-and-fix-plan-2026-08-04.md)
 - [ipad-build-run-signing-2026-08-02.md](../plan/ipad-build-run-signing-2026-08-02.md)
@@ -58,38 +55,45 @@ Do not rewrite these from the wiki. Link only.
 - [multi-agent-review-plan-2026-07-29.md](../plan/multi-agent-review-plan-2026-07-29.md)
 - [netflix-caption-fixes-2026-08-19.md](../plan/netflix-caption-fixes-2026-08-19.md)
 - [netflix-caption-support-2026-08-19.md](../plan/netflix-caption-support-2026-08-19.md)
+- [netflix-en-vi-caption-fix-2026-08-21.md](../plan/netflix-en-vi-caption-fix-2026-08-21.md)
 - [netflix-replay-and-edit-fixes-2026-08-20.md](../plan/netflix-replay-and-edit-fixes-2026-08-20.md)
-- [vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
 - [next-prev-settings-drive-2026-08-02.md](../plan/next-prev-settings-drive-2026-08-02.md)
 - [normalize-docs-and-errors-2026-08-02.md](../plan/normalize-docs-and-errors-2026-08-02.md)
+- [optimize-sub-loading-speed-2026-08-21.md](../plan/optimize-sub-loading-speed-2026-08-21.md)
 - [overlay-multi-sub-2026-08-02.md](../plan/overlay-multi-sub-2026-08-02.md)
 - [p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md)
 - [p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md)
+- [studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md)
+- [sub-load-furigana-100ms-2026-08-08.md](../plan/sub-load-furigana-100ms-2026-08-08.md)
 - [timeline-yt-multi-sub-2026-08-02.md](../plan/timeline-yt-multi-sub-2026-08-02.md)
+- [vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
-- [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
-- [codebase-improvement-plan-2026-08-23.md](../plan/codebase-improvement-plan-2026-08-23.md)
-- [codebase-improvement-plan-2026-08-26.md](../plan/codebase-improvement-plan-2026-08-26.md)
 
 ### Reviews (`review/`)
 
 - [bridge-refactor-review-pass-2026-07-29.md](../review/bridge-refactor-review-pass-2026-07-29.md)
 - [bugbot-review-2026-08-01.md](../review/bugbot-review-2026-08-01.md)
+- [code-review-2026-09-19.md](../review/code-review-2026-09-19.md)
 - [codebase-review-2026-07-29.md](../review/codebase-review-2026-07-29.md)
 - [codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md)
+- [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
+- [codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md)
 - [deepseek-ipad-code-review-2026-08-04.md](../review/deepseek-ipad-code-review-2026-08-04.md)
 - [deepseek-ipad-review-eval-2026-08-04.md](../review/deepseek-ipad-review-eval-2026-08-04.md)
 - [extension-web-refactor-review-pass-2026-07-29.md](../review/extension-web-refactor-review-pass-2026-07-29.md)
-- [multi-model-desktop-bugs-perf-2026-08-03.md](../review/multi-model-desktop-bugs-perf-2026-08-03.md)
-- [p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md)
-- [p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md)
+- [fix-missing-netflix-subs-review-2026-08-21.md](../review/fix-missing-netflix-subs-review-2026-08-21.md)
+- [fix-sub-loading-blackout-review-2026-08-21.md](../review/fix-sub-loading-blackout-review-2026-08-21.md)
 - [flatten-repo-layout-execute-2026-08-05.md](../review/flatten-repo-layout-execute-2026-08-05.md)
 - [local-bridge-audit-2026-08-06.md](../review/local-bridge-audit-2026-08-06.md)
-- [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
-- [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)
+- [multi-model-desktop-bugs-perf-2026-08-03.md](../review/multi-model-desktop-bugs-perf-2026-08-03.md)
+- [netflix-en-vi-caption-fix-review-2026-08-21.md](../review/netflix-en-vi-caption-fix-review-2026-08-21.md)
 - [netflix-replay-edit-verify-2026-08-20.md](../review/netflix-replay-edit-verify-2026-08-20.md)
-- [codebase-review-2026-08-23.md](../review/codebase-review-2026-08-23.md)
+- [netflix-vi-caption-fix-review-2026-08-21.md](../review/netflix-vi-caption-fix-review-2026-08-21.md)
+- [optimize-sub-loading-speed-review-2026-08-21.md](../review/optimize-sub-loading-speed-review-2026-08-21.md)
+- [p0-data-loss-fixes-review-2026-08-05.md](../review/p0-data-loss-fixes-review-2026-08-05.md)
+- [p0-fixes-report-2026-08-04.md](../review/p0-fixes-report-2026-08-04.md)
 - [perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md)
+- [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
 
 ## Open gaps
 

@@ -203,9 +203,14 @@
   }
 
   function syncFollowBtn() {
-    if (!followBtn) return;
-    followBtn.hidden = followTimeline;
-    followBtn.classList.toggle("active", followTimeline);
+    if (followBtn) {
+      followBtn.hidden = false;
+      followBtn.classList.toggle("active", followTimeline);
+      followBtn.textContent = followTimeline ? "▶ Cuộn" : "⏸ Cuộn";
+      followBtn.title = followTimeline
+        ? "Đang tự động cuộn (Bấm để tạm dừng)"
+        : "Tự động cuộn đang tắt (Bấm để cuộn theo video)";
+    }
   }
 
   function setFollowTimeline(on, opts = {}) {
@@ -241,10 +246,14 @@
   async function syncActiveTab() {
     try {
       let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (!tabs?.length) {
+      if (!tabs?.length || !isSupportedVideoUrl(tabs[0]?.url)) {
         tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       }
-      const active = tabs?.[0];
+      let active = tabs?.find((t) => isSupportedVideoUrl(t?.url));
+      if (!active) {
+        const vidTabId = await resolveTabId();
+        if (vidTabId != null) return vidTabId;
+      }
       if (active?.id != null && active.id !== currentActiveTabId) {
         currentActiveTabId = active.id;
         tabId = active.id;
@@ -259,10 +268,14 @@
   async function resolveTabId() {
     try {
       let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (!tabs?.length) {
-        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs?.length || !isSupportedVideoUrl(tabs[0]?.url)) {
+        tabs = await chrome.tabs.query({ active: true });
       }
-      const active = tabs?.[0];
+      let active = tabs?.find((t) => isSupportedVideoUrl(t.url));
+      if (!active) {
+        const all = await chrome.tabs.query({});
+        active = all.find((t) => isSupportedVideoUrl(t.url));
+      }
       if (active?.id != null) {
         currentActiveTabId = active.id;
         tabId = active.id;
@@ -395,30 +408,14 @@
   }
 
   function rubyHtml(cue) {
-    if (!cue.tokens?.length) {
-      return escapeHtml(cue.source);
+    if (Vocab && typeof Vocab.renderRubyHtml === "function") {
+      return Vocab.renderRubyHtml(cue, {
+        showFurigana: state.showFurigana,
+        settings: highlightSettingsFromState(),
+        userVocab: state.userVocab || {},
+      });
     }
-    const settings = highlightSettingsFromState();
-    return cue.tokens
-      .map((t) => {
-        const s = escapeHtml(t.surface);
-        const lemma = escapeAttr(t.lemma || t.surface);
-        const surfaceAttr = escapeAttr(t.surface);
-        const cls = Vocab.classForToken(t, settings, state.userVocab || {});
-        const classAttr = cls ? ` tok ${cls}` : " tok";
-        if (state.showFurigana && t.reading && !Vocab.isSkipPos?.(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
-          const Kana = globalThis.HardsubRomajiKana;
-          const hiragana =
-            Kana && typeof Kana.katakanaToHiragana === "function"
-              ? Kana.katakanaToHiragana(t.reading)
-              : t.reading;
-          if (hiragana) {
-            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
-          }
-        }
-        return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
-      })
-      .join("");
+    return escapeHtml(cue?.source || "");
   }
 
   async function loadLevelSettings() {
@@ -428,9 +425,16 @@
         const data = await chrome.storage.local.get("hardsubSettings");
         s = data?.hardsubSettings || {};
       }
+      if (chrome?.storage?.sync) {
+        const syncData = await chrome.storage.sync.get("hardsubSettings");
+        if (syncData?.hardsubSettings) {
+          Object.assign(s, syncData.hardsubSettings);
+        }
+      }
     } catch (_) {}
     levelSettings = {
       levelHighlightEnabled: s.levelHighlightEnabled !== false,
+      enableBilingualJlptColor: s.enableBilingualJlptColor !== false,
       levelColors: Vocab.normalizeLevelColors(
         s.levelColors || Vocab.DEFAULT_LEVEL_COLORS
       ),
@@ -438,14 +442,17 @@
     state.levelHighlightEnabled = levelSettings.levelHighlightEnabled;
     state.levelColors = levelSettings.levelColors;
     applyListHighlightVars();
+    const toggleEl = document.getElementById("toggle-bilingual-jlpt");
+    if (toggleEl) {
+      toggleEl.checked = levelSettings.enableBilingualJlptColor !== false;
+    }
   }
 
   /** Pin row flush under list top via scrollTop (avoids scrollIntoView ancestor / no-op). */
   function pinRowScrollTop(row) {
-    return (
-      listEl.scrollTop +
-      (row.getBoundingClientRect().top - listEl.getBoundingClientRect().top)
-    );
+    const r = row.getBoundingClientRect();
+    const lr = listEl.getBoundingClientRect();
+    return Math.max(0, listEl.scrollTop + (r.top - lr.top) - 10);
   }
 
   function cancelScrollAnim() {
@@ -455,16 +462,39 @@
     }
   }
 
-  /** Ease scrollTop to exact target (~380ms easeInOutQuint). */
+  /** Ease scrollTop to exact target (~380ms easeInOutQuint), with instant fallback if tab is hidden/throttled. */
   function easeScrollTop(target, onDone) {
+    if (document.hidden) {
+      listEl.scrollTop = target;
+      if (typeof onDone === "function") onDone();
+      return;
+    }
     const start = listEl.scrollTop;
     const delta = target - start;
     if (Math.abs(delta) < 0.5) {
       listEl.scrollTop = target;
-      onDone();
+      if (typeof onDone === "function") onDone();
       return;
     }
     const t0 = performance.now();
+    let safetyTimer = null;
+    const finish = () => {
+      if (safetyTimer) {
+        clearTimeout(safetyTimer);
+        safetyTimer = null;
+      }
+      scrollAnimRaf = null;
+      listEl.scrollTop = target; // exact flush end — no undershoot
+      if (typeof onDone === "function") onDone();
+    };
+
+    safetyTimer = setTimeout(() => {
+      if (scrollAnimRaf != null) {
+        cancelAnimationFrame(scrollAnimRaf);
+        finish();
+      }
+    }, SCROLL_EASE_MS + 80);
+
     // easeInOutQuint — softer start/end than cubic in-out.
     const ease = (t) =>
       t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2;
@@ -474,19 +504,55 @@
       if (t < 1) {
         scrollAnimRaf = requestAnimationFrame(frame);
       } else {
-        scrollAnimRaf = null;
-        listEl.scrollTop = target; // exact flush end — no undershoot
-        onDone();
+        finish();
       }
     };
     scrollAnimRaf = requestAnimationFrame(frame);
   }
 
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && followTimeline) {
+      scrollActiveIntoView(true);
+    }
+  });
+
   function scrollActiveIntoView(force = false) {
     if (!followTimeline && !force) return;
     // iPad: scrollActiveIntoView guards editingCue — coalesce must not yank mid-edit.
     if (!force && isEditingAny()) return;
-    const id = state.activeCueId;
+    let id = state.activeCueId;
+    if (!id) {
+      const activeRow = listEl.querySelector(".sp-sentence.active");
+      if (activeRow) id = activeRow.dataset.id;
+    }
+    if (!id && typeof state.currentTime === "number" && Array.isArray(state.cues)) {
+      const cur = state.cues.find(
+        (c) => state.currentTime >= c.start_media_time && state.currentTime <= c.end_media_time
+      );
+      if (cur) {
+        id = cur.id;
+        state.activeCueId = id;
+      }
+    }
+    if (!id && Array.isArray(state.cues) && state.cues.length) {
+      const t = typeof state.currentTime === "number" ? state.currentTime : 0;
+      let closest = state.cues[0];
+      for (const c of state.cues) {
+        if (t >= c.start_media_time && t <= c.end_media_time) {
+          closest = c;
+          break;
+        }
+        if (c.start_media_time <= t) {
+          closest = c;
+        } else {
+          break;
+        }
+      }
+      if (closest) {
+        id = closest.id;
+        state.activeCueId = id;
+      }
+    }
     if (!id || listEl.hidden) return;
     const active = listEl.querySelector(
       `.sp-sentence[data-id="${CSS.escape(id)}"]`
@@ -494,10 +560,10 @@
     if (!active) return;
     const r = active.getBoundingClientRect();
     const lr = listEl.getBoundingClientRect();
-    // Skip when already flush under list top — iPad uses ~24pt (not 12% height).
+    // Skip if already flush under list top (~10px padding, within 5px tolerance)
     if (!force && lr.height > 0) {
       const delta = r.top - lr.top;
-      if (delta >= -4 && delta <= 24) return;
+      if (Math.abs(delta - 10) <= 5) return;
     }
     // Soft: cancel in-flight RAF and retarget (don't queue behind old anim).
     cancelScrollAnim();
@@ -505,12 +571,10 @@
       pendingScrollId = null;
       scrollAnimInFlight = false;
     }
-    ignoreScrollEvent = true;
     if (!force) scrollAnimInFlight = true;
     const scrolledId = id;
     const target = pinRowScrollTop(active);
     const finish = () => {
-      ignoreScrollEvent = false;
       if (force) return;
       scrollAnimInFlight = false;
       const next =
@@ -530,8 +594,9 @@
   }
 
   function pauseFollowFromUser() {
-    if (ignoreScrollEvent) return;
     if (!followTimeline) return;
+    cancelScrollAnim();
+    scrollAnimInFlight = false;
     setFollowTimeline(false, { scroll: false });
   }
 
@@ -818,7 +883,11 @@
 
   function exitLangEditCancel(el, lang) {
     const cue = state.cues[Number(el.dataset.idx)];
-    el.textContent = cue?.[lang] ?? editOriginalLang ?? "";
+    if (cue) {
+      el.innerHTML = lang === "vi" ? renderBilingualVi(cue) : renderBilingualEn(cue);
+    } else {
+      el.textContent = editOriginalLang ?? "";
+    }
     endEditSession();
     flushPendingListRender();
   }
@@ -1028,6 +1097,7 @@
       .map((t) => `${t.jlpt ?? ""}:${t.freq_rank ?? ""}`)
       .join(",");
     const starred = isCueStarred(cue.id) ? "1" : "0";
+    const biJlpt = levelSettings.enableBilingualJlptColor ? "1" : "0";
     return [
       cue.id,
       String(cue.source || ""),
@@ -1039,22 +1109,36 @@
       Number(cue.end_media_time) || 0,
       idx,
       starred,
+      biJlpt,
     ].join("|");
   }
 
+  function renderBilingualVi(cue) {
+    const raw = stripStub(cue?.vi) || "";
+    if (typeof Vocab?.renderBilingualHtml === "function") {
+      return Vocab.renderBilingualHtml(raw, "vi", cue?.tokens, levelSettings);
+    }
+    return escapeHtml(raw);
+  }
+
+  function renderBilingualEn(cue) {
+    const raw = stripStub(cue?.en) || "";
+    if (typeof Vocab?.renderBilingualHtml === "function") {
+      return Vocab.renderBilingualHtml(raw, "en", cue?.tokens, levelSettings);
+    }
+    return escapeHtml(raw);
+  }
+
   function rowTemplate(cue, idx) {
-    const activeId = state.activeCueId;
-    const en = stripStub(cue.en);
-    const vi = stripStub(cue.vi);
+    const isActive = cue.id === state.activeCueId;
+    const starred = isCueStarred(cue.id);
     const t0 = Timing.formatTimeInput(cue.start_media_time);
     const t1 = Timing.formatTimeInput(cue.end_media_time);
-    const isActive = cue.id === activeId;
-    const isStarred = isCueStarred(cue.id);
     return `
       <div class="sp-meta">
-        <button type="button" class="sp-play" data-t="${cue.start_media_time}" title="Play">▶</button>
-        <button type="button" class="sp-star ${isStarred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${isStarred ? "Bỏ lưu câu" : "Lưu câu"}">${isStarred ? "★" : "☆"}</button>
-        <span class="sp-times" title="Chỉnh timeline — Enter để lưu">
+        <button type="button" class="sp-play" data-t="${escapeAttr(cue.start_media_time)}" data-time="${escapeAttr(cue.start_media_time)}" title="Phát câu này">▶</button>
+        <button type="button" class="sp-star ${starred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
+        <span class="sp-times sp-timing">
           <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t0)}" aria-label="Start" />
           <span class="sp-t-sep">–</span>
           <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t1)}" aria-label="End" />
@@ -1078,8 +1162,8 @@
           cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)
         }</div>
       </div>
-      <div class="sp-vi" contenteditable="true" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="VI">${escapeHtml(vi || "")}</div>
-      <div class="sp-en" contenteditable="true" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="EN">${escapeHtml(en || "")}</div>
+      <div class="sp-vi" contenteditable="true" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="VI">${renderBilingualVi(cue)}</div>
+      <div class="sp-en" contenteditable="true" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="EN">${renderBilingualEn(cue)}</div>
     `;
   }
 
@@ -1103,9 +1187,9 @@
       bindJaDictHandlers(view);
     }
     const vi = row.querySelector(".sp-vi");
-    if (vi) vi.innerHTML = escapeHtml(stripStub(cue.vi) || "");
+    if (vi) vi.innerHTML = renderBilingualVi(cue);
     const en = row.querySelector(".sp-en");
-    if (en) en.innerHTML = escapeHtml(stripStub(cue.en) || "");
+    if (en) en.innerHTML = renderBilingualEn(cue);
     const t0 = row.querySelector(".sp-t-start");
     if (t0) t0.value = Timing.formatTimeInput(cue.start_media_time);
     const t1 = row.querySelector(".sp-t-end");
@@ -1130,13 +1214,17 @@
     listDelegateBound = true;
     ensureDictDelegate();
     listEl.addEventListener("click", (e) => {
+      const row = e.target.closest(".sp-sentence");
+      if (row && !e.target.closest(".sp-del")) {
+        if (!followTimeline) setFollowTimeline(true, { scroll: false });
+      }
       const btn = e.target.closest(
         ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del"
       );
       if (!btn || !listEl.contains(btn)) return;
       if (btn.classList.contains("sp-play")) {
         setFollowTimeline(true);
-        sendCmd("play", { mediaTime: Number(btn.dataset.t) });
+        sendCmd("play", { mediaTime: Number(btn.dataset.t || btn.dataset.time) });
       } else if (btn.classList.contains("sp-star")) {
         const id = btn.dataset.id;
         if (!id) return;
@@ -1392,6 +1480,7 @@
       else groups[groups.length - 1].words.push(w);
     }
 
+    const Romaji = globalThis.HardsubRomajiKana;
     let html = "";
     for (const grp of groups) {
       if (!grp.words.length) continue;
@@ -1404,19 +1493,15 @@
           <div class="sp-words-flow">
             ${grp.words
               .map((w) => {
-                const Kana = globalThis.HardsubRomajiKana;
-                const reading =
-                  Kana && typeof Kana.katakanaToHiragana === "function"
-                    ? Kana.katakanaToHiragana(w.reading)
-                    : (w.reading || "");
+                const romaji = Romaji?.toRomaji ? Romaji.toRomaji(w.reading) : w.reading;
                 const isSaved = !!(state.userVocab && state.userVocab[w.lemma]);
                 const rank = getWordRank(w);
                 const colorCls = rank > 0 && rank <= 1000 ? "rank-common" : rank <= 2500 ? "rank-mid" : rank <= 5000 ? "rank-upper" : "rank-rare";
                 return `
-                  <button type="button" class="sp-word-chip ${colorCls} ${isSaved ? "saved" : ""}" data-word-lemma="${escapeAttr(w.lemma)}" title="${escapeAttr(w.surface)} (${escapeAttr(reading)}): ${w.count} lần">
+                  <button type="button" class="sp-word-chip ${colorCls} ${isSaved ? "saved" : ""}" data-word-lemma="${escapeAttr(w.lemma)}" title="${escapeAttr(w.surface)} (${escapeAttr(romaji || "")}): ${w.count} lần">
                     <ruby class="sp-word-ruby">
                       ${escapeHtml(w.surface)}
-                      <rt>${escapeHtml(reading)}</rt>
+                      <rt>${escapeHtml(romaji || "")}</rt>
                     </ruby>
                   </button>
                 `;
@@ -1508,7 +1593,7 @@
           </div>
           <div class="lr-saved-row-text">
             <div class="lr-saved-sentence-ja">${escapeHtml(sc.source)}</div>
-            ${vi || en ? `<div class="lr-saved-sentence-vi">${escapeHtml(vi || en)}</div>` : ""}
+            ${vi || en ? `<div class="lr-saved-sentence-vi" style="${savedPracticeMode ? "cursor:pointer;filter:blur(5px);user-select:none;" : ""}">${escapeHtml(vi || en)}</div>` : ""}
           </div>
           <div class="lr-saved-row-actions">
             <button type="button" class="lr-saved-del-btn" data-del-cue="${escapeAttr(sc.id)}" title="Bỏ lưu câu">🗑</button>
@@ -1519,6 +1604,12 @@
     }
 
     savedListEl.innerHTML = html;
+
+    savedListEl.querySelectorAll(".lr-saved-sentence-vi").forEach((el) => {
+      el.addEventListener("click", () => {
+        el.style.filter = "none";
+      });
+    });
 
     savedListEl.querySelectorAll("[data-del-word]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
@@ -1629,11 +1720,22 @@
 
   listEl.addEventListener("wheel", pauseFollowFromUser, { passive: true });
   listEl.addEventListener("touchstart", pauseFollowFromUser, { passive: true });
-  listEl.addEventListener("scroll", pauseFollowFromUser, { passive: true });
+  listEl.addEventListener("touchmove", pauseFollowFromUser, { passive: true });
+  listEl.addEventListener("mousedown", (e) => {
+    const r = listEl.getBoundingClientRect();
+    if (e.clientX >= r.left + listEl.clientWidth && e.clientX <= r.right) {
+      pauseFollowFromUser();
+    }
+  });
+  listEl.addEventListener("keydown", (e) => {
+    if (["PageDown", "PageUp", "ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      pauseFollowFromUser();
+    }
+  });
 
   if (followBtn) {
     followBtn.addEventListener("click", () => {
-      setFollowTimeline(true);
+      setFollowTimeline(!followTimeline);
     });
   }
 
@@ -1664,12 +1766,27 @@
         setDriveStatus("Uploading…");
       } else if (r?.ok) {
         setDriveStatus(r.status || "Connected");
+        toast("Đã đồng bộ Drive", 1600);
       } else {
-        setDriveStatus(`error: ${r?.error || "Upload failed"}`);
-        toast("Upload Drive lỗi", 2800);
+        const rawErr = String(r?.error || "Upload failed");
+        let errMsg = rawErr;
+        if (rawErr.toLowerCase().includes("bridge") || r?.skipped === "bridge_offline") {
+          errMsg = "Bridge chưa kết nối / snapshot offline";
+        } else if (
+          rawErr.toLowerCase().includes("auth") ||
+          rawErr.toLowerCase().includes("token") ||
+          rawErr.includes("401") ||
+          rawErr.includes("403")
+        ) {
+          errMsg = "Google OAuth hết hạn hoặc chưa cấp quyền Drive";
+        }
+        setDriveStatus(`error: ${errMsg.slice(0, 50)}`);
+        toast(`Upload Drive lỗi: ${errMsg}`, 4000);
       }
     } catch (err) {
-      setDriveStatus(`error: ${String(err?.message || err).slice(0, 80)}`);
+      const msg = String(err?.message || err);
+      setDriveStatus(`error: ${msg.slice(0, 50)}`);
+      toast(`Lỗi Drive: ${msg.slice(0, 60)}`, 3500);
     }
   });
 
@@ -1850,19 +1967,27 @@
     closeImportPanel();
   });
 
-  document.getElementById("sp-settings").addEventListener("click", () => {
-    void sendCmd("open_settings", {});
-  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "SP_STATE") {
-      // If we don't know the active tab yet, adopt the incoming tabId
+      // If we don't know the active video tab yet, adopt incoming
       if (currentActiveTabId == null && msg.tabId != null) {
         currentActiveTabId = msg.tabId;
         tabId = msg.tabId;
       }
-      // Strictly ignore background tab broadcast if active tab is known and differs
+      // If tabId differs from currentActiveTabId, verify if currentActiveTabId is still a valid video tab
       if (msg.tabId != null && currentActiveTabId != null && msg.tabId !== currentActiveTabId) {
+        chrome.tabs?.get?.(currentActiveTabId).then((t) => {
+          if (!t || !isSupportedVideoUrl(t.url)) {
+            currentActiveTabId = msg.tabId;
+            tabId = msg.tabId;
+            applyState(msg.payload || {}, { forceList: !!msg.forceList });
+          }
+        }).catch(() => {
+          currentActiveTabId = msg.tabId;
+          tabId = msg.tabId;
+          applyState(msg.payload || {}, { forceList: !!msg.forceList });
+        });
         return;
       }
       if (msg.tabId != null) {
@@ -1883,11 +2008,13 @@
 
   chrome.tabs?.onActivated?.addListener?.(async (activeInfo) => {
     if (activeInfo?.tabId != null) {
-      currentActiveTabId = activeInfo.tabId;
-      tabId = activeInfo.tabId;
-      // Instant switch without delay (<50ms)
       try {
-        chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
+        const tab = await chrome.tabs.get(activeInfo.tabId);
+        if (tab && isSupportedVideoUrl(tab.url)) {
+          currentActiveTabId = tab.id;
+          tabId = tab.id;
+          chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
+        }
       } catch (_) {}
     }
   });
@@ -1961,12 +2088,50 @@
     });
   });
 
-  const btnSettings = document.getElementById("sp-btn-settings");
-  if (btnSettings) {
-    btnSettings.addEventListener("click", () => {
+  function setupSettingsPanel() {
+    const panel = document.getElementById("sp-settings-panel");
+    const cancelBtn = document.getElementById("sp-settings-cancel");
+    const toggleJlpt = document.getElementById("toggle-bilingual-jlpt");
+
+    if (cancelBtn && panel) {
+      cancelBtn.addEventListener("click", () => {
+        panel.hidden = true;
+      });
+    }
+
+    if (toggleJlpt) {
+      toggleJlpt.checked = levelSettings.enableBilingualJlptColor !== false;
+      toggleJlpt.addEventListener("change", async () => {
+        const val = !!toggleJlpt.checked;
+        levelSettings.enableBilingualJlptColor = val;
+        try {
+          const syncData =
+            (await chrome.storage.sync.get("hardsubSettings"))?.hardsubSettings || {};
+          syncData.enableBilingualJlptColor = val;
+          await chrome.storage.sync.set({ hardsubSettings: syncData });
+        } catch (_) {}
+        try {
+          const localData =
+            (await chrome.storage.local.get("hardsubSettings"))?.hardsubSettings || {};
+          localData.enableBilingualJlptColor = val;
+          await chrome.storage.local.set({ hardsubSettings: localData });
+        } catch (_) {}
+        renderList(true);
+      });
+    }
+
+    const toggleSettings = () => {
+      if (panel) {
+        panel.hidden = !panel.hidden;
+      }
+    };
+
+    document.getElementById("sp-settings")?.addEventListener("click", toggleSettings);
+    document.getElementById("sp-btn-settings")?.addEventListener("click", () => {
       void sendCmd("open_settings", {});
     });
   }
+  setupSettingsPanel();
 
   const btnPopout = document.getElementById("sp-btn-popout");
   if (btnPopout) {
@@ -1989,17 +2154,27 @@
     });
   }
 
+  let savedPracticeMode = false;
   const btnViewAll = document.getElementById("sp-saved-view-all");
   if (btnViewAll) {
     btnViewAll.addEventListener("click", () => {
-      showToast("Tất cả từ và câu đã lưu");
+      savedPracticeMode = false;
+      btnPractice?.classList.remove("active");
+      toast("Hiển thị tất cả từ và câu đã lưu");
       renderSavedTab();
     });
   }
   const btnPractice = document.getElementById("sp-saved-practice");
   if (btnPractice) {
     btnPractice.addEventListener("click", () => {
-      showToast("Chế độ luyện tập từ vựng");
+      savedPracticeMode = !savedPracticeMode;
+      btnPractice.classList.toggle("active", savedPracticeMode);
+      toast(
+        savedPracticeMode
+          ? "Chế độ Flashcard ôn tập (bấm vào câu để lật bản dịch)"
+          : "Đã tắt chế độ Flashcard"
+      );
+      renderSavedTab();
     });
   }
 
@@ -2013,10 +2188,14 @@
     let activeTab = null;
     try {
       let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (!tabs?.length) {
-        tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs?.length || !isSupportedVideoUrl(tabs[0]?.url)) {
+        tabs = await chrome.tabs.query({ active: true });
       }
-      activeTab = tabs?.[0];
+      activeTab = tabs?.find((t) => isSupportedVideoUrl(t.url));
+      if (!activeTab) {
+        const all = await chrome.tabs.query({});
+        activeTab = all.find((t) => isSupportedVideoUrl(t.url));
+      }
       if (activeTab?.id != null) {
         currentActiveTabId = activeTab.id;
         tabId = activeTab.id;

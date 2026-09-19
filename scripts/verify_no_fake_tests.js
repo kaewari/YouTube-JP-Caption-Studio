@@ -37,8 +37,8 @@ for (const d of targetDirs) {
 }
 
 const FAKE_PATTERNS = [
-  /fs\.readFileSync\([^)]*(?:\.js|\.css|\.html)[^)]*\).*(?:includes|\.test|\.match)/s,
-  /assert\.(?:strictEqual|ok|equal)\([^)]*(?:panelCss|contentJs|sourceCode|fileContent|rawCode)\.(?:includes|match)/,
+  /fs\.readFileSync\([^)]*(?:extension|src)\/(?:styles|content|background|injected|shared)[^)]*\)[\s\S]*?(?:assert|assert\.(?:strictEqual|ok|equal))\([^)]*\.includes\(/,
+  /(?:assert|assert\.(?:strictEqual|ok|equal))\([^)]*(?:panelCss|contentJs|sourceCode|fileContent|rawCode)\.(?:includes|match)/,
 ];
 
 let violations = [];
@@ -46,16 +46,15 @@ let violations = [];
 for (const file of allTests) {
   if (file === __filename) continue;
   const content = fs.readFileSync(file, "utf8");
-  
-  // Check for reading production code files directly to assert string content
-  const readsProdCode = /fs\.readFileSync\([^)]*(?:extension|src)\/(?:styles|content|background|injected)[^)]*\)/.test(content);
-  const assertsStringInclusion = /assert\.(?:strictEqual|ok|equal)\([^)]*\.includes\(/.test(content);
 
-  if (readsProdCode && assertsStringInclusion) {
-    violations.push({
-      file,
-      reason: "Script reads raw production source code and asserts string '.includes()', faking test execution instead of testing runtime behavior."
-    });
+  for (const pattern of FAKE_PATTERNS) {
+    if (pattern.test(content)) {
+      violations.push({
+        file,
+        reason: "Script reads raw production source code and asserts string '.includes()', faking test execution instead of testing runtime behavior."
+      });
+      break;
+    }
   }
 }
 

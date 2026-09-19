@@ -396,11 +396,11 @@
       const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
       let end = hasDur
         ? Math.round((n.start + n.dur) * 1000) / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
-      if (next && end > next.start) {
-        end = Math.max(n.start + 0.2, next.start - 0.05);
+        : (next ? next.start : n.start + 2);
+      if (end <= n.start) {
+        end = n.start + 0.2;
       }
-      textCues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      textCues.push({ start: n.start, end: end, text: n.text });
     }
     if (textCues.length) return textCues;
 
@@ -464,11 +464,11 @@
       const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
       let end = hasDur
         ? Math.round((n.start + n.durMs / 1000) * 1000) / 1000
-        : (next ? Math.min(n.start + 2, next.start - 0.05) : n.start + 2);
-      if (next && end > next.start) {
-        end = Math.max(n.start + 0.2, next.start - 0.05);
+        : (next ? next.start : n.start + 2);
+      if (end <= n.start) {
+        end = n.start + 0.2;
       }
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      cues.push({ start: n.start, end: end, text: n.text });
     }
     return cues;
   }
@@ -500,6 +500,17 @@
     const add = (u) => {
       if (u && !variants.includes(u)) variants.push(u);
     };
+    const isTlang = raw.includes("tlang=");
+    const json3 = raw.includes("fmt=json3")
+      ? raw
+      : raw.includes("fmt=")
+        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+
+    if (isTlang) {
+      add(json3);
+      return variants;
+    }
     add(raw);
     if (!raw.includes("fmt=srv3")) {
       const srv3 = raw.includes("fmt=")
@@ -507,12 +518,7 @@
         : `${raw}${raw.includes("?") ? "&" : "?"}fmt=srv3`;
       add(srv3);
     }
-    if (!raw.includes("fmt=json3")) {
-      const json3 = raw.includes("fmt=")
-        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
-        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
-      add(json3);
-    }
+    add(json3);
     if (raw.includes("fmt=")) {
       const stripped = raw.replace(/([?&])fmt=[^&]+(&|$)/, (m, p1, p2) => (p2 === "&" ? p1 : "")).replace(/\?$/, "");
       add(stripped);
@@ -527,7 +533,11 @@
     for (const cred of ["omit", "same-origin"]) {
       for (const u of urls) {
         try {
-          const res = await fetch(u, { credentials: cred, cache: "no-store" });
+          const res = await fetch(u, {
+            credentials: cred,
+            cache: "no-store",
+            headers: { Accept: "*/*" }
+          });
           if (!res.ok) {
             lastError = `http_${res.status}_${cred}`;
             continue;
@@ -605,10 +615,15 @@
 
     function toTlangUrl(baseUrl, tlang) {
       if (!baseUrl) return null;
-      const base = baseUrl.includes("fmt=")
+      let base = baseUrl.includes("fmt=")
         ? baseUrl.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
         : `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}fmt=json3`;
-      return `${base}&tlang=${encodeURIComponent(tlang)}`;
+      if (base.includes("tlang=")) {
+        base = base.replace(/([?&])tlang=[^&]+/, `$1tlang=${encodeURIComponent(tlang)}`);
+      } else {
+        base = `${base}&tlang=${encodeURIComponent(tlang)}`;
+      }
+      return base;
     }
 
     async function packsFromTracks(tracks) {

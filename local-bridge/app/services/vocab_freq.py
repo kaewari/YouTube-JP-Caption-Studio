@@ -75,9 +75,23 @@ _JLPT_CEILINGS = (
     (6000, "n2"),
 )
 
+_COMMON_JLPT_WORDS = {
+    "私": "n5", "わたし": "n5", "僕": "n5", "ぼく": "n5", "俺": "n5", "あなた": "n5",
+    "今": "n5", "いま": "n5", "今日": "n5", "きょう": "n5", "明日": "n5", "あした": "n5",
+    "昨日": "n5", "きのう": "n5", "日本": "n5", "にほん": "n5", "日本語": "n5",
+    "人": "n5", "ひと": "n5", "何": "n5", "なに": "n5", "なん": "n5",
+    "皆さん": "n5", "みなさん": "n5", "みんな": "n5", "先生": "n5", "学生": "n5", "友達": "n5",
+    "世界": "n4", "自分": "n4", "問題": "n4", "場所": "n4",
+    "経験": "n3", "関係": "n3", "状況": "n3", "情報": "n3",
+    "可能": "n2", "存在": "n2", "結果": "n2", "原因": "n2",
+    "概念": "n1", "本質": "n1", "矛盾": "n1",
+}
 
-def jlpt_of(rank: int | None) -> str | None:
-    """Map frequency rank → jlpt band string (n5…n1), or None if unknown."""
+
+def jlpt_of(rank: int | None, lemma: str = "") -> str | None:
+    """Map frequency rank or known common lemma → jlpt band string (n5…n1), or None if unknown."""
+    if lemma and lemma in _COMMON_JLPT_WORDS:
+        return _COMMON_JLPT_WORDS[lemma]
     if rank is None:
         return None
     try:

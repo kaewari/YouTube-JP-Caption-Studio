@@ -117,8 +117,7 @@
   function mergeRollingAsrCues(cues) {
     if (!cues || !cues.length) return [];
     const out = [];
-    for (let i = 0; i < cues.length; i += 1) {
-      const c = cues[i];
+    for (const c of cues) {
       if (!out.length) {
         out.push(Object.assign({}, c));
         continue;
@@ -130,14 +129,8 @@
         prev.text = currText;
         if (prev.source != null) prev.source = currText;
         const cStart = Number(c.start != null ? c.start : c.start_media_time) || 0;
-        const rawEnd = Number(c.end != null ? c.end : c.end_media_time);
+        const cEnd = Number(c.end != null ? c.end : c.end_media_time) || (cStart + 3);
         const pEnd = Number(prev.end != null ? prev.end : prev.end_media_time) || 0;
-        let cEnd = Number.isFinite(rawEnd) && rawEnd > cStart ? rawEnd : NaN;
-        if (!Number.isFinite(cEnd)) {
-          const next = cues[i + 1];
-          const nextStart = next ? Number(next.start != null ? next.start : next.start_media_time) : NaN;
-          cEnd = Number.isFinite(nextStart) && nextStart > cStart ? nextStart : Math.max(cStart, pEnd);
-        }
         const newEnd = Math.max(pEnd, cEnd);
         prev.end = newEnd;
         prev.end_media_time = newEnd;

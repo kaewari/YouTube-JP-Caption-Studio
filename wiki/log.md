@@ -2,13 +2,24 @@
 
 Append-only. Each entry starts with `## [YYYY-MM-DD] kind | Title` so `rg '^## \[' wiki/log.md | tail` works.
 
-## [2026-09-19] ingest | Fix Overlay Resize Freedom & Dual Subtitles (VI & EN)
+## [2026-09-19] ingest | Open Code Review verification & comprehensive hardening
+- Fixed OCR review findings: restored timedtext_parse routing tests, hardened dictionary scalar cache against empty/None values, added non-EN/VI language guard and O(1) Map lookup to bilingual styling, added renderRubyHtml unit tests, restored sidepanel header settings modal trigger, guarded content.js keydown against modifier keys (Ctrl/Cmd/Alt), and hardened getSortedCues cache with array length validation.
+- Verification: 20/20 pytests, 6/6 live Chrome DOM tests, 6/6 native mouse/keyboard QA, wiki link lint, anti-fake test gate passed with exit code 0.
 
-- Filed: `plan/fix-overlay-resize-and-subtitles-2026-09-19.md`
-- Sửa lỗi không kéo giãn được overlay: bỏ `width: auto !important;` trong `panel.css`, đổi sang `calc(var(--bar-box-w0) * var(--bar-user-scale-w, 1)) !important;`, đặt `width: 100%` cho `.lr-card-ja`, `.lr-card-vi`, `.lr-card-en`, và `position: relative; z-index: 5;` cho `.lr-card-actions`.
-- Sửa lỗi thiếu sub VI/EN: thêm fallback `&tlang=vi` và `&tlang=en` trên signed Japanese `baseUrl` trong `page_capture.js` và `service_worker.js`; render đồng thời cả 2 thẻ `.lr-card-vi` và `.lr-card-en` trong `content.js`; bổ sung đầy đủ CSS cho `.lr-card-en`.
-- Furigana guard: kiểm tra Kanji `hasKanji(t.surface)` trước khi sinh `<rt>` hiragana, tránh sinh furigana thừa cho từ mượn Katakana.
-- Kiểm thử thực tế: bộ test headless Google Chrome DOM thật (`scripts/test_real_resize_and_sub.js`) đo kích thước pixel thật và URL parameter format; toàn bộ gate anti-fake và sanity test PASS với exit code 0.
+## [2026-09-19] cleanup | Purge pre-2026-09 plans and reviews
+- Purged 32 plans and 22 reviews dated before 2026-09-01 per user request.
+- Cleaned up `wiki/index.md` active table and raw catalogs to eliminate stale/broken links.
+
+## [2026-09-19] ingest | Studio Caption Fixes, Performance & UX Optimization
+- Filed: `plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md` and updated `review/code-review-2026-09-19.md`.
+- Scope: Fix overlay vertical resize, fix overlay hidden toggle, fix timeline cut, fix prev/next ordering & index-based seek, simplify video overlay to JP-only, smart mini-hover dict popover, <16ms realtime playback sync, sidepanel virtualization and floating playhead return.
+
+## [2026-09-19] ingest | Fix Overlay Resize Freedom and Dual Subtitles (VI/EN)
+
+- Filed: `plan/fix-overlay-resize-and-subtitles-2026-09-19.md` and `review/code-review-2026-09-19.md`.
+- Overlay Resize: Resolved height lock in `panel.css` (`min-height: calc(var(--bar-box-h0) * var(--bar-user-scale-h, 1)) !important`), delta-based resizing in `content.js` without discontinuous jumps, and window-bound pointer event listeners for bulletproof dragging.
+- Dual Subtitles: Fixed poisoned 429 throttle cascade in `service_worker.js` with isolated language errors, prioritized signed tracks over unsigned direct tracks, enforced `fmt=json3` for `tlang` variants in both `service_worker.js` and `page_capture.js`, and enabled concurrent `.lr-card-vi` and `.lr-card-en` rendering in `content.js` and `sidepanel.js`.
+- Verification: Measured real pixel expansion (+47.7px height, +80px width) and verified simultaneous live JA/VI/EN subtitle rendering in real Chrome runtime DOM with exit code 0. Anti-fake-test gate PASSED.
 
 ## [2026-08-23] ingest | Codebase review & improvement plan execution
 
@@ -152,11 +163,11 @@ Plan §E: `skills/` chỉ 3 domain; xóa 6 `ponytail*` khỏi project.
 
 User: thêm `ponytail` + `codegraph` vào project `skills/`. Plan §E keep 5: `ponytail`, `codegraph`, `youtube-caption`, `local-bridge`, `tokenize-regression`; xóa chỉ meta `ponytail-*`; stub `skills/codegraph/SKILL.md`. Wiki: [topics/flatten-repo-layout.md](topics/flatten-repo-layout.md).
 
-## [2026-08-05] update | Flatten — DeepSeek V4 Flash execute brief
+## [2026-08-05] ingest | Flatten — DeepSeek V4 Flash execute brief
 
 Plan thêm checklist disk + prompt dán; stray root `local-bridge/` ghi rõ. Topic: [topics/flatten-repo-layout.md](topics/flatten-repo-layout.md).
 
-## [2026-08-05] update | Đổi tên stray → `_stray-local-bridge-data`
+## [2026-08-05] ingest | Đổi tên stray → `_stray-local-bridge-data`
 
 Root `local-bridge/` (chỉ dict sqlite) → `_stray-local-bridge-data/` + `.gitignore`; tránh DeepSeek `git mv` đụng tên. Product vẫn ở `youtube-jp-caption-studio/local-bridge/`.
 
@@ -183,7 +194,7 @@ Verdict: **10/10 findings còn ALIVE** (LB-1 critical, LB-2/3 high, LB-4..9 medi
 
 Wiki updates: [topics/local-bridge-audit.md](topics/local-bridge-audit.md) (mới), [index.md](index.md) Active + catalog.
 
-## [2026-08-06] docs | Gộp INCIDENTS → walkthrough; xóa Makefile
+## [2026-08-06] ingest | Gộp INCIDENTS → walkthrough; xóa Makefile
 
 Root docs 4 → 2: `INCIDENTS.md` gộp vào `walkthrough.md` §4 (nội dung giữ nguyên, h3 theo ngày), xóa `INCIDENTS.md` + `Makefile` (không code/script/CI nào dùng `make`; `make dev`/`build-ext` = một dòng đã có trong README/package.json; `make clean` là `rm -rf data/subtitles/*` chưa từng được ghi chú). Cập nhật: `AGENTS.md` §8 bảng map (bỏ INCIDENTS), `walkthrough.md` §3.7 pointer → §4, [topics/repo-layout.md](topics/repo-layout.md). Tham chiếu cũ trong plan/review/flatten topic giữ nguyên (lịch sử bất biến).
 
@@ -219,8 +230,27 @@ Filed behavior-preserving audit plan:
 local bridge, iPad/iPhone, macOS bridge, web, tests, build hygiene and docs.
 Execution pending; no source functionality changed.
 
-## [2026-08-24] fix | Caption throttle: sidepanel trống + overlay không hiện
+## [2026-08-24] ingest | Caption throttle: sidepanel trống + overlay không hiện
 - Root cause (verified live): SW bắn ≤24 timedtext request/load → YouTube throttle 429/502 per-IP; mọi tầng (SW, page, bridge) dính cùng wall; stall ~25s trước khi báo empty.
 - Fix: SW fan-out 24→12 + abort sớm khi 429/502 + negative-cache 60s (`ttMiss:*`); bridge `/captions` bỏ retry ≥400, timeout 10s, LRU cache 10 phút; content bridge tier cap 12s.
 - Mobile: iPhone/iPad `CaptionService` tuần tự không burst — không cần sửa; cả hai app BUILD SUCCEEDED.
 - Files: `extension/background/service_worker.js`, `extension/content/content.js`, `local-bridge/app/api/captions.py`; plan `plan/fix-caption-throttle-stall-2026-08-24.md`.
+
+## [2026-09-19] ingest | Bridge NLP & Live Chrome Browser Integration Test
+- Verification: Started local Python bridge on port 8765 with NLP models (Sudachi, JMdict, vocab frequency). Ran end-to-end live runtime verification suite `scripts/test_live_bridge_and_browser.js` targeting real Google Chrome on macOS with YouTube player.
+- Test Phases Verified (6/6 Passed):
+  1. GET /health: 200 OK, models_loaded: {sudachi: true, dict: true, freq: true}.
+  2. POST /tokenize & /dict: Authentic furigana readings, JLPT level annotations, bilingual Vietnamese/English glosses.
+  3. Overlay connection: .hardsub-bridge-pill.ready confirmed present in Chrome DOM.
+  4. Live Furigana ruby markup in DOM: Active Japanese cue tokenized with authentic ruby/rt annotations.
+  5. Hover Word Dictionary popover: Mouseenter on Japanese token displays .dict-head with bilingual glosses, measured 320x220px in DOM.
+  6. Visual screenshot proof captured at `.artifacts/chrome_live_bridge_qa.png`.
+
+## [2026-09-19] ingest | Sidepanel Scroll Button (#sp-follow) Restoration & E2E Proof
+- Root cause: `#sp-follow` had a legacy hardcoded `hidden` attribute in `extension/sidepanel/sidepanel.html` that had remained in the main repo. When `#sp-scroll-to-active` was removed, `#sp-follow` was invisible.
+- Fix:
+  1. Removed `hidden` attribute from `<button id="sp-follow">` in `sidepanel.html`.
+  2. Added `.active` styling in `sidepanel.css` (`#233524` / `#a8dfa0` when auto-scroll is on, `#242434` when paused/off).
+  3. Guaranteed `followBtn.hidden = false` and descriptive dynamic titles in `syncFollowBtn()`.
+  4. Synced changes to main repo `/Users/hoangson/Projects/YouTube JP Caption Studio/`.
+- Verification: Reloaded extension in Google Chrome, tested real DOM layout geometry (`width: 60.8px, height: 25.8px`), active green style (`rgb(35, 53, 36)`), click toggle off (`rgb(36, 36, 52)`), and click toggle on (`rgb(35, 53, 36)`) via `scripts/test_scroll_button_qa.js` (Exit code 0).

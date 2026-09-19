@@ -3,29 +3,7 @@ require("../extension/shared/romaji_kana.js");
 require("../extension/shared/vocab_style.js");
 
 const Vocab = globalThis.HardsubVocab;
-const fs = require("fs");
-const path = require("path");
-
-const contentJs = fs.readFileSync(path.join(__dirname, "../extension/content/content.js"), "utf8");
-const sidepanelJs = fs.readFileSync(path.join(__dirname, "../extension/sidepanel/sidepanel.js"), "utf8");
-
-const escapeHtml = (s) => (s == null ? "" : String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-const escapeAttr = escapeHtml;
-
-const userVocab = {};
-const settings = { showFurigana: true };
-
-const contentRubyMatch = contentJs.match(/function rubyHtml\(cue\) \{[\s\S]*?\n  \}/);
-const contentRubyFn = new Function("cue", "settings", "userVocab", "Vocab", "escapeHtml", "escapeAttr", `
-  ${contentRubyMatch[0]}
-  return rubyHtml(cue);
-`);
-
-const sidepanelRubyMatch = sidepanelJs.match(/function rubyHtml\(cue\) \{[\s\S]*?\n  \}/);
-const sidepanelRubyFn = new Function("cue", "state", "highlightSettingsFromState", "Vocab", "escapeHtml", "escapeAttr", `
-  ${sidepanelRubyMatch[0]}
-  return rubyHtml(cue);
-`);
+assert(Vocab && typeof Vocab.renderRubyHtml === "function", "Vocab.renderRubyHtml must be defined");
 
 const testCue = {
   source: "日本語の学校。テスト",
@@ -38,20 +16,21 @@ const testCue = {
   ]
 };
 
-const htmlContent = contentRubyFn(testCue, settings, userVocab, Vocab, escapeHtml, escapeAttr);
-const spState = { showFurigana: true, userVocab: {} };
-const htmlSidepanel = sidepanelRubyFn(testCue, spState, () => settings, Vocab, escapeHtml, escapeAttr);
+const htmlContent = Vocab.renderRubyHtml(testCue, {
+  showFurigana: true,
+  settings: { showFurigana: true },
+  userVocab: {}
+});
 
-assert(htmlContent.includes("<rt>にほんご</rt>"), "content.js: Expected にほんご in <rt>");
-assert(htmlContent.includes("<rt>がっこう</rt>"), "content.js: Expected がっこう in <rt>");
-assert(!htmlContent.includes("<rt>テスト</rt>"), "content.js: Pure Katakana word should NOT have <rt>");
-assert(!htmlContent.includes("<rt>てすと</rt>"), "content.js: Pure Katakana word should NOT have hiragana <rt>");
-assert(!/<rt>[^<]*[a-zA-Z][^<]*<\/rt>/.test(htmlContent), "content.js: No ASCII Romaji allowed in <rt>!");
+assert(htmlContent.includes("<rt>にほんご</rt>"), "renderRubyHtml: Expected にほんご in <rt>");
+assert(htmlContent.includes("<rt>がっこう</rt>"), "renderRubyHtml: Expected がっこう in <rt>");
+assert(!htmlContent.includes("<rt>テスト</rt>"), "renderRubyHtml: Pure Katakana word should NOT have <rt>");
+assert(!htmlContent.includes("<rt>てすと</rt>"), "renderRubyHtml: Pure Katakana word should NOT have hiragana <rt>");
+assert(!/<rt>[^<]*[a-zA-Z][^<]*<\/rt>/.test(htmlContent), "renderRubyHtml: No ASCII Romaji allowed in <rt>!");
 
-assert(htmlSidepanel.includes("<rt>にほんご</rt>"), "sidepanel.js: Expected にほんご in <rt>");
-assert(htmlSidepanel.includes("<rt>がっこう</rt>"), "sidepanel.js: Expected がっこう in <rt>");
-assert(!htmlSidepanel.includes("<rt>テスト</rt>"), "sidepanel.js: Pure Katakana word should NOT have <rt>");
-assert(!htmlSidepanel.includes("<rt>てすと</rt>"), "sidepanel.js: Pure Katakana word should NOT have hiragana <rt>");
-assert(!/<rt>[^<]*[a-zA-Z][^<]*<\/rt>/.test(htmlSidepanel), "sidepanel.js: No ASCII Romaji allowed in <rt>!");
+// Also test when showFurigana is false
+const htmlNoFuri = Vocab.renderRubyHtml(testCue, { showFurigana: false });
+assert(!htmlNoFuri.includes("<rt>"), "renderRubyHtml: No <rt> when showFurigana is false");
+assert(htmlNoFuri.includes("data-surface=\"日本語\""), "renderRubyHtml: Preserves tokens for dictionary hover even when furigana is off");
 
-console.log("ALL FURIGANA TESTS PASSED!");
+console.log("ALL FURIGANA RUNTIME TESTS PASSED!");

@@ -24,9 +24,15 @@ kCGMouseButtonLeft = 0
 kCGHIDEventTap = 0
 kCGMouseEventClickState = 1
 
+def _create_event(event_type, pt, button=kCGMouseButtonLeft):
+    ev = cg.CGEventCreateMouseEvent(None, event_type, pt, button)
+    if not ev:
+        raise RuntimeError("Failed to create CGEvent. Ensure macOS Accessibility / Input Monitoring permissions are granted.")
+    return ev
+
 def move(x, y):
     pt = CGPoint(x, y)
-    ev = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, pt, kCGMouseButtonLeft)
+    ev = _create_event(kCGEventMouseMoved, pt, kCGMouseButtonLeft)
     cg.CGEventPost(kCGHIDEventTap, ev)
     cf.CFRelease(ev)
 
@@ -35,13 +41,13 @@ def click(x, y):
     move(x, y)
     time.sleep(0.05)
     
-    down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
+    down = _create_event(kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(down, kCGMouseEventClickState, 1)
     cg.CGEventPost(kCGHIDEventTap, down)
     cf.CFRelease(down)
     time.sleep(0.05)
     
-    up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
+    up = _create_event(kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(up, kCGMouseEventClickState, 1)
     cg.CGEventPost(kCGHIDEventTap, up)
     cf.CFRelease(up)
@@ -53,26 +59,26 @@ def dblclick(x, y):
     time.sleep(0.05)
     
     # 1st click
-    down1 = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
+    down1 = _create_event(kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(down1, kCGMouseEventClickState, 1)
     cg.CGEventPost(kCGHIDEventTap, down1)
     cf.CFRelease(down1)
     time.sleep(0.04)
     
-    up1 = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
+    up1 = _create_event(kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(up1, kCGMouseEventClickState, 1)
     cg.CGEventPost(kCGHIDEventTap, up1)
     cf.CFRelease(up1)
     time.sleep(0.06)
     
     # 2nd click
-    down2 = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
+    down2 = _create_event(kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(down2, kCGMouseEventClickState, 2)
     cg.CGEventPost(kCGHIDEventTap, down2)
     cf.CFRelease(down2)
     time.sleep(0.04)
     
-    up2 = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
+    up2 = _create_event(kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
     cg.CGEventSetIntegerValueField(up2, kCGMouseEventClickState, 2)
     cg.CGEventPost(kCGHIDEventTap, up2)
     cf.CFRelease(up2)
@@ -84,58 +90,61 @@ def drag(x1, y1, x2, y2):
     move(x1, y1)
     time.sleep(0.05)
     
-    down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, pt1, kCGMouseButtonLeft)
+    down = _create_event(kCGEventLeftMouseDown, pt1, kCGMouseButtonLeft)
     cg.CGEventPost(kCGHIDEventTap, down)
     cf.CFRelease(down)
     time.sleep(0.08)
     
-    steps = 15
-    for i in range(1, steps + 1):
-        cx = x1 + (x2 - x1) * i / steps
-        cy = y1 + (y2 - y1) * i / steps
-        pt = CGPoint(cx, cy)
-        d = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDragged, pt, kCGMouseButtonLeft)
-        cg.CGEventPost(kCGHIDEventTap, d)
-        cf.CFRelease(d)
-        time.sleep(0.015)
-    
-    up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, pt2, kCGMouseButtonLeft)
-    cg.CGEventPost(kCGHIDEventTap, up)
-    cf.CFRelease(up)
+    try:
+        steps = 15
+        for i in range(1, steps + 1):
+            cx = x1 + (x2 - x1) * i / steps
+            cy = y1 + (y2 - y1) * i / steps
+            pt = CGPoint(cx, cy)
+            d = _create_event(kCGEventLeftMouseDragged, pt, kCGMouseButtonLeft)
+            cg.CGEventPost(kCGHIDEventTap, d)
+            cf.CFRelease(d)
+            time.sleep(0.015)
+    finally:
+        up = _create_event(kCGEventLeftMouseUp, pt2, kCGMouseButtonLeft)
+        cg.CGEventPost(kCGHIDEventTap, up)
+        cf.CFRelease(up)
     print(f"Native Mouse DRAG from ({x1}, {y1}) to ({x2}, {y2})")
 
 def hold(x, y, duration=1.0):
     pt = CGPoint(x, y)
     move(x, y)
     time.sleep(0.05)
-    
-    down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
-    cg.CGEventSetIntegerValueField(down, kCGMouseEventClickState, 1)
+    down = _create_event(kCGEventLeftMouseDown, pt, kCGMouseButtonLeft)
     cg.CGEventPost(kCGHIDEventTap, down)
     cf.CFRelease(down)
-    print(f"Native Mouse HOLD DOWN at ({x}, {y}) for {duration}s")
-    time.sleep(duration)
-    
-    up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
-    cg.CGEventSetIntegerValueField(up, kCGMouseEventClickState, 1)
-    cg.CGEventPost(kCGHIDEventTap, up)
-    cf.CFRelease(up)
-    print(f"Native Mouse RELEASE at ({x}, {y})")
+    try:
+        time.sleep(duration)
+    finally:
+        up = _create_event(kCGEventLeftMouseUp, pt, kCGMouseButtonLeft)
+        cg.CGEventPost(kCGHIDEventTap, up)
+        cf.CFRelease(up)
+    print(f"Native Mouse HOLD at ({x}, {y}) for {duration}s")
+
+cg.CGEventCreateScrollWheelEvent.restype = ctypes.c_void_p
+cg.CGEventCreateScrollWheelEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_int32]
+
+def scroll(x, y, lines=-5):
+    move(x, y)
+    time.sleep(0.05)
+    ev = cg.CGEventCreateScrollWheelEvent(None, 1, 1, int(lines))
+    cg.CGEventPost(kCGHIDEventTap, ev)
+    cf.CFRelease(ev)
+    print(f"Native Mouse SCROLL at ({x}, {y}) lines={lines}")
 
 def hover(x, y, duration=1.0):
-    pt = CGPoint(x, y)
     move(x, y)
+    time.sleep(duration)
     print(f"Native Mouse HOVER at ({x}, {y}) for {duration}s")
-    steps = int(duration / 0.1)
-    for _ in range(max(1, steps)):
-        ev = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, pt, kCGMouseButtonLeft)
-        cg.CGEventPost(kCGHIDEventTap, ev)
-        cf.CFRelease(ev)
-        time.sleep(0.1)
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("Usage: mouse.py <click|dblclick|move|drag|hold|hover> <x> <y> [x2/dur y2]")
+        print("Usage: mouse.py <click|dblclick|move|drag|hold|hover|scroll> <x> <y> [x2 y2 | duration | lines]")
         sys.exit(1)
     act = sys.argv[1]
     x = float(sys.argv[2])
@@ -146,7 +155,13 @@ if __name__ == "__main__":
         dblclick(x, y)
     elif act == "move":
         move(x, y)
+    elif act == "scroll":
+        lines = int(sys.argv[4]) if len(sys.argv) > 4 else -5
+        scroll(x, y, lines)
     elif act == "drag":
+        if len(sys.argv) < 6:
+            print("Usage: mouse.py drag <x1> <y1> <x2> <y2>")
+            sys.exit(1)
         x2 = float(sys.argv[4])
         y2 = float(sys.argv[5])
         drag(x, y, x2, y2)
@@ -156,3 +171,7 @@ if __name__ == "__main__":
     elif act == "hover":
         dur = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
         hover(x, y, dur)
+    else:
+        print(f"Unknown action: {act}")
+        print("Usage: mouse.py <click|dblclick|move|drag|hold|hover|scroll> <x> <y> [x2 y2 | duration | lines]")
+        sys.exit(1)

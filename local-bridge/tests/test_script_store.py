@@ -376,9 +376,7 @@ def main() -> None:
             root = Path(tmp)
             with mock.patch("app.services.script_store.scripts_root", lambda: root):
                 with mock.patch("app.services.script_store.SCRIPTS_DIR", root):
-                    with mock.patch("app.services.script_store._DEVICE_ID_PATH", root / "device_id.txt"):
-                        with mock.patch("app.services.script_store._device_id", ""):
-                            fn(root)
+                    fn(root)
         print(f"  [ok] {fn.__name__}")
     print("[test_script_store] ok")
 

@@ -601,13 +601,17 @@ function buildTimedtextUrlVariants(baseUrl) {
   const add = (u) => {
     if (u && !variants.includes(u)) variants.push(u);
   };
-  add(raw);
-  // ponytail: two fmt variants max — more variants multiplied burst requests and
-  // tripped YouTube's per-IP throttle; re-add srv3/stripped only if a format gap shows up.
-  if (!raw.includes("fmt=json3")) {
-    const json3 = raw.includes("fmt=")
+  const isTlang = raw.includes("tlang=");
+  const json3 = raw.includes("fmt=json3")
+    ? raw
+    : raw.includes("fmt=")
       ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
       : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+
+  if (isTlang) {
+    add(json3);
+  } else {
+    add(raw);
     add(json3);
   }
   return variants;
@@ -720,7 +724,9 @@ async function handleYtLoadCaptions(msg) {
     );
   }
 
-  const jaCand = candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext"));
+  const jaCand =
+    candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext") && c.via !== "direct") ||
+    candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext"));
   if (jaCand) {
     const rawJaUrl = jaCand.url;
     const json3Url = rawJaUrl.includes("fmt=")
@@ -737,11 +743,14 @@ async function handleYtLoadCaptions(msg) {
     return { ok: false, reason: "no_tracks", cues: [], via: "none", hasEn, hasVi };
   }
 
-  // Best track per lang family (manual before ASR), fetched in parallel.
+  // Best track per lang family (manual before ASR), fetched in parallel with isolated errors.
+  const jaErr = {};
+  const enErr = {};
+  const viErr = {};
   const [jaPack, enPack, viPack] = await Promise.all([
-    fetchBestLangPack(candidates, "ja", lastError),
-    fetchBestLangPack(candidates, "en", lastError),
-    fetchBestLangPack(candidates, "vi", lastError),
+    fetchBestLangPack(candidates, "ja", jaErr),
+    fetchBestLangPack(candidates, "en", enErr),
+    fetchBestLangPack(candidates, "vi", viErr),
   ]);
 
   const secondary = {
@@ -781,11 +790,11 @@ async function handleYtLoadCaptions(msg) {
   }
 
   // Throttle miss → remember briefly so Reload/navigate doesn't re-burst.
-  if (isThrottleError(lastError)) await setTtMiss(videoId);
+  if (isThrottleError(jaErr)) await setTtMiss(videoId);
   return {
     ok: false,
     reason: "timedtext_empty",
-    lastError: lastError.reason || "",
+    lastError: jaErr.reason || enErr.reason || viErr.reason || lastError.reason || "",
     cues: [],
     trackCount: candidates.length,
     via: "all_failed",
@@ -946,8 +955,10 @@ async function fetchBestLangPack(candidates, prefix, lastError = null) {
   const ranked = (candidates || [])
     .filter((x) => x && matchLangFamily(x.lang, prefix))
     .sort((a, b) => {
-      const sa = (matchLangFamily(a.lang, prefix) ? 100 : 0) + (a.asr ? 0 : 25);
-      const sb = (matchLangFamily(b.lang, prefix) ? 100 : 0) + (b.asr ? 0 : 25);
+      const viaScoreA = a.via === "direct" ? 0 : 50;
+      const viaScoreB = b.via === "direct" ? 0 : 50;
+      const sa = (matchLangFamily(a.lang, prefix) ? 100 : 0) + (a.asr ? 0 : 25) + viaScoreA;
+      const sb = (matchLangFamily(b.lang, prefix) ? 100 : 0) + (b.asr ? 0 : 25) + viaScoreB;
       return sb - sa;
     });
   for (const x of ranked) {
@@ -1675,8 +1686,11 @@ async function uploadDriveNow() {
     if (!c?.ok) return c;
   }
   await setDriveStatus("Uploading…");
-  const vocab = await uploadDriveFromBridge();
-  if (!vocab?.ok) return vocab;
+  try {
+    await uploadDriveFromBridge();
+  } catch (e) {
+    console.warn("[drive] bridge snapshot skipped:", e);
+  }
   return driveQueued(() => mirrorToDrive());
 }
 
@@ -1689,10 +1703,14 @@ async function uploadDriveFromBridge() {
   _driveBusy = true;
   try {
     const fileId = await ensureDriveFileId(false);
-    const res = await fetch(`${BRIDGE}/backup/snapshot`);
+    let res = null;
+    try {
+      res = await fetch(`${BRIDGE}/backup/snapshot`);
+    } catch (_) {
+      return { ok: true, skipped: "bridge_offline" };
+    }
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`bridge GET ${res.status}: ${errText.slice(0, 120)}`);
+      return { ok: true, skipped: `bridge_${res.status}` };
     }
     const snap = await res.json();
     if (!snap || typeof snap !== "object") throw new Error("bridge snapshot invalid");

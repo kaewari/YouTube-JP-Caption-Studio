@@ -374,9 +374,7 @@
     captionsStatus = "ok";
     captionsInfo = info;
     paintPendingT0 = performance.now();
-    const normalized = CueTiming.clampCueEndsToNextStart(
-      Normalize.normalizeCues(rawCues)
-    );
+    const normalized = Normalize.normalizeCues(rawCues);
     // Fresh YT only — skip chrome.storage + disk merge (after wipe / hard reset).
     if (opts.skipCache) {
       if (gen !== navigateGen || currentVideoId !== vid) return;
@@ -411,8 +409,7 @@
       cues = merged.length ? merged : cuesFromSavedScript(cached);
       captionsInfo = `${info} · owned script`;
     } else {
-      // Heal previously saved rolling-ASR overlaps (cache still had long ends).
-      cues = CueTiming.clampCueEndsToNextStart(merged);
+      cues = merged;
     }
     applyYtSecondaryFill(opts);
     listDirty = true;
@@ -704,7 +701,6 @@
       // Force fresh YT timeline (skip stale overlapping chrome/disk ends).
       await loadAllCaptions(true, { skipCache: false });
       if (cues.length && !transcriptMeta.owned) {
-        cues = CueTiming.clampCueEndsToNextStart(cues);
         listDirty = true;
         scheduleSaveTranscript();
         publishSidePanelState({ forceList: true });
@@ -937,6 +933,7 @@
     if (settings.barShowJa == null) settings.barShowJa = true;
     if (settings.barShowEn == null) settings.barShowEn = true;
     if (settings.barShowVi == null) settings.barShowVi = true;
+    if (settings.enableBilingualJlptColor == null) settings.enableBilingualJlptColor = true;
     if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
       settings.barScale = DEFAULTS.barScale;
     }
@@ -1092,31 +1089,41 @@
   async function seekPrevCue() {
     const sorted = getSortedCues();
     if (!sorted.length) return;
-    const v = findVideo();
-    const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
-    let prev = null;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (sorted[i].start_media_time < curTime - 0.35) {
-        prev = sorted[i];
-        break;
+    const curIdx = activeCueId ? sorted.findIndex((c) => c.id === activeCueId) : -1;
+    let target = null;
+    if (curIdx > 0) {
+      target = sorted[curIdx - 1];
+    } else {
+      const v = findVideo();
+      const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i].start_media_time < curTime - 0.1) {
+          target = sorted[i];
+          break;
+        }
       }
     }
-    if (prev) await seekToTime(prev.start_media_time);
+    if (target) await seekToTime(target.start_media_time);
   }
 
   async function seekNextCue() {
     const sorted = getSortedCues();
     if (!sorted.length) return;
-    const v = findVideo();
-    const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
-    let next = null;
-    for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].start_media_time > curTime + 0.1) {
-        next = sorted[i];
-        break;
+    const curIdx = activeCueId ? sorted.findIndex((c) => c.id === activeCueId) : -1;
+    let target = null;
+    if (curIdx >= 0 && curIdx < sorted.length - 1) {
+      target = sorted[curIdx + 1];
+    } else {
+      const v = findVideo();
+      const curTime = v ? v.currentTime : (Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime) || 0);
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i].start_media_time > curTime + 0.1) {
+          target = sorted[i];
+          break;
+        }
       }
     }
-    if (next) await seekToTime(next.start_media_time);
+    if (target) await seekToTime(target.start_media_time);
   }
 
   const BAR_POS_LEVELS = [0.72, 0.55, 0.82];
@@ -1162,16 +1169,40 @@
     if (!lrHotkeysBound) {
       lrHotkeysBound = true;
       window.addEventListener("keydown", (e) => {
-        if (!settings.showOnVideo) return;
         const tag = e.target?.tagName?.toLowerCase();
-        if (tag === "input" || tag === "textarea" || e.target?.isContentEditable) return;
-        if (e.key === "s" || e.key === "S") {
+        if (tag === "input" || tag === "textarea" || tag === "button" || e.target?.isContentEditable) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        // H key: Toggle overlay on/off
+        if (e.key === "h" || e.key === "H") {
+          e.preventDefault();
+          settings.showOnVideo = !settings.showOnVideo;
+          applyBarVisibility();
+          syncPlayerToggle();
+          void saveSettings();
+          toast(settings.showOnVideo ? "Overlay: BẬT" : "Overlay: TẮT");
+          return;
+        }
+
+        // Space: Toggle Play/Pause when overlay is shown and focused outside inputs
+        if (e.key === " " && settings.showOnVideo) {
+          const v = findVideo();
+          if (v) {
+            e.preventDefault();
+            if (v.paused) v.play();
+            else v.pause();
+            return;
+          }
+        }
+
+        if (!settings.showOnVideo) return;
+        if (e.key === "s" || e.key === "S" || e.key === "k" || e.key === "K") {
           e.preventDefault();
           repeatCurrentCue();
-        } else if (e.key === "a" || e.key === "A") {
+        } else if (e.key === "a" || e.key === "A" || e.key === "j" || e.key === "J") {
           e.preventDefault();
           seekPrevCue();
-        } else if (e.key === "d" || e.key === "D") {
+        } else if (e.key === "d" || e.key === "D" || e.key === "l" || e.key === "L") {
           e.preventDefault();
           seekNextCue();
         }
@@ -1794,10 +1825,7 @@
     if (cached.some(isOwnedCue)) transcriptMeta.owned = true;
     let fromScript = cuesFromSavedScript(cached);
     if (!fromScript.length) return false;
-    // Auto-saved YT scripts often still have rolling ASR overlaps — heal on restore.
-    if (!transcriptMeta.owned) {
-      fromScript = CueTiming.clampCueEndsToNextStart(fromScript);
-    }
+    // Keep original authentic timing on restore.
     captionsStatus = "ok";
     captionsInfo = `${reason} · ${fromScript.length} cues`;
     cues = fromScript;
@@ -1903,11 +1931,11 @@
     root.innerHTML = `
       <div id="hardsub-ocr-bar" class="hardsub-bar lr-bar-container" hidden></div>
       <div id="lr-nav-left" class="lr-nav-left" hidden>
-        <button type="button" class="lr-nav-btn" id="lr-btn-next" title="Next sub (D)">&gt;</button>
+        <button type="button" class="lr-nav-btn" id="lr-btn-prev" title="Prev sub (A)">&lt;</button>
         <button type="button" class="lr-nav-btn" id="lr-btn-repeat" title="Repeat sub (S)">
           ↻<span class="lr-tooltip">Repeat ['S' key]</span>
         </button>
-        <button type="button" class="lr-nav-btn" id="lr-btn-prev" title="Prev sub (A)">&lt;</button>
+        <button type="button" class="lr-nav-btn" id="lr-btn-next" title="Next sub (D)">&gt;</button>
       </div>
       <div id="lr-ctrl-right" class="lr-ctrl-right" hidden>
         <div class="lr-ap-toggle" id="lr-toggle-ap" title="Auto-Pause (stop video when sub finishes)">
@@ -1943,14 +1971,6 @@
     return Number.isFinite(n) ? Math.max(0.55, Math.min(2.4, n)) : 1;
   }
 
-  async function adjustBarScale(delta) {
-    const raw = Number(settings.barScale);
-    const current = Number.isFinite(raw) ? raw : DEFAULTS.barScale;
-    const next = Math.round((current + Number(delta || 0)) * 10) / 10;
-    settings.barScale = Math.max(0.55, Math.min(2.4, next));
-    await saveSettings();
-    applyBarPosition();
-  }
   function clampBarBoxScale(n) {
     const x = Number(n);
     return Number.isFinite(x) ? Math.max(0.55, Math.min(2.4, x)) : 1;
@@ -1975,15 +1995,15 @@
     let scaleH = start.scaleH;
     let left = start.left;
     let top = start.top;
-    if (dir.includes("e")) scaleW = clampBarBoxScale((start.boxW + dx) / w0);
+    if (dir.includes("e")) scaleW = clampBarBoxScale(start.scaleW + dx / w0);
     if (dir.includes("w")) {
-      scaleW = clampBarBoxScale((start.boxW - dx) / w0);
-      left = start.left + (start.boxW - scaleW * w0);
+      scaleW = clampBarBoxScale(start.scaleW - dx / w0);
+      left = start.left + (start.scaleW - scaleW) * w0;
     }
-    if (dir.includes("s")) scaleH = clampBarBoxScale((start.boxH + dy) / h0);
+    if (dir.includes("s")) scaleH = clampBarBoxScale(start.scaleH + dy / h0);
     if (dir.includes("n")) {
-      scaleH = clampBarBoxScale((start.boxH - dy) / h0);
-      top = start.top + (start.boxH - scaleH * h0);
+      scaleH = clampBarBoxScale(start.scaleH - dy / h0);
+      top = start.top + (start.scaleH - scaleH) * h0;
     }
     return { scaleW, scaleH, left, top };
   }
@@ -2131,45 +2151,8 @@
     let startY = 0;
     /** @type {{ scaleW: number, scaleH: number, left: number, top: number, boxW: number, boxH: number, w0: number, h0: number } | null} */
     let resizeStart = null;
-    bar.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0) return;
-      if (e.target.closest(".hardsub-dict")) return;
-      const resizeEl = e.target.closest(".bar-resize");
-      if (resizeEl) {
-        resizing = true;
-        resizeDir = resizeEl.dataset.dir || "se";
-        const br = bar.getBoundingClientRect();
-        const w0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-w0")) || br.width;
-        const h0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-h0")) || br.height;
-        resizeStart = {
-          scaleW: userBarScaleW(),
-          scaleH: userBarScaleH(),
-          left: br.left,
-          top: br.top,
-          boxW: br.width,
-          boxH: br.height,
-          w0,
-          h0,
-        };
-        startX = e.clientX;
-        startY = e.clientY;
-        bar.classList.add("resizing");
-        bar.setPointerCapture(e.pointerId);
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      // Keep token hover / dict clicks and action buttons from starting a drag.
-      if (e.target.closest("ruby, .tok, button, .lr-card-actions, .hardsub-bridge-pill")) return;
-      dragging = true;
-      bar.classList.add("dragging");
-      const rect = bar.getBoundingClientRect();
-      ox = e.clientX - rect.left;
-      oy = e.clientY - rect.top;
-      bar.setPointerCapture(e.pointerId);
-      e.preventDefault();
-    });
-    bar.addEventListener("pointermove", (e) => {
+
+    const onPointerMove = (e) => {
       if (resizing && resizeStart) {
         const next = computeBarEdgeResize(
           resizeDir,
@@ -2225,8 +2208,16 @@
       bar.style.bottom = "auto";
       bar.style.left = `${left}px`;
       bar.style.top = `${top}px`;
-    });
-    bar.addEventListener("pointerup", async () => {
+    };
+
+    const onPointerUp = async (e) => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      try {
+        if (e && e.pointerId != null && bar.hasPointerCapture?.(e.pointerId)) {
+          bar.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
       if (resizing) {
         resizing = false;
         resizeStart = null;
@@ -2238,9 +2229,52 @@
       dragging = false;
       bar.classList.remove("dragging");
       await saveSettings();
+    };
+
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest(".hardsub-dict")) return;
+      const resizeEl = e.target.closest(".bar-resize");
+      if (resizeEl) {
+        resizing = true;
+        resizeDir = resizeEl.dataset.dir || "se";
+        const br = bar.getBoundingClientRect();
+        const w0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-w0")) || br.width;
+        const h0 = parseFloat(getComputedStyle(bar).getPropertyValue("--bar-box-h0")) || br.height;
+        resizeStart = {
+          scaleW: userBarScaleW(),
+          scaleH: userBarScaleH(),
+          left: br.left,
+          top: br.top,
+          boxW: br.width,
+          boxH: br.height,
+          w0,
+          h0,
+        };
+        startX = e.clientX;
+        startY = e.clientY;
+        bar.classList.add("resizing");
+        try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      // Keep token hover / dict clicks and action buttons from starting a drag.
+      if (e.target.closest("ruby, .tok, button, .lr-card-actions, .hardsub-bridge-pill")) return;
+      dragging = true;
+      bar.classList.add("dragging");
+      const rect = bar.getBoundingClientRect();
+      ox = e.clientX - rect.left;
+      oy = e.clientY - rect.top;
+      try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      e.preventDefault();
     });
     bar.addEventListener("dblclick", async (e) => {
-      if (e.target.closest("ruby, .tok, .bar-resize, button")) return;
+      if (e.target.closest("ruby, .tok, .bar-resize")) return;
       settings.barPos = null;
       settings.barScale = 1;
       settings.barScaleW = 1;
@@ -2320,29 +2354,30 @@
     if (!dictEl || !el) return;
     const tokRect = el.getBoundingClientRect();
     const bar = el.closest(".hardsub-bar");
-    const barRect = bar ? bar.getBoundingClientRect() : null;
-    const pad = 8;
-    const gap = 8;
+    const barRect = bar ? bar.getBoundingClientRect() : tokRect;
+    const pad = 10;
+    const gap = 12;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const dw = dictEl.offsetWidth || 420;
-    const dh = dictEl.offsetHeight || 160;
+    const dw = Math.min(dictEl.offsetWidth || 280, vw - pad * 2);
+    const dh = dictEl.offsetHeight || 140;
 
-    // Prefer left of token; then left of caption bar; then right of token; clamp.
-    let x = tokRect.left - dw - gap;
-    if (x < pad && barRect) x = barRect.left - dw - gap;
-    if (x < pad) {
-      x = tokRect.right + gap;
-      if (x + dw > vw - pad) x = pad;
-    }
+    // Center horizontally over the token, clamped within viewport bounds
+    let x = tokRect.left + (tokRect.width - dw) / 2;
     x = Math.max(pad, Math.min(vw - dw - pad, x));
 
-    let y = tokRect.top;
+    // Place ABOVE the subtitle bar if room; otherwise place BELOW
+    let y = 0;
+    if (barRect.top > dh + gap + pad) {
+      y = barRect.top - dh - gap;
+    } else {
+      y = barRect.bottom + gap;
+    }
     y = Math.max(pad, Math.min(vh - dh - pad, y));
 
     dictEl.style.right = "auto";
-    dictEl.style.left = `${x}px`;
-    dictEl.style.top = `${y}px`;
+    dictEl.style.left = `${Math.round(x)}px`;
+    dictEl.style.top = `${Math.round(y)}px`;
   }
 
   /** Side-panel hover: dock to the right edge of the page viewport (left of panel). */
@@ -2715,8 +2750,17 @@
     }
     if (bar) {
       applyBarStyle(bar);
-      if (!on) bar.hidden = true;
-      else bar.hidden = !bar.dataset.hasText;
+      if (!on) {
+        bar.hidden = true;
+        bar.style.setProperty("display", "none", "important");
+      } else {
+        bar.hidden = !bar.dataset.hasText;
+        if (bar.hidden) {
+          bar.style.setProperty("display", "none", "important");
+        } else {
+          bar.style.removeProperty("display");
+        }
+      }
     }
     syncPlayerToggle();
   }
@@ -2977,32 +3021,14 @@
   }
 
   function rubyHtml(cue) {
-    // Always emit per-token markup when tokens exist so overlay hover-dict works;
-    // furigana <rt> is optional via settings.showFurigana.
-    if (!cue.tokens?.length) {
-      return escapeHtml(cue.source);
+    if (Vocab && typeof Vocab.renderRubyHtml === "function") {
+      return Vocab.renderRubyHtml(cue, {
+        showFurigana: settings.showFurigana,
+        settings,
+        userVocab,
+      });
     }
-    return cue.tokens
-      .map((t) => {
-        const s = escapeHtml(t.surface);
-        const lemma = escapeAttr(t.lemma || t.surface);
-        const surfaceAttr = escapeAttr(t.surface);
-        const cls = Vocab.classForToken(t, settings, userVocab);
-        const classAttr = cls ? `tok ${cls}` : "tok";
-        if (settings.showFurigana && t.reading && !Vocab.isSkipPos(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
-          const Kana = globalThis.HardsubRomajiKana;
-          const rawReading = t.reading || "";
-          const hiragana =
-            Kana && typeof Kana.katakanaToHiragana === "function"
-              ? Kana.katakanaToHiragana(rawReading)
-              : rawReading;
-          if (hiragana) {
-            return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
-          }
-        }
-        return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}">${s}</span>`;
-      })
-      .join("");
+    return escapeHtml(cue?.source || "");
   }
 
   function escapeHtml(s) {
@@ -3727,7 +3753,14 @@
       clearDictTokActive();
       bar.dataset.hasText = "";
       bar.hidden = true;
-      bar.innerHTML = "";
+      bar.style.setProperty("display", "none", "important");
+      const wrap = bar.querySelector(".lr-overlay-wrap");
+      if (wrap) {
+        wrap.innerHTML = "";
+      } else {
+        bar.innerHTML = "";
+        ensureBarResizeHandle(bar);
+      }
       const dictEl = document.getElementById("hardsub-ocr-dict");
       if (dictEl) {
         dictEl.hidden = true;
@@ -3745,55 +3778,25 @@
       return;
     }
     lastBarFingerprint = fp;
-    const en = stripStubPrefix(cue.en);
-    const vi = stripStubPrefix(cue.vi);
     bar.dataset.hasText = "1";
     bar.classList.add("lr-bar-container");
     Vocab.applyHighlightVars(bar, settings);
     applyBarStyle(bar);
-    const showJa = settings.barShowJa !== false;
-    const showEn = settings.barShowEn !== false;
-    const showVi = settings.barShowVi !== false;
     const starred = isCueStarred(cue.id);
 
     bar.innerHTML = `
       <div class="hardsub-bridge-pill ${bridgeReady ? "ready" : "offline"}" title="${bridgeReady ? "Local Bridge: Connected" : "Local Bridge: Offline (Intl.Segmenter fallback)"}"></div>
       <div class="lr-overlay-wrap">
-        ${
-          showJa
-            ? `<div class="lr-card-ja">
-                <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
-                <div class="lr-text-ja">${rubyHtml(cue)}</div>
-                <div class="lr-card-actions">
-                  <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ (A-)">A-</button>
-                  <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ (A+)">A+</button>
-                  <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
-                  <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
-                </div>
-              </div>`
-            : ""
-        }
-        ${
-          showVi && vi
-            ? `<div class="lr-card-vi">
-                <div class="lr-text-vi">${escapeHtml(vi)}</div>
-              </div>`
-            : ""
-        }
-        ${
-          showEn && en
-            ? `<div class="lr-card-en">
-                <div class="lr-text-en">${escapeHtml(en)}</div>
-              </div>`
-            : ""
-        }
-        ${
-          showVi && !vi && en && !showEn
-            ? `<div class="lr-card-vi">
-                <div class="lr-text-vi">${escapeHtml(en)}</div>
-              </div>`
-            : ""
-        }
+        <div class="lr-card-ja">
+          <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
+          <div class="lr-text-ja">${rubyHtml(cue)}</div>
+          <div class="lr-card-actions">
+            <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ (A-)">A-</button>
+            <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ (A+)">A+</button>
+            <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
+            <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
+          </div>
+        </div>
       </div>
     `;
     const pill = bar.querySelector(".hardsub-bridge-pill");
@@ -3806,26 +3809,26 @@
     }
     const scaleDownBtn = bar.querySelector(".lr-scale-down-btn");
     if (scaleDownBtn) {
-      scaleDownBtn.addEventListener("click", async (e) => {
+      scaleDownBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
         const cur = userBarScale();
         const next = Math.max(0.55, Math.min(2.4, Math.round((cur - 0.1) * 100) / 100));
         settings.barScale = next;
-        await saveSettings();
         applyBarPosition();
+        void saveSettings();
       });
     }
     const scaleUpBtn = bar.querySelector(".lr-scale-up-btn");
     if (scaleUpBtn) {
-      scaleUpBtn.addEventListener("click", async (e) => {
+      scaleUpBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         e.preventDefault();
         const cur = userBarScale();
         const next = Math.max(0.55, Math.min(2.4, Math.round((cur + 0.1) * 100) / 100));
         settings.barScale = next;
-        await saveSettings();
         applyBarPosition();
+        void saveSettings();
       });
     }
     const replayBtn = bar.querySelector(".lr-replay-btn");
@@ -3836,18 +3839,6 @@
         repeatCurrentCue();
       });
     }
-    const scaleDownBtn = bar.querySelector(".lr-scale-down");
-    scaleDownBtn?.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      await adjustBarScale(-0.1);
-    });
-    const scaleUpBtn = bar.querySelector(".lr-scale-up");
-    scaleUpBtn?.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      await adjustBarScale(0.1);
-    });
     const starBtn = bar.querySelector(".lr-star-btn");
     if (starBtn) {
       starBtn.addEventListener("click", async (e) => {
@@ -3878,15 +3869,23 @@
    * Playhead match — active strictly within authentic [start, end + grace].
    * Does NOT artificially hold across silence gaps until the next cue.
    */
+  let sortedCuesCache = null;
+  let lastCuesRef = null;
+  function getSortedCues() {
+    if (cues === lastCuesRef && sortedCuesCache && sortedCuesCache.length === (cues?.length || 0)) {
+      return sortedCuesCache;
+    }
+    lastCuesRef = cues;
+    sortedCuesCache = (cues || []).slice().sort(
+      (a, b) => (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
+    );
+    return sortedCuesCache;
+  }
+
   function findActiveCue(mediaTime) {
     const t = Number(mediaTime) || 0;
     const grace = 0.15;
-    const live = cues
-      .slice()
-      .sort(
-        (a, b) =>
-          (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
-      );
+    const live = getSortedCues();
     let hit = null;
     for (let i = 0; i < live.length; i++) {
       const c = live[i];
@@ -4444,30 +4443,19 @@
     toast("Đã export TXT");
   }
 
-  async function tick() {
-    if (!settings.enabled || !isCurrentPlatformEnabled()) return;
-    checkPageWatch();
-    const mtRes = await pageCall("GET_MEDIA_TIME", {}, 400);
-    const mediaTime = Number(mtRes?.mediaTime);
+  function syncCueAtMediaTime(mediaTime) {
     if (!Number.isFinite(mediaTime)) return;
-
     const active = findActiveCue(mediaTime);
     const nextId = active?.id || "";
     if (nextId !== activeCueId) {
       activeCueId = nextId;
       updateBar(active);
-      // Lightweight playhead sync — omit cue list (full publish only when listDirty).
       publishSidePanelPartial({ activeCueId, currentTime: mediaTime });
-    } else if (active) {
-      updateBar(active);
-    } else {
-      updateBar(null);
     }
 
-    // Auto-pause (AP): if enabled, pause video when active subtitle finishes
     if (settings.autoPause && active) {
       const end = Number(active.end_media_time) || 0;
-      if (end > 0 && mediaTime >= end - 0.10 && apLastPausedCueId !== active.id) {
+      if (end > 0 && mediaTime >= end - 0.08 && apLastPausedCueId !== active.id) {
         apLastPausedCueId = active.id;
         const video = findVideo();
         if (video && !video.paused) {
@@ -4475,8 +4463,18 @@
         }
       }
     }
+  }
 
+  async function tick() {
+    if (!settings.enabled || !isCurrentPlatformEnabled()) return;
+    checkPageWatch();
     bindVideoEvents();
+
+    const v = findVideo();
+    const mediaTime = v ? v.currentTime : Number((await pageCall("GET_MEDIA_TIME", {}, 300))?.mediaTime);
+    if (Number.isFinite(mediaTime)) {
+      syncCueAtMediaTime(mediaTime);
+    }
 
     if (listDirty) renderList(true);
   }
@@ -4486,18 +4484,31 @@
     const v = findVideo();
     if (v && v !== boundVideoEl) {
       boundVideoEl = v;
-      v.addEventListener("timeupdate", () => {
-        if (settings.autoPause) {
-          const curTime = v.currentTime || 0;
-          const curCue = findActiveCue(curTime);
-          if (curCue) {
-            const end = Number(curCue.end_media_time) || 0;
-            if (end > 0 && curTime >= end - 0.08 && apLastPausedCueId !== curCue.id) {
-              apLastPausedCueId = curCue.id;
-              if (!v.paused) v.pause();
-            }
-          }
+
+      const onFrame = (now, metadata) => {
+        if (!boundVideoEl || boundVideoEl !== v) return;
+        const mt = metadata && Number.isFinite(metadata.mediaTime) ? metadata.mediaTime : v.currentTime;
+        syncCueAtMediaTime(mt);
+        if ("requestVideoFrameCallback" in v && !v.paused) {
+          v.requestVideoFrameCallback(onFrame);
         }
+      };
+
+      if ("requestVideoFrameCallback" in v) {
+        v.addEventListener("play", () => {
+          v.requestVideoFrameCallback(onFrame);
+        }, { passive: true });
+        if (!v.paused) {
+          v.requestVideoFrameCallback(onFrame);
+        }
+      }
+
+      v.addEventListener("timeupdate", () => {
+        syncCueAtMediaTime(v.currentTime);
+      }, { passive: true });
+
+      v.addEventListener("seeked", () => {
+        syncCueAtMediaTime(v.currentTime);
       }, { passive: true });
     }
   }
@@ -4668,7 +4679,7 @@
             listDirty = true;
             renderList(true);
             publishSidePanelState({ forceList: true });
-            const curTime = Number(getMediaTime()?.mediaTime) || 0;
+            const curTime = Number(findVideo()?.currentTime) || 0;
             updateBar(findActiveCue(curTime));
           }
           return;
@@ -4684,7 +4695,7 @@
           listDirty = true;
           renderList(true);
           publishSidePanelState({ forceList: true });
-          const curTime = Number(getMediaTime()?.mediaTime) || 0;
+          const curTime = Number(findVideo()?.currentTime) || 0;
           updateBar(findActiveCue(curTime));
           return;
         }

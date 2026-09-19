@@ -84,7 +84,7 @@ def tokenize(text: str) -> list[Token]:
                 end=len(text),
                 freq_rank=rank,
                 pos="",
-                jlpt=jlpt_of(rank),
+                jlpt=jlpt_of(rank, lemma=lemma),
             )
         ]
 
@@ -111,7 +111,7 @@ def tokenize(text: str) -> list[Token]:
                 end=end,
                 freq_rank=rank,
                 pos=pos,
-                jlpt=jlpt_of(rank),
+                jlpt=jlpt_of(rank, lemma=lemma),
             )
         )
     return tokens

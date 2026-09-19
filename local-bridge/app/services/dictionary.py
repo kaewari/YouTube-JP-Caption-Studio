@@ -309,7 +309,7 @@ def is_loaded() -> bool:
 
 def close_dictionary() -> None:
     """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
-    global _loaded
+    global _loaded, _en_vi_cache
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -318,6 +318,7 @@ def close_dictionary() -> None:
             pass
         _local.conn = None
     _loaded = False
+    _en_vi_cache = None
     dict_cache.clear()
 
 
@@ -421,19 +422,47 @@ def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
     return out
 
 
+_en_vi_cache: dict[str, list[str]] | None = None
+
+
+def _get_en_vi_cache() -> dict[str, list[str]]:
+    global _en_vi_cache
+    if _en_vi_cache is None:
+        if EN_VI_JSON.is_file():
+            try:
+                raw = json.loads(EN_VI_JSON.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    _en_vi_cache = {
+                        str(k).lower(): (
+                            [str(x) for x in v if str(x).strip()]
+                            if isinstance(v, list)
+                            else ([str(v).strip()] if str(v).strip() and v is not None else [])
+                        )
+                        for k, v in raw.items()
+                        if k
+                    }
+                else:
+                    _en_vi_cache = {}
+            except Exception as exc:
+                logger.warning("Failed loading en_vi.json fallback: %s", exc)
+                _en_vi_cache = {}
+        else:
+            _en_vi_cache = {}
+    return _en_vi_cache
+
+
 def _query_en_vi(lemma: str) -> list[str]:
     conn = _get_db()
-    if not conn:
-        return []
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT glosses FROM en_vi WHERE lemma = ?", (lemma.lower(),))
-        row = cur.fetchone()
-        if row and row[0]:
-            return json.loads(row[0])
-    except Exception as exc:
-        logger.warning("SQLite en_vi query error for %s: %s", lemma, exc)
-    return []
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT glosses FROM en_vi WHERE lemma = ?", (lemma.lower(),))
+            row = cur.fetchone()
+            if row and row[0]:
+                return json.loads(row[0])
+        except Exception as exc:
+            logger.warning("SQLite en_vi query error for %s: %s", lemma, exc)
+    return _get_en_vi_cache().get(lemma.lower(), [])
 
 
 def _vi_glosses_for(key: str, reading: str = "") -> list[str]:

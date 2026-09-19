@@ -83,20 +83,36 @@
       </div>
     </section>
 
+    <section id="sp-settings-panel" class="sp-settings-panel" hidden>
+      <div class="sp-settings-head">
+        <strong>Cài đặt</strong>
+        <button type="button" id="sp-settings-cancel" class="sp-import-cancel" title="Đóng">×</button>
+      </div>
+      <label class="setting-row">
+        <span>Tô màu JLPT cho bản dịch VI/EN</span>
+        <input type="checkbox" id="toggle-bilingual-jlpt" checked />
+      </label>
+    </section>
+
     <footer class="sp-footer">
       <div class="sp-footer-toolbar">
-        <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm cue tại playhead">+ Cue</button>
-        <button type="button" id="sp-reload" class="sp-footer-btn" title="Tải lại caption">Reload</button>
-        <button type="button" id="sp-overlay" class="sp-footer-btn" title="Bật/tắt overlay trên video">Overlay</button>
-        <button type="button" id="sp-follow" class="sp-footer-btn sp-follow" title="Cuộn theo timeline" hidden>▶ Cuộn</button>
-        <div class="sp-footer-spacer"></div>
-        <button type="button" id="sp-import" class="sp-footer-btn" title="Nhập bản dịch từ file JSON/TXT">Import</button>
-        <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
-        <button type="button" id="sp-export" class="sp-footer-btn" title="Export TXT">Export</button>
-        <button type="button" id="sp-clear-mt" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa EN/VI đã dịch (giữ JA)">Xóa dịch</button>
-        <button type="button" id="sp-wipe-script" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa script đã lưu và tải lại từ đầu">Xóa sub</button>
-        <button type="button" id="sp-drive-upload" class="sp-footer-btn sp-footer-btn-subtle" title="Upload script lên Drive">☁ Drive</button>
-        <button type="button" id="sp-settings" class="sp-footer-btn sp-footer-btn-icon" title="Cài đặt">⚙</button>
+        <div class="sp-footer-row">
+          <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm cue tại playhead">+ Cue</button>
+          <button type="button" id="sp-reload" class="sp-footer-btn" title="Tải lại caption">Reload</button>
+          <button type="button" id="sp-overlay" class="sp-footer-btn" title="Bật/tắt overlay trên video">Overlay</button>
+          <button type="button" id="sp-follow" class="sp-footer-btn sp-follow active" title="Đang tự động cuộn (Bấm để tạm dừng)">▶ Cuộn</button>
+          <div class="sp-footer-spacer"></div>
+          <button type="button" id="sp-settings" class="sp-footer-btn sp-footer-btn-icon" title="Cài đặt">⚙</button>
+        </div>
+        <div class="sp-footer-row">
+          <button type="button" id="sp-import" class="sp-footer-btn" title="Nhập bản dịch từ file JSON/TXT">Import</button>
+          <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
+          <button type="button" id="sp-export" class="sp-footer-btn" title="Export TXT">Export</button>
+          <button type="button" id="sp-drive-upload" class="sp-footer-btn" title="Upload script lên Drive">☁ Drive</button>
+          <div class="sp-footer-spacer"></div>
+          <button type="button" id="sp-clear-mt" class="sp-footer-btn sp-footer-btn-warning" title="Xóa EN/VI đã dịch (giữ JA)">Xóa dịch</button>
+          <button type="button" id="sp-wipe-script" class="sp-footer-btn sp-footer-btn-danger" title="Xóa script đã lưu và tải lại từ đầu">Xóa sub</button>
+        </div>
       </div>
       <div class="sp-footer-meta" hidden>
         <!-- Hidden elements for state/drive binding compatibility -->

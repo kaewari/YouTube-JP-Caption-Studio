@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-
 import pytest
 
-from app.services import script_store
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
+from unittest import mock
 
 
 @pytest.fixture
-def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr(script_store, "SCRIPTS_DIR", tmp_path)
-    monkeypatch.setattr(script_store, "scripts_root", lambda: tmp_path)
-    monkeypatch.setattr(script_store, "_DEVICE_ID_PATH", tmp_path / "device_id.txt")
-    monkeypatch.setattr(script_store, "_device_id", "")
-    return tmp_path
+def root(tmp_path: Path):
+    with mock.patch("app.services.script_store.scripts_root", lambda: tmp_path):
+        with mock.patch("app.services.script_store.SCRIPTS_DIR", tmp_path):
+            yield tmp_path
 
 
 @pytest.fixture

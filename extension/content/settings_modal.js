@@ -107,6 +107,10 @@
                   <span>Show subtitles below video</span>
                   <input type="checkbox" id="lr-opt-below-video" class="lr-switch" ${s.subBelowVideo ? "checked" : ""}>
                 </label>
+                <label class="lr-toggle-row">
+                  <span>Tô màu JLPT cho bản dịch VI/EN</span>
+                  <input type="checkbox" id="lr-opt-bilingual-jlpt" class="lr-switch" ${s.enableBilingualJlptColor !== false ? "checked" : ""}>
+                </label>
               </div>
             </div>
           </div>
@@ -222,6 +226,12 @@
     const optAP = host.querySelector("#lr-opt-autopause");
     optAP?.addEventListener("change", () => {
       currentSettings.autoPause = !!optAP.checked;
+      if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
+    });
+
+    const optBilingual = host.querySelector("#lr-opt-bilingual-jlpt");
+    optBilingual?.addEventListener("change", () => {
+      currentSettings.enableBilingualJlptColor = !!optBilingual.checked;
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
   }
