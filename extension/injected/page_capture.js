@@ -393,8 +393,14 @@
       const n = textNodes[i];
       if (!n.text) continue;
       const next = textNodes[i + 1];
-      const end = next ? next.start : n.start + Math.max(0.2, n.dur || 2);
-      textCues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      const hasDur = n.dur != null && Number.isFinite(n.dur) && n.dur > 0;
+      let end = hasDur
+        ? Math.round((n.start + n.dur) * 1000) / 1000
+        : (next ? next.start : n.start + 2);
+      if (end <= n.start) {
+        end = n.start + 0.2;
+      }
+      textCues.push({ start: n.start, end: end, text: n.text });
     }
     if (textCues.length) return textCues;
 
@@ -404,8 +410,39 @@
     while ((m = pRe.exec(xml))) {
       const attrs = m[1] || "";
       const inner = m[2] || "";
-      const t = Number((attrs.match(/\bt="(\d+)"/) || [])[1] || 0) / 1000;
+      const tMatch = attrs.match(/\bt="(\d+)"/);
+      const beginMatch = attrs.match(/\bbegin="([^"]+)"/);
+      let t = 0;
+      if (tMatch) {
+        t = Number(tMatch[1]) / 1000;
+      } else if (beginMatch) {
+        let val = String(beginMatch[1]).trim();
+        if (val.endsWith("s")) val = val.slice(0, -1);
+        if (val.includes(":")) {
+          const parts = val.split(":").map(Number);
+          t = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+        } else {
+          t = Number(val) || 0;
+        }
+      }
+
       const dRaw = (attrs.match(/\bd="(\d+)"/) || [])[1];
+      const endMatch = attrs.match(/\bend="([^"]+)"/);
+      let durMs = dRaw != null ? Number(dRaw) : null;
+      if (durMs == null && endMatch) {
+        let val = String(endMatch[1]).trim();
+        if (val.endsWith("s")) val = val.slice(0, -1);
+        let endSec = 0;
+        if (val.includes(":")) {
+          const parts = val.split(":").map(Number);
+          endSec = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+        } else {
+          endSec = Number(val) || 0;
+        }
+        if (endSec > t) {
+          durMs = Math.round((endSec - t) * 1000);
+        }
+      }
       const text = decodeEntities(
         inner
           .replace(/<br\s*\/?>/gi, " ")
@@ -417,20 +454,21 @@
       if (!text) continue;
       pNodes.push({
         start: t,
-        durMs: dRaw != null ? Number(dRaw) : null,
+        durMs: durMs,
         text,
       });
     }
     for (let i = 0; i < pNodes.length; i += 1) {
       const n = pNodes[i];
       const next = pNodes[i + 1];
-      // YSD / VTT: end at next cue start (ignore short scrolling-ASR dDurationMs).
-      let end = next
-        ? next.start
-        : n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0
-          ? n.start + n.durMs / 1000
-          : n.start + 2;
-      cues.push({ start: n.start, end: Math.max(n.start + 0.2, end), text: n.text });
+      const hasDur = n.durMs != null && Number.isFinite(n.durMs) && n.durMs > 0;
+      let end = hasDur
+        ? Math.round((n.start + n.durMs / 1000) * 1000) / 1000
+        : (next ? next.start : n.start + 2);
+      if (end <= n.start) {
+        end = n.start + 0.2;
+      }
+      cues.push({ start: n.start, end: end, text: n.text });
     }
     return cues;
   }
@@ -462,6 +500,17 @@
     const add = (u) => {
       if (u && !variants.includes(u)) variants.push(u);
     };
+    const isTlang = raw.includes("tlang=");
+    const json3 = raw.includes("fmt=json3")
+      ? raw
+      : raw.includes("fmt=")
+        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+
+    if (isTlang) {
+      add(json3);
+      return variants;
+    }
     add(raw);
     if (!raw.includes("fmt=srv3")) {
       const srv3 = raw.includes("fmt=")
@@ -469,12 +518,7 @@
         : `${raw}${raw.includes("?") ? "&" : "?"}fmt=srv3`;
       add(srv3);
     }
-    if (!raw.includes("fmt=json3")) {
-      const json3 = raw.includes("fmt=")
-        ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
-        : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
-      add(json3);
-    }
+    add(json3);
     if (raw.includes("fmt=")) {
       const stripped = raw.replace(/([?&])fmt=[^&]+(&|$)/, (m, p1, p2) => (p2 === "&" ? p1 : "")).replace(/\?$/, "");
       add(stripped);
@@ -489,7 +533,11 @@
     for (const cred of ["omit", "same-origin"]) {
       for (const u of urls) {
         try {
-          const res = await fetch(u, { credentials: cred, cache: "no-store" });
+          const res = await fetch(u, {
+            credentials: cred,
+            cache: "no-store",
+            headers: { Accept: "*/*" }
+          });
           if (!res.ok) {
             lastError = `http_${res.status}_${cred}`;
             continue;
@@ -565,14 +613,29 @@
       };
     }
 
+    function toTlangUrl(baseUrl, tlang) {
+      if (!baseUrl) return null;
+      let base = baseUrl.includes("fmt=")
+        ? baseUrl.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+        : `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}fmt=json3`;
+      if (base.includes("tlang=")) {
+        base = base.replace(/([?&])tlang=[^&]+/, `$1tlang=${encodeURIComponent(tlang)}`);
+      } else {
+        base = `${base}&tlang=${encodeURIComponent(tlang)}`;
+      }
+      return base;
+    }
+
     async function packsFromTracks(tracks) {
       const ja = pickBestTrackByPrefix(tracks, "ja");
       const en = pickBestTrackByPrefix(tracks, "en");
       const vi = pickBestTrackByPrefix(tracks, "vi");
+      const enUrl = en?.baseUrl || toTlangUrl(ja?.baseUrl, "en");
+      const viUrl = vi?.baseUrl || toTlangUrl(ja?.baseUrl, "vi");
       const [jaGot, enGot, viGot] = await Promise.all([
         ja?.baseUrl ? fetchJson3Cues(ja.baseUrl) : Promise.resolve({ cues: [] }),
-        en?.baseUrl ? fetchJson3Cues(en.baseUrl) : Promise.resolve({ cues: [] }),
-        vi?.baseUrl ? fetchJson3Cues(vi.baseUrl) : Promise.resolve({ cues: [] }),
+        enUrl ? fetchJson3Cues(enUrl) : Promise.resolve({ cues: [] }),
+        viUrl ? fetchJson3Cues(viUrl) : Promise.resolve({ cues: [] }),
       ]);
       return { ja, en, vi, jaGot, enGot, viGot };
     }
@@ -628,24 +691,39 @@
   function noteTimedtext(url, body) {
     if (!url || !String(url).includes("/api/timedtext")) return;
     let vid = "";
+    let lang = "";
+    let tlang = "";
     try {
-      vid = new URL(String(url), location.origin).searchParams.get("v") || "";
+      const u = new URL(String(url), location.origin);
+      vid = u.searchParams.get("v") || "";
+      lang = u.searchParams.get("lang") || "";
+      tlang = u.searchParams.get("tlang") || "";
     } catch (_) {}
-    state.timedtext.url = String(url);
-    state.timedtext.videoId = vid || videoIdFromLocation();
+    const isJaTrack =
+      matchLangFamily(tlang || lang, "ja") ||
+      (!tlang && !lang && /[\u3040-\u30ff\u4e00-\u9faf]/.test(body || ""));
+    if (isJaTrack) {
+      state.timedtext.url = String(url);
+      state.timedtext.videoId = vid || videoIdFromLocation();
+    }
     if (body && String(body).trim().length > 10) {
-      state.timedtext.body = String(body);
       const cues = parseTimedtextBody(body);
       if (cues.length) {
-        state.timedtext.cues = cues;
+        if (isJaTrack) {
+          state.timedtext.body = String(body);
+          state.timedtext.cues = cues;
+        }
         try {
           window.postMessage(
             {
               type: "__HARDSUB_TIMEDTEXT_CAPTURED__",
               source: "youtube",
-              videoId: state.timedtext.videoId,
+              videoId: vid || state.timedtext.videoId,
               count: cues.length,
-              url: state.timedtext.url,
+              url: String(url),
+              lang: tlang || lang,
+              sourceLang: lang,
+              tlang: tlang,
               cues,
               cap: CAP_TOKEN,
             },
@@ -1256,15 +1334,18 @@
       tryEnablePlayerCaptions(videoId, preferLang);
       const intercepted = await waitForInterceptedCues(videoId, 900);
       if (intercepted?.length) {
-        return okCaptionResult(
-          intercepted,
-          {
-            languageCode: preferLang,
-            kind: "asr",
-            name: "intercept",
-          },
-          { via: "intercept", baseUrl: state.timedtext.url || "" }
-        );
+        const detected = detectSubtitleLang(state.timedtext.body, intercepted, state.timedtext.url) || "";
+        if (matchLangFamily(detected, preferLang) || (!detected && preferLang === "ja")) {
+          return okCaptionResult(
+            intercepted,
+            {
+              languageCode: detected || preferLang,
+              kind: "asr",
+              name: "intercept",
+            },
+            { via: "intercept", baseUrl: state.timedtext.url || "" }
+          );
+        }
       }
 
       const { track, tracks } = await waitForCaptionTracks(videoId, preferLang, 8000);
@@ -1272,16 +1353,19 @@
 
       const tryTracks = [];
       if (state.timedtext.url && (!state.timedtext.videoId || state.timedtext.videoId === videoId)) {
-        tryTracks.push({
-          baseUrl: state.timedtext.url,
-          languageCode: preferLang,
-          kind: "asr",
-          name: { simpleText: "intercept-url" },
-        });
+        const ttLang = detectSubtitleLang(state.timedtext.body, state.timedtext.cues, state.timedtext.url);
+        if (matchLangFamily(ttLang, preferLang)) {
+          tryTracks.push({
+            baseUrl: state.timedtext.url,
+            languageCode: ttLang,
+            kind: "asr",
+            name: { simpleText: "intercept-url" },
+          });
+        }
       }
-      if (track?.baseUrl) tryTracks.push(track);
+      if (track?.baseUrl && matchLangFamily(track.languageCode, preferLang)) tryTracks.push(track);
       for (const t of tracks || []) {
-        if (t?.baseUrl && t !== track) tryTracks.push(t);
+        if (t?.baseUrl && t !== track && matchLangFamily(t.languageCode, preferLang)) tryTracks.push(t);
       }
 
       for (const t of tryTracks) {
@@ -1383,13 +1467,20 @@
     const pr = getPlayerResponse(videoId);
     const tracks = tracksFromPr(pr);
     const track = pickCaptionTrack(tracks, preferLang);
+    let ttLang = "";
+    try {
+      ttLang = new URL(state.timedtext.url, location.href).searchParams.get("lang") || "";
+    } catch (_) {}
+    const preferIsJa = matchLangFamily(preferLang, "ja");
+    const ttMatches = preferIsJa ? (!ttLang || matchLangFamily(ttLang, "ja")) : true;
     const url = normalizeTimedtextUrl(
-      (state.timedtext.videoId === videoId && state.timedtext.url) ||
-        track?.baseUrl ||
-        state.timedtext.url ||
+      track?.baseUrl ||
+        (ttMatches && state.timedtext.videoId === videoId && state.timedtext.url) ||
+        (ttMatches && state.timedtext.url) ||
         ""
     );
     const cuesForVid =
+      ttMatches &&
       state.timedtext.cues?.length &&
       (!state.timedtext.videoId || state.timedtext.videoId === videoId)
         ? state.timedtext.cues
@@ -1406,7 +1497,7 @@
       ok: !!url || !!cuesForVid.length,
       baseUrl: url,
       videoId,
-      lang: track?.languageCode || "",
+      lang: track?.languageCode || (ttMatches ? urlLang : "") || "",
       asr: track?.kind === "asr",
       intercepted: !!cuesForVid.length,
       cues: cuesForVid,
@@ -1426,7 +1517,7 @@
     } else if (matchLangFamily(lang, "ja")) {
       s += 70;
     }
-    if (!asr) s += 25;
+    if (!asr && s > 0) s += 25;
     return s;
   }
 
@@ -1958,7 +2049,9 @@
         viProbeFailed = false;
         reply({ ok: true });
       } else if (type === "GET_TIMEDTEXT_LINK") reply(getTimedtextLink(payload || {}));
-      else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
+      else if (type === "FETCH_MULTI_LANG_CAPTIONS") {
+        fetchMultiLangCaptions(payload || {}).then(reply).catch((e) => reply({ ok: false, reason: "exception", message: String(e) }));
+      } else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
       else reply({ ok: false, reason: "unknown" });
     } catch (err) {
       reply({ ok: false, reason: "exception", message: String(err) });

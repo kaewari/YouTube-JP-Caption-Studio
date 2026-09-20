@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Words Tab UI Parity Verification</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <link rel="stylesheet" href="../extension/sidepanel/sidepanel.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #14141a;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+      width: 420px;
+      height: 720px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <header class="sp-header">
+    <div class="sp-tabs">
+      <button type="button" class="sp-tab">Subtitles</button>
+      <button type="button" class="sp-tab active">Words</button>
+      <button type="button" class="sp-tab">Saved</button>
+    </div>
+    <div class="sp-header-actions">
+      <button type="button" class="sp-header-btn">⚙</button>
+      <button type="button" class="sp-header-btn">↗</button>
+      <button type="button" class="sp-header-btn">✕</button>
+    </div>
+  </header>
+
+  <main id="sp-view-words" class="sp-view active" style="display:flex; flex-direction:column;">
+    <!-- Group 1: Rank 1501 - 2000 -->
+    <div class="sp-word-group">
+      <div class="sp-word-group-banner">Rank 1501 - 2000</div>
+      <div class="sp-words-flow">
+        <button type="button" class="sp-word-chip rank-mid saved"><ruby class="sp-word-ruby">すばらしい<rt>subarashii</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">以来<rt>irai</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">ばあちゃん<rt>baachan</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-mid"><ruby class="sp-word-ruby">もしか<rt>moshika</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">かく<rt>kaku</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">くせ<rt>kuse</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-mid"><ruby class="sp-word-ruby">彼氏<rt>kareshi</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">うるさい<rt>urusai</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">わっ<rt>wa</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">見た目<rt>mitame</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">たび<rt>tabi</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-upper"><ruby class="sp-word-ruby">修正<rt>shuusei</rt></ruby></button>
+      </div>
+    </div>
+
+    <!-- Group 2: Rank 2001 - 2500 -->
+    <div class="sp-word-group">
+      <div class="sp-word-group-banner">Rank 2001 - 2500</div>
+      <div class="sp-words-flow">
+        <button type="button" class="sp-word-chip rank-mid"><ruby class="sp-word-ruby">並ぶ<rt>narabu</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">部長<rt>buchou</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">社員<rt>shain</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">資料<rt>shiryou</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-upper"><ruby class="sp-word-ruby">偶然<rt>guuzen</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">姉さん<rt>neesan</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-upper"><ruby class="sp-word-ruby">一生懸命<rt>isshoukenmei</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">ついてる<rt>tsuiteru</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">連続<rt>renzoku</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">つる<rt>tsuru</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">通う<rt>kayou</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">おう<rt>ou</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">趣味<rt>shumi</rt></ruby></button>
+        <button type="button" class="sp-word-chip rank-common"><ruby class="sp-word-ruby">どおり<rt>doori</rt></ruby></button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

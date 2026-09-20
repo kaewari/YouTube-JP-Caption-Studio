@@ -36,3 +36,16 @@ export const STATUS_ORDER: VocabStatus[] = [
   "ignored",
   "special",
 ];
+
+export interface SavedCue {
+  id: string;
+  source: string;
+  startTime: number;
+  endTime: number;
+  vi?: string;
+  en?: string;
+  videoTitle?: string;
+  savedAt: number;
+}
+
+export type SavedCueMap = Record<string, SavedCue>;

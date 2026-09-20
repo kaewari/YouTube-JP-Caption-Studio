@@ -124,3 +124,19 @@ export function EmptyListIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" {...props}>
+      <path d="M19 9h-4V3H9v6H5l7 7zM5 18v2h14v-2z" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="currentColor" {...props}>
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z" />
+    </svg>
+  );
+}

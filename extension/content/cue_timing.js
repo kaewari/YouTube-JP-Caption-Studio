@@ -52,6 +52,10 @@
    *   while the line actually stays until the next event / \\n separator)
    * Supports {start,end} and {start_media_time,end_media_time}.
    */
+  /**
+   * Preserve authentic cue timing (no stretching, snapping, or duration prediction).
+   * Supports {start,end} and {start_media_time,end_media_time}.
+   */
   function clampCueEndsToNextStart(cues) {
     const out = (cues || []).map((c) => Object.assign({}, c));
     const startOf = (c) =>
@@ -65,22 +69,13 @@
         c.end_media_time != null && c.end_media_time !== ""
           ? c.end_media_time
           : c.end
-      ) || 0;
+      );
     out.sort((a, b) => startOf(a) - startOf(b));
     for (let i = 0; i < out.length; i += 1) {
       const c = out[i];
       const start = startOf(c);
-      let end = endOf(c);
-      if (!(end > start)) end = start + MIN_DUR;
-      const next = out[i + 1];
-      if (next) {
-        const nextStart = startOf(next);
-        if (nextStart > start) {
-          // Own [start, nextStart) — match VTT cue boundaries, not raw dDurationMs.
-          end = nextStart - GAP;
-          if (end <= start) end = start + Math.min(MIN_DUR, nextStart - start);
-        }
-      }
+      const endRaw = endOf(c);
+      const end = Number.isFinite(endRaw) ? endRaw : start + MIN_DUR;
       c.start = start;
       c.end = end;
       c.start_media_time = start;

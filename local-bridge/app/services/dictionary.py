@@ -13,7 +13,7 @@ from pathlib import Path
 
 from app.core.cache import dict_cache
 from app.data.hanviet_data import get_hanviet_reading
-from app.schemas.models import DictResponse, DictSense
+from app.schemas.models import DictExample, DictResponse, DictSense
 from app.utils.text_utils import _kata_to_hira
 
 logger = logging.getLogger(__name__)
@@ -317,7 +317,8 @@ def _get_db() -> sqlite3.Connection | None:
         return conn
     if SQLITE_DB.is_file():
         try:
-            conn = sqlite3.connect(f"file:{SQLITE_DB}?mode=ro", uri=True)
+            conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0)
+            conn.execute("PRAGMA query_only = ON;")
             _local.conn = conn
             _loaded = True
             return conn
@@ -332,7 +333,7 @@ def is_loaded() -> bool:
 
 def close_dictionary() -> None:
     """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
-    global _loaded
+    global _loaded, _en_vi_cache
     conn = getattr(_local, "conn", None)
     if conn is not None:
         try:
@@ -341,6 +342,7 @@ def close_dictionary() -> None:
             pass
         _local.conn = None
     _loaded = False
+    _en_vi_cache = None
     dict_cache.clear()
 
 
@@ -427,6 +429,104 @@ def _query_javi(key: str) -> list[str]:
     return []
 
 
+_POS_VI_MAP = {
+    "n": "Danh từ",
+    "v1": "Động từ",
+    "v5": "Động từ",
+    "v": "Động từ",
+    "adj-i": "Tính từ -i",
+    "adj-na": "Tính từ -na",
+    "adj": "Tính từ",
+    "adv": "Phó từ",
+    "exp": "Cụm từ / Thành ngữ",
+    "int": "Thán từ",
+    "prt": "Trợ từ",
+}
+
+
+def _query_mazii(key: str) -> list[str]:
+    """Query Mazii table for Vietnamese glosses."""
+    conn = _get_db()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT glosses FROM mazii WHERE expression = ?", (key,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+        cur.execute("SELECT glosses FROM mazii WHERE reading = ? LIMIT 1", (key,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception as exc:
+        logger.warning("SQLite mazii query error for %s: %s", key, exc)
+    return []
+
+
+def _get_mazii_details(key: str) -> dict[str, Any] | None:
+    conn = _get_db()
+    if not conn:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT expression, reading, pos, glosses, examples FROM mazii WHERE expression = ?", (key,))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("SELECT expression, reading, pos, glosses, examples FROM mazii WHERE reading = ? LIMIT 1", (key,))
+            row = cur.fetchone()
+        if not row:
+            return None
+        expr, reading, pos, glosses_raw, examples_raw = row
+        glosses = json.loads(glosses_raw) if glosses_raw else []
+        ex_ids = json.loads(examples_raw) if examples_raw else []
+        examples: list[DictExample] = []
+        if ex_ids:
+            placeholders = ",".join("?" for _ in ex_ids[:2])
+            cur.execute(f"SELECT content, mean, trans FROM mazii_examples WHERE id IN ({placeholders})", ex_ids[:2])
+            for c_ja, c_vi, c_tr in cur.fetchall():
+                examples.append(DictExample(ja=c_ja or "", vi=c_vi or "", trans=c_tr or ""))
+
+        hanviet_parts: list[str] = []
+        for ch in expr:
+            if "\u4e00" <= ch <= "\u9fff":
+                cur.execute("SELECT mean FROM mazii_kanji WHERE kanji = ?", (ch,))
+                k_row = cur.fetchone()
+                if k_row and k_row[0]:
+                    hanviet_parts.append(k_row[0].split(",")[0].strip().upper())
+        hanviet = " ".join(hanviet_parts)
+
+        pos_clean = [p.strip() for p in (pos or "").split(",") if p.strip()]
+        pos_vi = [_POS_VI_MAP.get(p, p) for p in pos_clean]
+
+        return {
+            "expression": expr,
+            "reading": reading,
+            "pos": pos_vi or (["Danh từ"] if not pos_clean else pos_clean),
+            "glosses": glosses,
+            "examples": examples,
+            "hanviet": hanviet,
+        }
+    except Exception as exc:
+        logger.warning("SQLite mazii details query error for %s: %s", key, exc)
+    return None
+
+
+def _reading_from_mazii(key: str) -> str:
+    conn = _get_db()
+    if not conn:
+        return ""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT reading FROM mazii WHERE expression = ? LIMIT 1", (key,))
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].split(",")[0].strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
     conn = _get_db()
     if not conn:
@@ -434,7 +534,7 @@ def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     try:
         cur = conn.cursor()
-        cur.execute("SELECT reading, glosses FROM jmdict_vi WHERE expression = ?", (key,))
+        cur.execute("SELECT reading, glosses FROM jmdict_vi WHERE expression = ? OR reading = ?", (key, key))
         rows = cur.fetchall()
         for r_reading, r_glosses in rows:
             if r_glosses:
@@ -469,13 +569,26 @@ def _query_hanviet(text: str) -> str:
     return ""
 
 
-def _vi_glosses_for(key: str, reading: str = "") -> list[str]:
-    """Curated seed/ja_vi first, then Yomitan VI JMDict (reading-aware). Clean without EN bridge."""
+def _vi_glosses_for(key: str, reading: str = "", lemma: str = "") -> list[str]:
+    """Curated seed first, then Mazii, then Yomitan VI JMDict (reading-aware)."""
+    # 1. Curated seed / javi
     for cand in _script_variants(key):
         curated = _query_javi(cand)
         if curated:
             return curated[:8]
 
+    # 2. Mazii (crawled from live Mazii API — highest quality JA→VI)
+    for cand in _script_variants(key):
+        mazii = _query_mazii(cand)
+        if mazii:
+            return mazii[:8]
+    if lemma and lemma != key:
+        for cand in _script_variants(lemma):
+            mazii = _query_mazii(cand)
+            if mazii:
+                return mazii[:8]
+
+    # 3. Yomitan VI JMDict fallback (reading-aware)
     by_reading: dict[str, list[str]] = {}
     for cand in _script_variants(key):
         by_reading = _query_jmdict_vi(cand)
@@ -572,7 +685,7 @@ def _stem_variants(text: str) -> list[str]:
     return variants
 
 
-def _senses_for_key(key: str) -> tuple[list[DictSense], str]:
+def _senses_for_key(key: str, lemma: str = "") -> tuple[list[DictSense], str]:
     senses: list[DictSense] = []
     reading = ""
     for entry in _query_jmdict(key):
@@ -582,17 +695,27 @@ def _senses_for_key(key: str) -> tuple[list[DictSense], str]:
             senses.append(
                 DictSense(
                     gloss_en=s.get("gloss_en", []),
-                    gloss_vi=_vi_glosses_for(key, sense_reading),
+                    gloss_vi=_vi_glosses_for(key, sense_reading, lemma=lemma),
                     reading=sense_reading,
                     pos=s.get("pos", []),
                 )
             )
     if not senses:
-        vi = _vi_glosses_for(key, "")
-        if vi:
-            senses.append(DictSense(gloss_vi=vi, gloss_en=[], reading=reading))
-        elif key in _SEED_JA_VI:
-            senses.append(DictSense(gloss_vi=list(_SEED_JA_VI[key]), gloss_en=[], reading=reading))
+        details = _get_mazii_details(key) or (_get_mazii_details(lemma) if lemma else None)
+        if details:
+            reading = details.get("reading") or reading
+            glosses = details.get("glosses") or []
+            pos = details.get("pos") or []
+            if glosses:
+                senses.append(DictSense(gloss_vi=glosses[:8], gloss_en=[], reading=reading, pos=pos))
+        if not senses:
+            if not reading:
+                reading = _reading_from_mazii(key) or (_reading_from_mazii(lemma) if lemma else "")
+            vi = _vi_glosses_for(key, reading, lemma=lemma)
+            if vi:
+                senses.append(DictSense(gloss_vi=vi, gloss_en=[], reading=reading))
+            elif key in _SEED_JA_VI:
+                senses.append(DictSense(gloss_vi=list(_SEED_JA_VI[key]), gloss_en=[], reading=reading))
     return senses, reading
 
 
@@ -609,9 +732,11 @@ def _has_key(key: str) -> bool:
             UNION ALL
             SELECT 1 FROM javi WHERE expression = ?
             UNION ALL
+            SELECT 1 FROM mazii WHERE expression = ?
+            UNION ALL
             SELECT 1 FROM jmdict_vi WHERE expression = ?
             LIMIT 1
-        """, (key, key, key))
+        """, (key, key, key, key))
         return cur.fetchone() is not None
     except Exception as exc:
         logger.warning("SQLite _has_key query error for %s: %s", key, exc)
@@ -641,9 +766,9 @@ def _longest_prefix_match(text: str) -> str | None:
     return None
 
 
-def _try_keys(keys: list[str]) -> tuple[list[DictSense], str, str]:
+def _try_keys(keys: list[str], lemma: str = "") -> tuple[list[DictSense], str, str]:
     for key in keys:
-        senses, reading = _senses_for_key(key)
+        senses, reading = _senses_for_key(key, lemma=lemma)
         if senses:
             return senses, reading, key
     return [], "", ""
@@ -731,13 +856,13 @@ def lookup(
         return DictResponse(**cached)
 
     candidates = _expand_candidates(raw, lemma or "", context_tokens)
-    candidates.sort(key=lambda s: (-len(s), s))
+    candidates.sort(key=lambda s: (0 if s in (raw, lemma) else 1, -len(s), s))
 
     matched = ""
     senses: list[DictSense] = []
     reading = ""
 
-    senses, reading, matched = _try_keys(candidates)
+    senses, reading, matched = _try_keys(candidates, lemma=lemma)
 
     if not senses:
         best_pref = ""
@@ -763,6 +888,24 @@ def lookup(
     if found:
         senses = _enrich_senses_vi(senses, matched or raw)
 
+    target_key = matched or raw
+    details = _get_mazii_details(target_key)
+    if not details and lemma:
+        details = _get_mazii_details(lemma)
+
+    hanviet = details.get("hanviet", "") if details else ""
+    if not hanviet:
+        hanviet = _query_hanviet(matched or raw)
+    examples = details.get("examples", []) if details else []
+    if not reading and details:
+        reading = details.get("reading", "")
+
+    from app.services.vocab_freq import jlpt_of
+
+    jlpt = jlpt_of(None, lemma=target_key, surface=raw, reading=reading) or ""
+    if not jlpt and lemma:
+        jlpt = jlpt_of(None, lemma=lemma, surface=raw, reading=reading) or ""
+
     # Collect top unique VI glosses for fast access
     vi_all: list[str] = []
     seen_vi: set[str] = set()
@@ -773,13 +916,11 @@ def lookup(
                 seen_vi.add(gk.casefold())
                 vi_all.append(gk)
     if not vi_all:
-        for g in _vi_glosses_for(matched or raw, reading):
+        for g in _vi_glosses_for(matched or raw, reading, lemma=lemma):
             gk = g.strip()
             if gk and gk.casefold() not in seen_vi:
                 seen_vi.add(gk.casefold())
                 vi_all.append(gk)
-
-    hanviet = _query_hanviet(matched or raw)
 
     resp = DictResponse(
         surface=raw,
@@ -790,6 +931,9 @@ def lookup(
         glosses_vi=vi_all,
         senses=senses,
         message="" if found else "không có trong từ điển",
+        jlpt=jlpt.upper() if jlpt else "",
+        source="Mazii JA-VI",
+        examples=examples,
     )
     if found or SQLITE_DB.is_file():
         dict_cache.set(cache_key, resp.model_dump())

@@ -7,11 +7,64 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
+    <header class="sp-header">
+      <div class="sp-tabs">
+        <button type="button" class="sp-tab active" data-tab="subtitles">Subtitles</button>
+        <button type="button" class="sp-tab" data-tab="words">Words</button>
+        <button type="button" class="sp-tab" data-tab="saved">Saved</button>
+      </div>
+      <div id="sp-sub-visibility" class="sp-sub-visibility">
+        <div class="sp-sub-toggles">
+          <button type="button" id="sp-toggle-ja" class="sp-sub-btn active" data-sub="ja" title="Bật/tắt dòng tiếng Nhật">JA</button>
+          <button type="button" id="sp-toggle-vi" class="sp-sub-btn active" data-sub="vi" title="Bật/tắt dòng tiếng Việt">VI</button>
+          <button type="button" id="sp-toggle-en" class="sp-sub-btn active" data-sub="en" title="Bật/tắt dòng tiếng Anh">EN</button>
+          <button type="button" id="sp-toggle-furi" class="sp-sub-btn active" data-sub="furi" title="Bật/tắt chữ Furigana">Furi</button>
+        </div>
+      </div>
+      <div class="sp-header-actions">
+        <button type="button" id="sp-btn-settings" class="sp-header-btn" title="Cài đặt">⚙</button>
+        <button type="button" id="sp-btn-popout" class="sp-header-btn" title="Mở trang đầy đủ">↗</button>
+        <button type="button" id="sp-btn-close" class="sp-header-btn" title="Đóng">✕</button>
+      </div>
+    </header>
+
     <div id="sp-toast" class="sp-toast" hidden></div>
     <div id="sp-empty" class="sp-empty">
       Mở tab YouTube / ABEMA / Netflix đang phát video, rồi bấm Reload nếu cần.
     </div>
-    <div id="sp-list" class="sp-list" hidden></div>
+
+    <!-- View 1: Subtitles Timeline -->
+    <main id="sp-view-subtitles" class="sp-view active">
+      <div id="sp-list" class="sp-list" hidden></div>
+    </main>
+
+    <!-- View 2: Video Words by Rank -->
+    <main id="sp-view-words" class="sp-view" hidden>
+      <div class="sp-words-header">
+        <span class="sp-words-title">Từ vựng trong video theo rank</span>
+        <span id="sp-words-count" class="sp-words-count"></span>
+      </div>
+      <div id="sp-words-list" class="sp-words-list"></div>
+    </main>
+
+    <!-- View 3: Saved Items -->
+    <main id="sp-view-saved" class="sp-view" hidden>
+      <div class="sp-saved-actions-top">
+        <button type="button" id="sp-saved-open-web" class="sp-saved-top-btn" title="Mở trang web Saved Items đầy đủ trong tab mới"><span class="sp-saved-icon">↗</span> Mở trang web</button>
+        <button type="button" id="sp-saved-view-all" class="sp-saved-top-btn"><span class="sp-saved-icon">▤</span> View All</button>
+        <button type="button" id="sp-saved-practice" class="sp-saved-top-btn"><span class="sp-saved-icon">🕒</span> Practice</button>
+        <button type="button" id="sp-saved-export-anki" class="sp-saved-top-btn" title="Xuất danh sách đã lưu sang Anki TSV"><span class="sp-saved-icon">📤</span> Export Anki</button>
+      </div>
+      <div class="sp-saved-subbar">
+        <span class="sp-saved-last-label">Last saved:</span>
+        <label class="sp-saved-toggle-wrap">
+          <span>Show context</span>
+          <input type="checkbox" id="sp-saved-show-context" checked class="sp-toggle-input" />
+          <span class="sp-toggle-slider"></span>
+        </label>
+      </div>
+      <div id="sp-saved-list" class="sp-saved-list"></div>
+    </main>
 
     <section id="sp-import-panel" class="sp-import-panel" hidden>
       <div class="sp-import-head">
@@ -41,19 +94,36 @@
     </section>
 
     <footer class="sp-footer">
-      <div class="sp-footer-toolbar">
-        <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm cue tại playhead">+ Cue</button>
-        <button type="button" id="sp-reload" class="sp-footer-btn" title="Tải lại caption">Reload</button>
-        <button type="button" id="sp-overlay" class="sp-footer-btn" title="Bật/tắt overlay trên video">Overlay</button>
-        <button type="button" id="sp-follow" class="sp-footer-btn sp-follow" title="Cuộn theo timeline" hidden>▶ Cuộn</button>
+      <div class="sp-footer-toolbar sp-footer-single-row">
+        <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm câu phụ đề mới tại thời điểm hiện tại">+ Cue</button>
+        <button type="button" id="sp-reload" class="sp-footer-btn" title="Tải lại phụ đề video">Reload</button>
+        <button type="button" id="sp-overlay" class="sp-footer-btn" title="Bật/tắt thanh phụ đề trên video [Alt+H]">Overlay</button>
+        <button type="button" id="sp-pip" class="sp-footer-btn" title="Bật/tắt cửa sổ nổi Picture-in-Picture [Alt+P]">PiP</button>
+        <button type="button" id="sp-follow" class="sp-footer-btn sp-follow active" title="Bật/tắt tự động cuộn theo câu đang phát">▶ Cuộn</button>
         <div class="sp-footer-spacer"></div>
-        <button type="button" id="sp-import" class="sp-footer-btn" title="Nhập bản dịch từ file JSON/TXT">Import</button>
-        <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
-        <button type="button" id="sp-export" class="sp-footer-btn" title="Export TXT">Export</button>
-        <button type="button" id="sp-clear-mt" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa EN/VI đã dịch (giữ JA)">Xóa dịch</button>
-        <button type="button" id="sp-wipe-script" class="sp-footer-btn sp-footer-btn-subtle" title="Xóa script đã lưu và tải lại từ đầu">Xóa sub</button>
-        <button type="button" id="sp-drive-upload" class="sp-footer-btn sp-footer-btn-subtle" title="Upload script lên Drive">☁ Drive</button>
-        <button type="button" id="sp-settings" class="sp-footer-btn sp-footer-btn-icon" title="Cài đặt">⚙</button>
+        <details class="sp-footer-more-menu" id="sp-footer-more">
+          <summary class="sp-footer-btn sp-footer-more-trigger" title="Thao tác dữ liệu (Import, Export, Drive, Xóa)">⋯</summary>
+          <div class="sp-footer-popover">
+            <button type="button" id="sp-import" class="sp-popover-item" title="Nhập bản dịch từ file JSON/TXT">
+              <span class="sp-popover-icon">📥</span> Nhập bản dịch (Import)
+            </button>
+            <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
+            <button type="button" id="sp-export" class="sp-popover-item" title="Xuất toàn bộ script phụ đề ra file TXT">
+              <span class="sp-popover-icon">📤</span> Xuất script (Export TXT)
+            </button>
+            <button type="button" id="sp-drive-upload" class="sp-popover-item" title="Đồng bộ script phụ đề lên Google Drive">
+              <span class="sp-popover-icon">☁</span> Đồng bộ Drive
+            </button>
+            <div class="sp-popover-divider"></div>
+            <button type="button" id="sp-clear-mt" class="sp-popover-item sp-popover-item-warning" title="Xóa bản dịch tiếng Việt và tiếng Anh (giữ nguyên tiếng Nhật)">
+              <span class="sp-popover-icon">🗑</span> Xóa bản dịch (VI/EN)
+            </button>
+            <button type="button" id="sp-wipe-script" class="sp-popover-item sp-popover-item-danger" title="Xóa sạch toàn bộ script và tải lại phụ đề gốc từ đầu">
+              <span class="sp-popover-icon">⚠</span> Xóa toàn bộ sub & tải lại
+            </button>
+          </div>
+        </details>
+        <button type="button" id="sp-settings" class="sp-footer-btn sp-footer-btn-icon" title="Cài đặt phụ đề & Dịch AI">⚙</button>
       </div>
       <div class="sp-footer-meta" hidden>
         <!-- Hidden elements for state/drive binding compatibility -->
@@ -71,6 +141,7 @@
     <script src="../shared/vocab_style.js"></script>
     <script src="../shared/import_parse.js"></script>
     <script src="../shared/romaji_kana.js"></script>
+    <script src="../shared/gemini_translate.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

@@ -28,22 +28,71 @@ async function ensureDriveUploadAlarm() {
   } catch (_) {}
 }
 
-/** Icon click opens side panel; Saved Items popup accessible via side panel. */
-chrome.runtime.onInstalled.addListener(async () => {
+async function ensureSidePanelReady() {
   try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    if (chrome.sidePanel?.setOptions) {
+      await chrome.sidePanel.setOptions({
+        path: "sidepanel/sidepanel.html",
+        enabled: false,
+      });
+    }
   } catch (_) {}
+  try {
+    if (chrome.sidePanel?.setPanelBehavior) {
+      await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+    }
+  } catch (_) {}
+}
+
+/** Icon click opens dedicated options/saved page in a tab; Sidepanel opened via player toggle. */
+chrome.runtime.onInstalled.addListener(async () => {
+  await ensureSidePanelReady();
   await ensureBridgePollAlarm();
   await ensureDriveUploadAlarm();
 });
 
 chrome.runtime.onStartup?.addListener?.(async () => {
-  try {
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  } catch (_) {}
+  await ensureSidePanelReady();
   await ensureBridgePollAlarm();
   await ensureDriveUploadAlarm();
 });
+
+// Immediate top-level initialization so side panel is ready on SW wake.
+void ensureSidePanelReady();
+
+// Extension toolbar icon click: opens side panel on video sites, or Saved Items page on other sites.
+if (chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    try {
+      if (tab?.id && isSupportedUrl(tab.url)) {
+        await chrome.sidePanel.open({ tabId: tab.id });
+      } else {
+        const url = chrome.runtime.getURL("popup/index.html");
+        await chrome.tabs.create({ url });
+      }
+    } catch (_) {
+      try {
+        const url = chrome.runtime.getURL("popup/index.html");
+        await chrome.tabs.create({ url });
+      } catch (_) {}
+    }
+  });
+}
+
+// Keyboard shortcuts (manifest commands)
+if (chrome.commands?.onCommand) {
+  chrome.commands.onCommand.addListener(async (command) => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      if (command === "toggle_overlay") {
+        chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_OVERLAY" }).catch(() => {});
+      } else if (command === "toggle_pip") {
+        chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PIP" }).catch(() => {});
+      }
+    } catch (_) {}
+  });
+}
 
 /** Site families the extension supports (content scripts + side panel gate). */
 function platformFromUrl(url) {
@@ -82,23 +131,18 @@ async function isPlatformEnabledForUrl(url) {
   }
 }
 
-/** Enable side panel only on supported sites; disable (+ close) everywhere else. */
+/** Ensure side panel is only enabled for supported video sites. */
 async function syncSidePanelForTab(tabId, url) {
   if (tabId == null) return;
-  const enabledByPlat = await isPlatformEnabledForUrl(url);
-  const onSupported = isSupportedUrl(url) && enabledByPlat;
   try {
+    const supported = isSupportedUrl(url);
+    const enabled = supported && (await isPlatformEnabledForUrl(url));
     await chrome.sidePanel.setOptions({
       tabId,
       path: "sidepanel/sidepanel.html",
-      enabled: onSupported,
+      enabled: !!enabled,
     });
   } catch (_) {}
-  if (!onSupported) {
-    try {
-      await closeSidePanel(tabId);
-    } catch (_) {}
-  }
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
@@ -106,7 +150,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
   await syncSidePanelForTab(tabId, tab.url);
 });
 
-// onUpdated misses plain tab switches — close panel when leaving YouTube.
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -153,14 +196,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "OPEN_SIDE_PANEL") {
     const tabId = sender?.tab?.id;
-    if (tabId == null) {
+    const windowId = sender?.tab?.windowId;
+    if (tabId == null && windowId == null) {
       sendResponse({ ok: false, error: "no_tab" });
       return false;
     }
-    chrome.sidePanel
-      .open({ tabId })
+    const openPromise = tabId != null
+      ? chrome.sidePanel.open({ tabId })
+      : chrome.sidePanel.open({ windowId });
+    openPromise
       .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => {
+        if (windowId != null && tabId != null) {
+          chrome.sidePanel
+            .open({ windowId })
+            .then(() => sendResponse({ ok: true }))
+            .catch((e2) => sendResponse({ ok: false, error: String(e2) }));
+          return;
+        }
+        sendResponse({ ok: false, error: String(err) });
+      });
     return true;
   }
   if (msg?.type === "CLOSE_SIDE_PANEL") {
@@ -292,10 +347,6 @@ async function imeViaNative(cmd) {
   }
 }
 
-try {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-} catch (_) {}
-
 /** Mirror chrome.storage → bridge so localhost:3000 Saved Items can poll. */
 let _applyingBridgeState = false;
 let _pushTimer = null;
@@ -333,7 +384,7 @@ function schedulePushExtensionState() {
 async function pushExtensionStateToBridge() {
   if (_applyingBridgeState) return;
   try {
-    const data = await chrome.storage.local.get(["userVocab", "hardsubSettings"]);
+    const data = await chrome.storage.local.get(["userVocab", "hardsubSettings", "savedCues"]);
     const body = {};
     // Never push a missing key over a non-empty bridge — an empty/fresh local
     // store must not wipe the bridge's vocab copy (see pull-first at startup).
@@ -342,6 +393,9 @@ async function pushExtensionStateToBridge() {
     }
     if (data.hardsubSettings && typeof data.hardsubSettings === "object") {
       body.hardsubSettings = data.hardsubSettings;
+    }
+    if (data.savedCues && typeof data.savedCues === "object") {
+      body.savedCues = data.savedCues;
     }
     body.source = "extension";
     const j = JSON.stringify(body);
@@ -384,18 +438,24 @@ async function pullExtensionStateFromBridge() {
     if (remote.hardsubSettings && typeof remote.hardsubSettings === "object") {
       patch.hardsubSettings = remote.hardsubSettings;
     }
+    if (remote.savedCues && typeof remote.savedCues === "object") {
+      patch.savedCues = remote.savedCues;
+    }
     if (!Object.keys(patch).length) {
       _lastBridgeUpdatedAt = updatedAt;
       await saveSwState();
       return;
     }
-    const local = await chrome.storage.local.get(["userVocab", "hardsubSettings"]);
+    const local = await chrome.storage.local.get(["userVocab", "hardsubSettings", "savedCues"]);
     const sameVocab =
       JSON.stringify(local.userVocab || {}) === JSON.stringify(patch.userVocab || local.userVocab || {});
     const sameSettings =
       !patch.hardsubSettings ||
       JSON.stringify(local.hardsubSettings || {}) === JSON.stringify(patch.hardsubSettings);
-    if (sameVocab && sameSettings) {
+    const sameSaved =
+      !patch.savedCues ||
+      JSON.stringify(local.savedCues || {}) === JSON.stringify(patch.savedCues);
+    if (sameVocab && sameSettings && sameSaved) {
       _lastBridgeUpdatedAt = updatedAt;
       await saveSwState();
       return;
@@ -576,13 +636,17 @@ function buildTimedtextUrlVariants(baseUrl) {
   const add = (u) => {
     if (u && !variants.includes(u)) variants.push(u);
   };
-  add(raw);
-  // ponytail: two fmt variants max — more variants multiplied burst requests and
-  // tripped YouTube's per-IP throttle; re-add srv3/stripped only if a format gap shows up.
-  if (!raw.includes("fmt=json3")) {
-    const json3 = raw.includes("fmt=")
+  const isTlang = raw.includes("tlang=");
+  const json3 = raw.includes("fmt=json3")
+    ? raw
+    : raw.includes("fmt=")
       ? raw.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
       : `${raw}${raw.includes("?") ? "&" : "?"}fmt=json3`;
+
+  if (isTlang) {
+    add(json3);
+  } else {
+    add(raw);
     add(json3);
   }
   return variants;
@@ -607,8 +671,8 @@ async function getYtCookieHeader() {
  * Prefer fmt=json3; parse XML text/p or json3.
  * Source timeline = ja track only; en and vi packs go to enCues/viCues — never into cues.
  */
-/** Negative cache: a just-throttled video returns instantly instead of re-bursting. */
-const TT_MISS_TTL_MS = 60_000;
+/** Negative cache: a just-throttled video returns quickly without long lockouts. */
+const TT_MISS_TTL_MS = 5_000;
 async function getTtMiss(videoId) {
   try {
     const storage = chrome.storage.session || chrome.storage.local;
@@ -674,15 +738,16 @@ async function handleYtLoadCaptions(msg) {
   }
 
   // Prefer ANDROID timedtext URLs first — WEB watch HTML baseUrls often 200+empty.
-  const [androidTracks, webTracks] = await Promise.all([
-    fetchAndroidCaptionTracks(videoId).catch(() => []),
-    fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []),
-  ]);
+  const androidTracks = await fetchAndroidCaptionTracks(videoId).catch(() => []);
   for (const t of sortTracks(androidTracks, preferLang)) {
     pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android");
   }
-  for (const t of sortTracks(webTracks, preferLang)) {
-    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
+  const androidHasJa = androidTracks.some((t) => matchLangFamily(t.languageCode, "ja"));
+  if (!androidHasJa) {
+    const webTracks = await fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []);
+    for (const t of sortTracks(webTracks, preferLang)) {
+      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
+    }
   }
   // Legacy unsigned URLs last resort — still served anonymously even when
   // signed track URLs come back empty.
@@ -695,6 +760,18 @@ async function handleYtLoadCaptions(msg) {
     );
   }
 
+  const jaCand =
+    candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext") && c.via !== "direct") ||
+    candidates.find((c) => matchLangFamily(c.lang, "ja") && c.url.includes("/api/timedtext"));
+  if (jaCand) {
+    const rawJaUrl = jaCand.url;
+    const json3Url = rawJaUrl.includes("fmt=")
+      ? rawJaUrl.replace(/([?&])fmt=[^&]+/, "$1fmt=json3")
+      : `${rawJaUrl}${rawJaUrl.includes("?") ? "&" : "?"}fmt=json3`;
+    pushUrl(`${json3Url}&tlang=vi`, "vi", jaCand.asr, `${jaCand.via}_tlang`);
+    pushUrl(`${json3Url}&tlang=en`, "en", jaCand.asr, `${jaCand.via}_tlang`);
+  }
+
   const hasEn = candidates.some((c) => matchLangFamily(c.lang, "en"));
   const hasVi = candidates.some((c) => matchLangFamily(c.lang, "vi"));
 
@@ -702,11 +779,14 @@ async function handleYtLoadCaptions(msg) {
     return { ok: false, reason: "no_tracks", cues: [], via: "none", hasEn, hasVi };
   }
 
-  // Best track per lang family (manual before ASR), fetched in parallel.
+  // Best track per lang family (manual before ASR), fetched in parallel with isolated errors.
+  const jaErr = {};
+  const enErr = {};
+  const viErr = {};
   const [jaPack, enPack, viPack] = await Promise.all([
-    fetchBestLangPack(candidates, "ja", lastError),
-    fetchBestLangPack(candidates, "en", lastError),
-    fetchBestLangPack(candidates, "vi", lastError),
+    fetchBestLangPack(candidates, "ja", jaErr),
+    fetchBestLangPack(candidates, "en", enErr),
+    fetchBestLangPack(candidates, "vi", viErr),
   ]);
 
   const secondary = {
@@ -746,11 +826,11 @@ async function handleYtLoadCaptions(msg) {
   }
 
   // Throttle miss → remember briefly so Reload/navigate doesn't re-burst.
-  if (isThrottleError(lastError)) await setTtMiss(videoId);
+  if (isThrottleError(jaErr)) await setTtMiss(videoId);
   return {
     ok: false,
     reason: "timedtext_empty",
-    lastError: lastError.reason || "",
+    lastError: jaErr.reason || enErr.reason || viErr.reason || lastError.reason || "",
     cues: [],
     trackCount: candidates.length,
     via: "all_failed",
@@ -911,8 +991,10 @@ async function fetchBestLangPack(candidates, prefix, lastError = null) {
   const ranked = (candidates || [])
     .filter((x) => x && matchLangFamily(x.lang, prefix))
     .sort((a, b) => {
-      const sa = (matchLangFamily(a.lang, prefix) ? 100 : 0) + (a.asr ? 0 : 25);
-      const sb = (matchLangFamily(b.lang, prefix) ? 100 : 0) + (b.asr ? 0 : 25);
+      const viaScoreA = a.via === "direct" ? 0 : 50;
+      const viaScoreB = b.via === "direct" ? 0 : 50;
+      const sa = (matchLangFamily(a.lang, prefix) ? 100 : 0) + (a.asr ? 0 : 25) + viaScoreA;
+      const sb = (matchLangFamily(b.lang, prefix) ? 100 : 0) + (b.asr ? 0 : 25) + viaScoreB;
       return sb - sa;
     });
   for (const x of ranked) {
@@ -1048,10 +1130,25 @@ async function getDriveStatus() {
 }
 
 async function getAuthToken(interactive) {
-  const r = await chrome.identity.getAuthToken({ interactive: !!interactive });
-  const token = typeof r === "string" ? r : r?.token;
-  if (!token) throw new Error("OAuth token missing — set oauth2.client_id in manifest.json");
-  return token;
+  try {
+    const r = await chrome.identity.getAuthToken({ interactive: !!interactive });
+    const token = typeof r === "string" ? r : r?.token;
+    if (!token) throw new Error("OAuth token missing — set oauth2.client_id in manifest.json");
+    return token;
+  } catch (err) {
+    if (interactive) {
+      try {
+        if (chrome.identity?.clearAllCachedAuthTokens) {
+          await chrome.identity.clearAllCachedAuthTokens();
+        }
+      } catch (_) {}
+    }
+    const msg = String(err?.message || err);
+    if (/bad client id/i.test(msg)) {
+      throw new Error(`Google OAuth Client ID không khớp với Extension ID (${chrome.runtime.id}). Cần cấu hình OAuth Client ID trong GCP Console cho Extension ID này.`);
+    }
+    throw err;
+  }
 }
 
 async function clearAuthToken(token) {
@@ -1448,7 +1545,7 @@ async function buildLocalSettingsSnapshot() {
     barShowEn: s.barShowEn !== false,
     barShowVi: s.barShowVi !== false,
     barScale: Number(s.barScale) || 1,
-    barBgOpacity: s.barBgOpacity != null ? Number(s.barBgOpacity) : 0.82,
+    barBgOpacity: s.barBgOpacity != null ? Number(s.barBgOpacity) : 0.4,
     barTextOpacity: s.barTextOpacity != null ? Number(s.barTextOpacity) : 1,
     dimHardsub: !!s.dimHardsub,
     dictShowSentence: s.dictShowSentence !== false,
@@ -1640,8 +1737,11 @@ async function uploadDriveNow() {
     if (!c?.ok) return c;
   }
   await setDriveStatus("Uploading…");
-  const vocab = await uploadDriveFromBridge();
-  if (!vocab?.ok) return vocab;
+  try {
+    await uploadDriveFromBridge();
+  } catch (e) {
+    console.warn("[drive] bridge snapshot skipped:", e);
+  }
   return driveQueued(() => mirrorToDrive());
 }
 
@@ -1654,10 +1754,14 @@ async function uploadDriveFromBridge() {
   _driveBusy = true;
   try {
     const fileId = await ensureDriveFileId(false);
-    const res = await fetch(`${BRIDGE}/backup/snapshot`);
+    let res = null;
+    try {
+      res = await fetch(`${BRIDGE}/backup/snapshot`);
+    } catch (_) {
+      return { ok: true, skipped: "bridge_offline" };
+    }
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`bridge GET ${res.status}: ${errText.slice(0, 120)}`);
+      return { ok: true, skipped: `bridge_${res.status}` };
     }
     const snap = await res.json();
     if (!snap || typeof snap !== "object") throw new Error("bridge snapshot invalid");

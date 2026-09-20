@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Runtime Test: Overlay Resize & Subtitles</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      background: #1e1e24;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #viewport-container {
+      position: relative;
+      width: 1000px;
+      height: 600px;
+      background: #0a0a0c;
+      border: 1px solid #333;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport-container">
+    <div id="hardsub-ocr-bar" class="hardsub-bar lr-bar-container" style="position: absolute; left: 50px; top: 100px;">
+      <!-- 8 resize handles -->
+      <div class="bar-resize bar-resize-n" data-dir="n"></div>
+      <div class="bar-resize bar-resize-s" data-dir="s"></div>
+      <div class="bar-resize bar-resize-e" data-dir="e"></div>
+      <div class="bar-resize bar-resize-w" data-dir="w"></div>
+      <div class="bar-resize bar-resize-nw" data-dir="nw"></div>
+      <div class="bar-resize bar-resize-ne" data-dir="ne"></div>
+      <div class="bar-resize bar-resize-sw" data-dir="sw"></div>
+      <div class="bar-resize bar-resize-se" data-dir="se"></div>
+
+      <div class="lr-overlay-wrap">
+        <div class="lr-card-ja">
+          <button type="button" class="lr-replay-btn" title="Phát lại">▶</button>
+          <div class="lr-text-ja">
+            <ruby class="tok" data-surface="日本" data-lemma="日本">日本<rt>にほん</rt></ruby><ruby class="tok" data-surface="語" data-lemma="語">語<rt>ご</rt></ruby><span class="tok" data-surface="を" data-lemma="を">を</span><ruby class="tok" data-surface="勉強" data-lemma="勉強">勉強<rt>べんきょう</rt></ruby><span class="tok" data-surface="する" data-lemma="する">する</span>
+          </div>
+          <div class="lr-card-actions">
+            <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ">A-</button>
+            <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ">A+</button>
+            <button type="button" class="lr-star-btn" title="Lưu câu">☆</button>
+            <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
+          </div>
+        </div>
+
+        <div class="lr-card-vi">
+          <div class="lr-text-vi">Học tiếng Nhật mỗi ngày</div>
+        </div>
+
+        <div class="lr-card-en">
+          <div class="lr-text-en">Studying Japanese every day</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    (function() {
+      const bar = document.getElementById("hardsub-ocr-bar");
+      
+      // Step 1: Initial state: scaleW = 1.0
+      bar.style.setProperty("--bar-box-w0", "500px");
+      bar.style.setProperty("--bar-box-h0", "120px");
+      bar.style.setProperty("--bar-user-scale-w", "1.0");
+      bar.style.setProperty("--bar-user-scale-h", "1.0");
+      bar.style.setProperty("--bar-scale", "1.0");
+
+      // Force layout calculation
+      const r0 = bar.getBoundingClientRect();
+      const initialWidth = r0.width;
+      const initialHeight = r0.height;
+
+      // Step 2: User drags handle to resize: scaleW = 1.5
+      bar.style.setProperty("--bar-user-scale-w", "1.5");
+      const r1 = bar.getBoundingClientRect();
+      const scaledWidth = r1.width;
+      const scaledHeight = r1.height;
+
+      // Step 3: Subtitle cards inspection
+      const cardVi = bar.querySelector(".lr-card-vi");
+      const cardEn = bar.querySelector(".lr-card-en");
+      const viStyle = cardVi ? window.getComputedStyle(cardVi) : null;
+      const enStyle = cardEn ? window.getComputedStyle(cardEn) : null;
+
+      const hasCardVi = !!cardVi;
+      const viVisible = viStyle ? viStyle.display !== "none" && viStyle.visibility !== "hidden" : false;
+      const hasCardEn = !!cardEn;
+      const enVisible = enStyle ? enStyle.display !== "none" && enStyle.visibility !== "hidden" : false;
+
+      // Step 4: Check if action buttons are clickable above handles
+      const upBtn = bar.querySelector(".lr-scale-up-btn");
+      let cardActionsClickableAboveHandles = false;
+      if (upBtn) {
+        const bRect = upBtn.getBoundingClientRect();
+        const topEl = document.elementFromPoint(bRect.left + bRect.width / 2, bRect.top + bRect.height / 2);
+        cardActionsClickableAboveHandles = (topEl === upBtn || upBtn.contains(topEl) || topEl.closest(".lr-card-actions") !== null);
+      }
+
+      const payload = {
+        initialWidth,
+        initialHeight,
+        scaledWidth,
+        scaledHeight,
+        hasCardVi,
+        viVisible,
+        hasCardEn,
+        enVisible,
+        cardActionsClickableAboveHandles
+      };
+
+      const resultDiv = document.getElementById("results");
+      resultDiv.textContent = "__REAL_DOM_RESULT__" + JSON.stringify(payload);
+    })();
+  </script>
+</body>
+</html>

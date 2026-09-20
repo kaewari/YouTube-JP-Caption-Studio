@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Side Panel - Bh6e3BT-YuQ</title>
+  <link rel="stylesheet" href="../extension/sidepanel/sidepanel.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 400px; height: 720px;
+      background: #111118; color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sp-header {
+      display: flex; align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid #2a2a35;
+      gap: 10px;
+    }
+    .sp-tab {
+      padding: 6px 14px; border-radius: 6px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      color: #9aa0b4; background: #1a1a24;
+    }
+    .sp-tab.active { background: #7b5cff; color: #fff; }
+    .sp-list {
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .sp-cue-item {
+      background: #1a1a24; border-radius: 8px;
+      padding: 10px 12px; border: 1px solid #2a2a35;
+    }
+    .sp-cue-item.current {
+      border-color: #7b5cff;
+      background: rgba(123, 92, 255, 0.12);
+    }
+    .sp-cue-header {
+      display: flex; justify-content: space-between;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="sp-header">
+    <div class="sp-tab active">Subtitles</div>
+    <div class="sp-tab">Words</div>
+    <div class="sp-tab">Saved</div>
+    <span style="margin-left: auto; color: #777; font-size: 14px;">⚙</span>
+  </div>
+  <div class="sp-list">
+    
+    <div class="sp-cue-item current">
+      <div class="sp-cue-header">
+        <span style="color: #a78bfa; font-weight: bold;">00:00.640 → 00:02.629</span>
+        <span style="color: #ffd700; cursor: pointer;">★</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">はい、皆さんこんにちは。Uの日本語</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:02.679 → 00:04.709</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">ポッドキャストのお時間です。皆さん元気</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:04.759 → 00:07.389</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">にしていますでしょうか?今日は2025</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:07.439 → 00:09.910</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">年の9月15日月曜日にこの</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:09.960 → 00:12.390</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">ポッドキャストを撮っています。はい。</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:12.440 → 00:15.950</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">今日はですね、いつもと服が違いますよね</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:16.000 → 00:19.229</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">。そうなんです。今日はメキシコの伝統</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:19.279 → 00:21.750</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">衣装を来てこのポッドキャストを撮ってい</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:21.800 → 00:24.510</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">ます。っていうのも、え、明日ですね、9</div>
+    </div>
+  
+    <div class="sp-cue-item ">
+      <div class="sp-cue-header">
+        <span style="color: #888; font-weight: normal;">00:24.560 → 00:28.510</span>
+        <span style="color: #666; cursor: pointer;">☆</span>
+      </div>
+      <div class="sp-cue-ja" style="font-size: 14px; margin-top: 4px; color: #f5f5f7;">月16日はメキシコの独立記念日です。</div>
+    </div>
+  
+  </div>
+</body>
+</html>

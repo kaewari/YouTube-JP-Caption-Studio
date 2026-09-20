@@ -22,6 +22,19 @@ assert.strictEqual(cues1[1].start, 3.0);
 assert.strictEqual(cues1[1].end, 4.5);
 assert.strictEqual(cues1[1].text, "World");
 
+// Test 1b: Cues with silence gap must NOT stretch end to next.start
+const json3Gap = {
+  events: [
+    { tStartMs: 1000, dDurationMs: 2000, segs: [{ utf8: "First sentence" }] },
+    { tStartMs: 10000, dDurationMs: 3000, segs: [{ utf8: "Second sentence" }] },
+  ],
+};
+const cuesGap = parseJson3Cues(json3Gap);
+assert.strictEqual(cuesGap[0].start, 1.0);
+assert.strictEqual(cuesGap[0].end, 3.0, "First cue must end at 3.0, NOT stretched to 10.0");
+assert.strictEqual(cuesGap[1].start, 10.0);
+assert.strictEqual(cuesGap[1].end, 13.0);
+
 // Test 2: Zero-duration / collision ASR cues (same start time or next start <= start)
 const json3Collision = {
   events: [
@@ -75,5 +88,34 @@ assert.strictEqual(cuesXmlTimed3[1].end >= 1.2, true, "XML p-node collision must
 assert.strictEqual(parseTimedtextBody(JSON.stringify(json3Basic)).length, 2);
 assert.strictEqual(parseTimedtextBody(xmlYsd).length, 3);
 assert.strictEqual(parseTimedtextBody("   ").length, 0);
+
+// Test 6: Cue raw duration preservation without auto-clamping
+const json3Overlap = {
+  events: [
+    { tStartMs: 1000, dDurationMs: 3000, segs: [{ utf8: "Overlap 1" }] },
+    { tStartMs: 2500, dDurationMs: 1000, segs: [{ utf8: "Cue 2" }] }
+  ]
+};
+const cuesOverlap = parseJson3Cues(json3Overlap);
+assert.strictEqual(cuesOverlap.length, 2);
+assert.strictEqual(cuesOverlap[0].start, 1.0);
+assert.strictEqual(cuesOverlap[0].end, 4.0, "Cue 1 end preserves raw duration (4.0s) without -0.05s clamping");
+assert.strictEqual(cuesOverlap[1].start, 2.5);
+assert.strictEqual(cuesOverlap[1].end, 3.5);
+
+// Test 6: TTML dur attribute parsing (<p begin="00:00:05.000" dur="00:00:02.500">)
+const ttmlDurXml = `
+<tt>
+  <body>
+    <div>
+      <p begin="00:00:05.000" dur="00:00:02.500">TTML with dur</p>
+    </div>
+  </body>
+</tt>
+`;
+const cuesTtmlDur = parseTimedtextXml(ttmlDurXml);
+assert.strictEqual(cuesTtmlDur.length, 1);
+assert.strictEqual(cuesTtmlDur[0].start, 5.0);
+assert.strictEqual(cuesTtmlDur[0].end, 7.5, "TTML dur should be parsed and added to start");
 
 console.log("All timedtext parse tests passed!");
