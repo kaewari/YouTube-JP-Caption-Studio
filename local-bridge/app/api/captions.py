@@ -80,11 +80,10 @@ def _pick_track(tracks: list[dict[str, Any]], lang: str) -> dict[str, Any] | Non
             return t
     base = lang.split("-")[0]
     for t in tracks:
-        if str(t.get("languageCode", "")).startswith(base + "-"):
+        code = str(t.get("languageCode", ""))
+        if code == base or code.startswith(base + "-"):
             return t
-    # ponytail: falls back to first track when lang has no match; tighten once
-    # the extension reports which languages it actually accepts.
-    return tracks[0] if tracks else None
+    return None
 
 
 def _cues_from_tracks(player_response: dict[str, Any], lang: str) -> list[dict[str, Any]]:

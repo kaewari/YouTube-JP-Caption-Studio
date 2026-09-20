@@ -96,33 +96,174 @@
   box-shadow: inset 0 0 0 1px rgba(127, 214, 168, 0.35);
 }
 
+.hardsub-bar .tok-cluster-wrapper {
+  display: inline-block;
+  vertical-align: baseline;
+  border-radius: 4px;
+  transition: background 0.15s ease, outline 0.15s ease;
+}
+
+.hardsub-bar .tok-cluster-wrapper.tok-cluster-active,
+.hardsub-bar .tok-cluster-wrapper.tok-hover-sync,
+.hardsub-bar .bar-ja ruby.tok-cluster-active,
+.hardsub-bar .bar-ja .tok.tok-cluster-active,
+.hardsub-bar .lr-text-ja ruby.tok-cluster-active,
+.hardsub-bar .lr-text-ja .tok.tok-cluster-active,
+.hardsub-bar .bar-ja ruby.tok-hover-sync,
+.hardsub-bar .bar-ja .tok.tok-hover-sync,
+.hardsub-bar .lr-text-ja ruby.tok-hover-sync,
+.hardsub-bar .lr-text-ja .tok.tok-hover-sync,
+.hardsub-bar .tok-trans.tok-cluster-active,
+.hardsub-bar .tok-trans.tok-hover-sync {
+  background: rgba(245, 215, 110, 0.35) !important;
+  border-radius: 4px;
+  outline: 1.5px solid rgba(245, 215, 110, 0.85);
+  box-shadow: 0 0 8px rgba(245, 215, 110, 0.45);
+}
+
+.hardsub-bar .tok-cluster-wrapper.tok-cluster-active .tok,
+.hardsub-bar .tok-cluster-wrapper.tok-hover-sync .tok,
+.hardsub-bar .tok-cluster-wrapper.tok-cluster-active ruby,
+.hardsub-bar .tok-cluster-wrapper.tok-hover-sync ruby {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Hardsub Overlay Bar Play Popover */
+.hardsub-bar-play-popover {
+  position: fixed;
+  z-index: 2147483647;
+  max-width: 360px;
+  background: rgba(18, 22, 28, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: #f1f3f5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  pointer-events: none;
+  animation: barPopIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes barPopIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.hardsub-bar-play-popover .sp-pop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #9aa0a6;
+}
+
+.hardsub-bar-play-popover .sp-pop-badge {
+  background: rgba(127, 214, 168, 0.2);
+  color: #7fd6a8;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.hardsub-bar-play-popover .sp-pop-time {
+  font-family: monospace;
+}
+
+.hardsub-bar-play-popover .sp-pop-ja {
+  font-size: 15px;
+  font-weight: 500;
+  color: #ffffff;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.hardsub-bar-play-popover .sp-pop-ja ruby rt {
+  font-size: 0.65em;
+  color: #a8b3cf;
+}
+
+.hardsub-bar-play-popover .sp-pop-vi,
+.hardsub-bar-play-popover .sp-pop-en {
+  font-size: 12.5px;
+  color: #e2e8f0;
+  margin-top: 4px;
+}
+
+.hardsub-bar-play-popover .sp-pop-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  margin-right: 4px;
+}
+
+.hardsub-bar-play-popover .sp-pop-empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.hardsub-bar .lr-text-ja .tok-known,
+.hardsub-bar .lr-text-ja ruby.tok-known,
 .hardsub-bar .bar-ja .tok-known,
-.hardsub-bar .bar-ja ruby.tok-known {
+.hardsub-bar .bar-ja ruby.tok-known,
+.lr-text-ja .tok-known,
+.lr-text-ja ruby.tok-known {
   color: var(--tok-known, #7fd6a8);
 }
 
+.hardsub-bar .lr-text-ja .tok-rare,
+.hardsub-bar .lr-text-ja ruby.tok-rare,
 .hardsub-bar .bar-ja .tok-rare,
-.hardsub-bar .bar-ja ruby.tok-rare {
+.hardsub-bar .bar-ja ruby.tok-rare,
+.lr-text-ja .tok-rare,
+.lr-text-ja ruby.tok-rare {
   color: var(--tok-rare, #d4a574);
 }
 
+.hardsub-bar .lr-text-ja .tok-learning,
+.hardsub-bar .lr-text-ja ruby.tok-learning,
 .hardsub-bar .bar-ja .tok-learning,
-.hardsub-bar .bar-ja ruby.tok-learning {
+.hardsub-bar .bar-ja ruby.tok-learning,
+.lr-text-ja .tok-learning,
+.lr-text-ja ruby.tok-learning {
   color: var(--tok-learning, #e08a4a);
 }
 
+.hardsub-bar .lr-text-ja .tok-learning-border,
+.hardsub-bar .lr-text-ja ruby.tok-learning-border,
 .hardsub-bar .bar-ja .tok-learning-border,
-.hardsub-bar .bar-ja ruby.tok-learning-border {
+.hardsub-bar .bar-ja ruby.tok-learning-border,
+.lr-text-ja .tok-learning-border,
+.lr-text-ja ruby.tok-learning-border {
   box-shadow: inset 0 -2px 0 var(--tok-learning, #e08a4a);
 }
 
+.hardsub-bar .lr-text-ja .tok-ignored,
+.hardsub-bar .lr-text-ja ruby.tok-ignored,
 .hardsub-bar .bar-ja .tok-ignored,
-.hardsub-bar .bar-ja ruby.tok-ignored {
+.hardsub-bar .bar-ja ruby.tok-ignored,
+.lr-text-ja .tok-ignored,
+.lr-text-ja ruby.tok-ignored {
   color: var(--tok-ignored, #b8a0d8);
 }
 
+.hardsub-bar .lr-text-ja .tok-special,
+.hardsub-bar .lr-text-ja ruby.tok-special,
 .hardsub-bar .bar-ja .tok-special,
-.hardsub-bar .bar-ja ruby.tok-special {
+.hardsub-bar .bar-ja ruby.tok-special,
+.lr-text-ja .tok-special,
+.lr-text-ja ruby.tok-special {
   color: var(--tok-special, #e74c5c);
 }
 
@@ -152,32 +293,80 @@
 }
 
 /* JLPT / difficulty — colors from --jlpt-* (settings); furigana inherits */
+.hardsub-bar .lr-text-ja .jlpt-n5,
+.hardsub-bar .lr-text-ja ruby.jlpt-n5,
 .hardsub-bar .bar-ja .jlpt-n5,
-.hardsub-bar .bar-ja ruby.jlpt-n5 {
+.hardsub-bar .bar-ja ruby.jlpt-n5,
+.lr-text-ja .jlpt-n5,
+.lr-text-ja ruby.jlpt-n5 {
   color: var(--jlpt-n5, #7fd6a8);
 }
+.hardsub-bar .lr-text-ja .jlpt-n4,
+.hardsub-bar .lr-text-ja ruby.jlpt-n4,
 .hardsub-bar .bar-ja .jlpt-n4,
-.hardsub-bar .bar-ja ruby.jlpt-n4 {
+.hardsub-bar .bar-ja ruby.jlpt-n4,
+.lr-text-ja .jlpt-n4,
+.lr-text-ja ruby.jlpt-n4 {
   color: var(--jlpt-n4, #8fd3ff);
 }
+.hardsub-bar .lr-text-ja .jlpt-n3,
+.hardsub-bar .lr-text-ja ruby.jlpt-n3,
 .hardsub-bar .bar-ja .jlpt-n3,
-.hardsub-bar .bar-ja ruby.jlpt-n3 {
+.hardsub-bar .bar-ja ruby.jlpt-n3,
+.lr-text-ja .jlpt-n3,
+.lr-text-ja ruby.jlpt-n3 {
   color: var(--jlpt-n3, #f5d76e);
 }
+.hardsub-bar .lr-text-ja .jlpt-n2,
+.hardsub-bar .lr-text-ja ruby.jlpt-n2,
 .hardsub-bar .bar-ja .jlpt-n2,
-.hardsub-bar .bar-ja ruby.jlpt-n2 {
+.hardsub-bar .bar-ja ruby.jlpt-n2,
+.lr-text-ja .jlpt-n2,
+.lr-text-ja ruby.jlpt-n2 {
   color: var(--jlpt-n2, #e08a4a);
 }
+.hardsub-bar .lr-text-ja .jlpt-n1,
+.hardsub-bar .lr-text-ja ruby.jlpt-n1,
 .hardsub-bar .bar-ja .jlpt-n1,
-.hardsub-bar .bar-ja ruby.jlpt-n1 {
+.hardsub-bar .bar-ja ruby.jlpt-n1,
+.lr-text-ja .jlpt-n1,
+.lr-text-ja ruby.jlpt-n1 {
   color: var(--jlpt-n1, #e74c5c);
 }
+.hardsub-bar .lr-text-ja .level-unknown,
+.hardsub-bar .lr-text-ja ruby.level-unknown,
 .hardsub-bar .bar-ja .level-unknown,
-.hardsub-bar .bar-ja ruby.level-unknown {
+.hardsub-bar .bar-ja ruby.level-unknown,
+.lr-text-ja .level-unknown,
+.lr-text-ja ruby.level-unknown {
   color: var(--jlpt-unknown, #e2e8f0);
   opacity: 0.85;
 }
 
+.hardsub-bar .lr-text-ja .tok-other-pos,
+.hardsub-bar .lr-text-ja ruby.tok-other-pos,
+.hardsub-bar .bar-ja .tok-other-pos,
+.hardsub-bar .bar-ja ruby.tok-other-pos,
+.lr-text-ja .tok-other-pos,
+.lr-text-ja ruby.tok-other-pos,
+.tok.tok-other-pos,
+.tok-trans.tok-other-pos {
+  color: var(--pos-other-color, #c084fc);
+  font-weight: 500;
+}
+
+.hardsub-bar .lr-text-ja ruby.jlpt-n5 rt,
+.hardsub-bar .lr-text-ja ruby.jlpt-n4 rt,
+.hardsub-bar .lr-text-ja ruby.jlpt-n3 rt,
+.hardsub-bar .lr-text-ja ruby.jlpt-n2 rt,
+.hardsub-bar .lr-text-ja ruby.jlpt-n1 rt,
+.hardsub-bar .lr-text-ja ruby.level-unknown rt,
+.lr-text-ja ruby.jlpt-n5 rt,
+.lr-text-ja ruby.jlpt-n4 rt,
+.lr-text-ja ruby.jlpt-n3 rt,
+.lr-text-ja ruby.jlpt-n2 rt,
+.lr-text-ja ruby.jlpt-n1 rt,
+.lr-text-ja ruby.level-unknown rt,
 .hardsub-bar .bar-ja ruby.jlpt-n5 rt,
 .hardsub-bar .bar-ja ruby.jlpt-n4 rt,
 .hardsub-bar .bar-ja ruby.jlpt-n3 rt,
@@ -331,32 +520,33 @@
   position: fixed;
   z-index: 2147483646;
   box-sizing: border-box;
-  min-width: 280px;
-  max-width: min(520px, calc(100vw - 24px));
-  max-height: min(70vh, 520px);
+  width: clamp(380px, 30vw, 460px);
+  min-width: 360px;
+  max-width: min(480px, calc(100vw - 24px));
+  max-height: min(78vh, 600px);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(18, 18, 24, 0.96);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(24, 22, 38, 0.98) 0%, rgba(15, 14, 24, 0.99) 100%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   color: #f1f1f5;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 13.5px;
+  line-height: 1.45;
   pointer-events: auto;
   text-align: left;
 }
 
 .hardsub-dict .dict-close-btn {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  line-height: 20px;
+  width: 24px;
+  height: 24px;
+  line-height: 22px;
   border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
   color: #94a3b8;
   cursor: pointer;
   display: inline-flex;
@@ -374,20 +564,33 @@
 
 .hardsub-dict .dict-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
   gap: 10px;
 }
 
-.hardsub-dict .dict-head-main {
-  flex: 1 1 auto;
+.hardsub-dict .dict-head-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
   min-width: 0;
+}
+
+.hardsub-dict .dict-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .hardsub-dict .dict-sent-toggle {
   flex: 0 0 auto;
   width: 30px;
   height: 16px;
-  margin-top: 4px;
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -425,82 +628,240 @@
 }
 
 .hardsub-dict .dict-head {
-  color: #e0c35a;
-  font-size: 20px;
-  font-weight: 700;
-  margin-right: 6px;
+  color: #ffd166;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
 }
 
 .hardsub-dict .dict-reading-top,
 .hardsub-dict .dict-reading {
-  color: #8fd3ff;
+  color: #93c5fd;
   font-size: 14px;
-  margin-right: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.hardsub-dict .dict-gloss {
-  color: #f2f2f6;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.hardsub-dict .dict-gloss-block {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.hardsub-dict .dict-gloss-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  line-height: 1.35;
-}
-
-.hardsub-dict .dict-lang {
-  flex: 0 0 auto;
+.hardsub-dict .dict-badge-hanviet {
+  background: rgba(255, 107, 107, 0.15);
+  color: #fb7185;
+  border: 1px solid rgba(255, 107, 107, 0.3);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #9aa0b5;
-  background: #2a2a38;
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin-top: 2px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
 }
 
-.hardsub-dict .dict-gloss-vi .dict-lang {
-  color: #7fd6a8;
-  background: rgba(127, 214, 168, 0.12);
-}
-
-.hardsub-dict .dict-gloss-en .dict-lang {
-  color: #8fd3ff;
-  background: rgba(143, 211, 255, 0.12);
-}
-
-.hardsub-dict .dict-gloss-vi .dict-gloss {
+.hardsub-dict .dict-badge-pinned {
+  background: rgba(255, 209, 102, 0.15);
+  color: #ffd166;
+  border: 1px solid rgba(255, 209, 102, 0.35);
+  font-size: 11px;
   font-weight: 600;
-  color: #f5f5f8;
+  padding: 2px 7px;
+  border-radius: 6px;
 }
 
-.hardsub-dict .dict-gloss-en .dict-gloss {
-  font-size: 14px;
-  color: #c5c9d8;
+.hardsub-dict .dict-badge-jlpt {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+}
+
+.hardsub-dict .dict-badge-jlpt.jlpt-n5,
+.hardsub-dict .dict-badge-jlpt:not([class*="jlpt-"]) {
+  background: rgba(127, 214, 168, 0.15);
+  color: #7fd6a8;
+  border-color: rgba(127, 214, 168, 0.35);
+}
+
+.hardsub-dict .dict-badge-jlpt.jlpt-n4 {
+  background: rgba(143, 211, 255, 0.15);
+  color: #8fd3ff;
+  border-color: rgba(143, 211, 255, 0.35);
+}
+
+.hardsub-dict .dict-badge-jlpt.jlpt-n3 {
+  background: rgba(255, 209, 102, 0.15);
+  color: #ffd166;
+  border-color: rgba(255, 209, 102, 0.35);
+}
+
+.hardsub-dict .dict-badge-jlpt.jlpt-n2 {
+  background: rgba(255, 159, 67, 0.15);
+  color: #ff9f43;
+  border-color: rgba(255, 159, 67, 0.35);
+}
+
+.hardsub-dict .dict-badge-jlpt.jlpt-n1 {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.hardsub-dict .dict-badge-source {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+/* Primary Meaning Banner */
+.hardsub-dict .dict-primary-banner {
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.1) 0%, rgba(255, 209, 102, 0.03) 100%);
+  border-left: 3.5px solid #ffd166;
+  padding: 10px 14px;
+  border-radius: 4px 10px 10px 4px;
+  margin-bottom: 12px;
+}
+
+.hardsub-dict .dict-primary-banner.is-en {
+  background: linear-gradient(135deg, rgba(147, 197, 253, 0.1) 0%, rgba(147, 197, 253, 0.03) 100%);
+  border-left-color: #60a5fa;
+}
+
+.hardsub-dict .dict-primary-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #ffd166;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.hardsub-dict .dict-primary-banner.is-en .dict-primary-label {
+  color: #93c5fd;
+}
+
+.hardsub-dict .dict-primary-text {
+  font-size: 16.5px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.4;
+}
+
+/* Senses list */
+.hardsub-dict .dict-senses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hardsub-dict .dict-sense-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.hardsub-dict .dict-sense-num {
+  flex: 0 0 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.hardsub-dict .dict-pos-badge {
+  flex: 0 0 auto;
+  background: rgba(147, 197, 253, 0.15);
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  margin-top: 1px;
+  border: 1px solid rgba(147, 197, 253, 0.25);
+}
+
+.hardsub-dict .dict-sense-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hardsub-dict .dict-sense-vi {
+  color: #f1f5f9;
   font-weight: 500;
+  word-break: break-word;
+}
+
+.hardsub-dict .dict-sense-en {
+  color: #94a3b8;
+  font-size: 12.5px;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+/* Real Example Box */
+.hardsub-dict .dict-example-box {
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  border-left: 3.5px solid #10b981;
+  border-radius: 4px 10px 10px 4px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.hardsub-dict .dict-example-label {
+  color: #10b981;
+  margin-bottom: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.hardsub-dict .dict-example-ja {
+  color: #f8fafc;
+  font-size: 13.5px;
+  font-weight: 500;
+  margin-bottom: 3px;
+  line-height: 1.45;
+}
+
+.hardsub-dict .dict-example-vi {
+  color: #6ee7b7;
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Loading shimmer */
+.hardsub-dict .dict-loading-shimmer {
+  color: #94a3b8;
+  font-style: italic;
+  padding: 10px 0;
 }
 
 .hardsub-dict .dict-sep {
   height: 1px;
   margin: 12px 0;
-  background: #333340;
+  background: rgba(255, 255, 255, 0.08);
   border: 0;
 }
 
 .hardsub-dict .dict-sentence {
   color: #f0f0f5;
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 1.5;
   word-break: break-word;
 }
@@ -520,60 +881,70 @@
   color: #ddd;
 }
 
-.hardsub-dict .dict-sense {
-  padding: 8px 0;
-  border-top: 1px solid #2a2a38;
-}
-
-.hardsub-dict .dict-sense:first-of-type {
-  border-top: 1px solid #2a2a38;
-  margin-top: 8px;
-  padding-top: 8px;
-}
-
-.hardsub-dict .dict-n {
-  color: #888;
-  font-size: 12px;
-}
-
-.hardsub-dict .dict-en {
-  color: #b8bdd0;
-  font-size: 13px;
-}
-
-.hardsub-dict .dict-vi {
-  color: #e4e4ee;
-  font-size: 14px;
-  margin-top: 3px;
-}
-
+/* Action Toolbar */
 .hardsub-dict .dict-marks {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #2a2a38;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 8px;
 }
 
-.hardsub-dict .dict-marks button {
-  background: #2a2a3a;
-  color: #ddd;
-  border: 1px solid #3a3a50;
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+.hardsub-dict .dict-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(124, 92, 252, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(124, 92, 252, 0.4);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.hardsub-dict .dict-marks button.active {
-  background: #6c5ce7;
-  border-color: #6c5ce7;
+.hardsub-dict .dict-save-btn:hover {
+  background: rgba(124, 92, 252, 0.35);
   color: #fff;
 }
 
-.hardsub-dict .dict-marks button:hover {
-  background: #3a3a50;
+.hardsub-dict .dict-save-btn.active {
+  background: #7c5cfc;
+  color: #fff;
+  border-color: #7c5cfc;
+}
+
+.hardsub-dict .dict-status-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hardsub-dict .dict-status-pills button {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hardsub-dict .dict-status-pills button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+.hardsub-dict .dict-status-pills button.active {
+  background: rgba(124, 92, 252, 0.3);
+  color: #c084fc;
+  border-color: rgba(124, 92, 252, 0.5);
+  font-weight: 600;
 }
 
 .hardsub-dim {
@@ -796,7 +1167,7 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
   height: 100%;
   box-sizing: border-box;
   position: relative;
-  background: rgba(16, 16, 20, 0.92);
+  background: rgba(16, 16, 20, var(--bar-bg-a, 0.4));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   padding: calc(8px * var(--bar-user-scale-h, 1)) 18px;
@@ -858,39 +1229,44 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
   margin-left: 1px;
 }
 
-/* Star & Actions on Right of Card */
+/* Star & Actions on Right of Card - Vertical Column */
 .hardsub-bar .lr-card-actions {
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 3px;
+  margin-left: 8px;
 }
 
 .hardsub-bar .lr-scale-btn {
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  padding: 2px 4px;
+  min-width: 22px;
+  text-align: center;
   transition: all 0.15s ease;
 }
 
 .hardsub-bar .lr-scale-btn:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: scale(1.06);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.08);
 }
 
 .hardsub-bar .lr-star-btn {
   cursor: pointer;
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.6);
   transition: color 0.15s, transform 0.15s;
   background: transparent;
   border: none;
@@ -899,29 +1275,27 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
 
 .hardsub-bar .lr-star-btn:hover {
   color: #ffd700;
-  transform: scale(1.2);
+  transform: scale(1.15);
 }
 
-.hardsub-bar .lr-star-btn.starred,
 .hardsub-bar .lr-star-btn.active {
   color: #ffd700;
-  text-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
 }
 
-.hardsub-bar .lr-menu-btn,
 .hardsub-bar .lr-more-btn {
   cursor: pointer;
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.45);
+  font-size: 15px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.15s, transform 0.15s;
   background: transparent;
   border: none;
   padding: 2px;
-  line-height: 1;
 }
 
-.hardsub-bar .lr-menu-btn:hover,
 .hardsub-bar .lr-more-btn:hover {
   color: #fff;
+  transform: scale(1.15);
 }
 
 /* Hover Mini-Dictionary Tooltip above Tokens */
@@ -1393,3 +1767,93 @@ body.lr-hide-native-subs [class*="ytp-caption"] {
 .lr-btn-close:hover {
   background: #1d4ed8;
 }
+
+.lr-platform-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lr-jlpt-pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lr-jlpt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.lr-jlpt-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lr-color-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lr-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.lr-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.lr-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lr-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.lr-kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #38bdf8;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Bilingual Subtitle JLPT Highlights (VI/EN) */
+.tok-trans {
+  display: inline;
+  border-radius: 2px;
+  padding: 0 1px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.tok-trans:hover {
+  background: rgba(255, 255, 255, 0.14);
+  text-decoration: underline dotted rgba(255, 255, 255, 0.5);
+}
+.tok-trans.jlpt-n5 { color: var(--jlpt-n5, #7fd6a8) !important; font-weight: 700; }
+.tok-trans.jlpt-n4 { color: var(--jlpt-n4, #8fd3ff) !important; font-weight: 700; }
+.tok-trans.jlpt-n3 { color: var(--jlpt-n3, #f5d76e) !important; font-weight: 700; }
+.tok-trans.jlpt-n2 { color: var(--jlpt-n2, #e08a4a) !important; font-weight: 700; }
+.tok-trans.jlpt-n1 { color: var(--jlpt-n1, #e74c5c) !important; font-weight: 700; }

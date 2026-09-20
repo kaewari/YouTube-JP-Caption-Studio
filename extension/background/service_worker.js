@@ -33,7 +33,7 @@ async function ensureSidePanelReady() {
     if (chrome.sidePanel?.setOptions) {
       await chrome.sidePanel.setOptions({
         path: "sidepanel/sidepanel.html",
-        enabled: true,
+        enabled: false,
       });
     }
   } catch (_) {}
@@ -60,13 +60,22 @@ chrome.runtime.onStartup?.addListener?.(async () => {
 // Immediate top-level initialization so side panel is ready on SW wake.
 void ensureSidePanelReady();
 
-// Extension toolbar icon click: opens dedicated options/saved page in a tab.
+// Extension toolbar icon click: opens side panel on video sites, or Saved Items page on other sites.
 if (chrome.action?.onClicked) {
   chrome.action.onClicked.addListener(async (tab) => {
     try {
-      const url = chrome.runtime.getURL("popup/index.html");
-      await chrome.tabs.create({ url });
-    } catch (_) {}
+      if (tab?.id && isSupportedUrl(tab.url)) {
+        await chrome.sidePanel.open({ tabId: tab.id });
+      } else {
+        const url = chrome.runtime.getURL("popup/index.html");
+        await chrome.tabs.create({ url });
+      }
+    } catch (_) {
+      try {
+        const url = chrome.runtime.getURL("popup/index.html");
+        await chrome.tabs.create({ url });
+      } catch (_) {}
+    }
   });
 }
 
@@ -122,14 +131,16 @@ async function isPlatformEnabledForUrl(url) {
   }
 }
 
-/** Ensure side panel is configured for tab without locking user out on other sites. */
-async function syncSidePanelForTab(tabId, _url) {
+/** Ensure side panel is only enabled for supported video sites. */
+async function syncSidePanelForTab(tabId, url) {
   if (tabId == null) return;
   try {
+    const supported = isSupportedUrl(url);
+    const enabled = supported && (await isPlatformEnabledForUrl(url));
     await chrome.sidePanel.setOptions({
       tabId,
       path: "sidepanel/sidepanel.html",
-      enabled: true,
+      enabled: !!enabled,
     });
   } catch (_) {}
 }
@@ -660,8 +671,8 @@ async function getYtCookieHeader() {
  * Prefer fmt=json3; parse XML text/p or json3.
  * Source timeline = ja track only; en and vi packs go to enCues/viCues — never into cues.
  */
-/** Negative cache: a just-throttled video returns instantly instead of re-bursting. */
-const TT_MISS_TTL_MS = 60_000;
+/** Negative cache: a just-throttled video returns quickly without long lockouts. */
+const TT_MISS_TTL_MS = 5_000;
 async function getTtMiss(videoId) {
   try {
     const storage = chrome.storage.session || chrome.storage.local;
@@ -727,15 +738,16 @@ async function handleYtLoadCaptions(msg) {
   }
 
   // Prefer ANDROID timedtext URLs first — WEB watch HTML baseUrls often 200+empty.
-  const [androidTracks, webTracks] = await Promise.all([
-    fetchAndroidCaptionTracks(videoId).catch(() => []),
-    fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []),
-  ]);
+  const androidTracks = await fetchAndroidCaptionTracks(videoId).catch(() => []);
   for (const t of sortTracks(androidTracks, preferLang)) {
     pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android");
   }
-  for (const t of sortTracks(webTracks, preferLang)) {
-    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
+  const androidHasJa = androidTracks.some((t) => matchLangFamily(t.languageCode, "ja"));
+  if (!androidHasJa) {
+    const webTracks = await fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []);
+    for (const t of sortTracks(webTracks, preferLang)) {
+      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
+    }
   }
   // Legacy unsigned URLs last resort — still served anonymously even when
   // signed track URLs come back empty.
@@ -1118,10 +1130,25 @@ async function getDriveStatus() {
 }
 
 async function getAuthToken(interactive) {
-  const r = await chrome.identity.getAuthToken({ interactive: !!interactive });
-  const token = typeof r === "string" ? r : r?.token;
-  if (!token) throw new Error("OAuth token missing — set oauth2.client_id in manifest.json");
-  return token;
+  try {
+    const r = await chrome.identity.getAuthToken({ interactive: !!interactive });
+    const token = typeof r === "string" ? r : r?.token;
+    if (!token) throw new Error("OAuth token missing — set oauth2.client_id in manifest.json");
+    return token;
+  } catch (err) {
+    if (interactive) {
+      try {
+        if (chrome.identity?.clearAllCachedAuthTokens) {
+          await chrome.identity.clearAllCachedAuthTokens();
+        }
+      } catch (_) {}
+    }
+    const msg = String(err?.message || err);
+    if (/bad client id/i.test(msg)) {
+      throw new Error(`Google OAuth Client ID không khớp với Extension ID (${chrome.runtime.id}). Cần cấu hình OAuth Client ID trong GCP Console cho Extension ID này.`);
+    }
+    throw err;
+  }
 }
 
 async function clearAuthToken(token) {

@@ -32,7 +32,6 @@ const TABS: {
     id: "saved-phrases",
     label: "Câu đã lưu",
     icon: <StarIcon />,
-    soon: true,
   },
 ];
 

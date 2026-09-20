@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Dictionary Popup Runtime Test</title>
+  <link rel="stylesheet" href="../extension/styles/panel.css">
+  <link rel="stylesheet" href="../extension/sidepanel/sidepanel.css">
+  <style>
+    body {
+      background: #0f0e17;
+      color: #f1f1f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 40px;
+      display: flex;
+      gap: 60px;
+      min-height: 100vh;
+    }
+    .test-sidepanel-column {
+      width: 380px;
+      background: #181625;
+      border: 1px solid #2a273f;
+      border-radius: 12px;
+      padding: 16px;
+      height: 600px;
+      overflow-y: auto;
+    }
+    .test-preview-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+    .popup-container-box {
+      position: relative;
+      min-height: 400px;
+    }
+    .test-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #93c5fd;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidepanel with tokens for Hover Intent & Pin testing -->
+  <div class="test-sidepanel-column">
+    <div class="test-label">Sidepanel Tokens (Hover & Pin Demo)</div>
+    <div id="sp-list" class="sp-list">
+      <div class="sp-sentence" data-id="cue-1">
+        <div class="sp-ja-wrap">
+          <span class="tok" data-surface="話が" data-lemma="話">話が</span>
+          <span class="tok jlpt-n1" data-surface="面白い" data-lemma="面白い">面白い</span>
+          <span class="tok" data-surface="人とか" data-lemma="人">人とか</span>
+          <span class="tok" data-surface="日本語" data-lemma="日本語">日本語</span>
+          <span class="tok" data-surface="の" data-lemma="の">の</span>
+          <span class="tok" data-surface="アドバイス" data-lemma="アドバイス">アドバイス</span>
+          <span class="tok jlpt-n5" data-surface="して" data-lemma="する">して</span>
+          <span class="tok" data-surface="くれた" data-lemma="くれる">くれた</span>
+        </div>
+        <div class="sp-vi">Những người thú vị để trò chuyện và đã cho tôi lời khuyên về tiếng Nhật.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Container for Dictionary Popups -->
+  <div class="test-preview-column">
+    <div>
+      <div class="test-label">1. Popup '面白い' (Deduplicated Senses + Friendly POS)</div>
+      <div class="popup-container-box">
+        <div id="dict-omoshiroi" class="hardsub-dict upgraded-mazii-dict" style="position: static; display: block;"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="test-label">2. Popup 'して' (Accurate 'ĐỊNH NGHĨA' Banner + No Fake VI)</div>
+      <div class="popup-container-box">
+        <div id="dict-shite" class="hardsub-dict upgraded-mazii-dict" style="position: static; display: block;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Runtime Logic from external script -->
+  <script src="test_dict_popup_runtime.js"></script>
+</body>
+</html>

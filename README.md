@@ -26,11 +26,13 @@
 4. **On-Screen Navigation & Auto-Pause**: Left vertical navigation bar (`>`, `↻` with "Repeat ['S' key]" tooltip, `<`), hotkeys (S, A, D), right auto-pause switch (`AP`), and vertical shift button `↕`.
 5. **3-Tab Side Panel**: `Subtitles` (timeline with playhead sync and star), `Words` (video vocabulary grouped by frequency rank brackets e.g. Rank 1-500, 501-1000), and `Saved` (all saved words and starred cues with context toggle).
 6. **Player Bar Pill Toggle**: `[ (LR) ON ⚙ ]` / `[ (LR) OFF ⚙ ]`. ON hides native YouTube captions and shows the LR overlay; OFF restores native captions. Clicking `⚙` opens the in-page Settings modal. Clicking the extension toolbar icon opens the dedicated full-page options in a tab.
-7. **Furigana & Dictionary**: Real-time JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + local bridge `/dict`. iPad: `NLTagger` + bundled `dict.sqlite`. Tap/click a word → popup with **VI + EN** glosses and sentence translation.
+7. **Furigana & Modern Mazii Dictionary**: Real-time 240k+ Mazii offline dictionary + JMdict. Desktop: Sudachi + local bridge `/dict` backed by Mazii offline DB (241k words, 116k examples, 12k kanji). Tap/hover a word → modern Mazii card with core Vietnamese meaning banner ("Nghĩa tiếng Việt cốt lõi" or accurate English fallback), Han Viet, JLPT level badge, real bilingual examples, formatted Vietnamese POS badges, and quick vocab learning status toolbar. Features **200ms Hover Transit Lock** and **Click-to-Pin** to eliminate annoying popup jumping when sweeping the mouse across intermediate tokens, alongside intelligent sense deduplication.
 8. **JLPT / Frequency Coloring**: Tokens colored by difficulty band (N5→N1 / unknown) from the shared `freq_ja.json` rank map.
 9. **Personal Vocabulary Tracker**: Mark Known / Learning / Ignore / Special, save words and starred sentences into `savedCues`.
 10. **Native iPad / iPhone**: Standalone SwiftUI apps (`ipad-app/`, sibling `iphone-app/`) — hardsub, side panel, tokenize, dict popup, import/export.
 11. **Drive Sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder.
+12. **Bilingual Hover Sync & 100% Coloring**: Hovering any word on Japanese, Vietnamese, or English subtitles highlights its counterpart in other lines (`.tok-hover-sync`). 100% of Vietnamese/English words are colored by JLPT bands without leaving white text.
+13. **Instant Overlay Dict & Cue Popover**: Hovering overlay tokens immediately opens dictionary definitions. Hovering any Play button `▶` reveals a sentence breakdown popover (JA with furigana, VI, EN).
 
 ## 🏗 System Architecture
 The project supports two completely different stacks to cover both Desktop and Mobile (iPad/iPhone) experiences:
@@ -175,7 +177,7 @@ curl -s http://127.0.0.1:8765/health
 
 ## 🌟 Tính năng chính
 1. **Phụ đề thông minh**: Bắt timedtext JA từ YouTube (và phụ đề native từ ABEMA / web video khác qua textTrack/WebVTT) → overlay + Side Panel (toggle JA/EN/VI; EN+VI mặc định bật). Nếu video có track EN/VI trên YouTube thì union-merge (±0,35s; orphan thành cue mới; không ghi đè Import/sửa tay).
-2. **Furigana & Từ điển**: JMdict (+ JA→VI / EN→VI). Desktop: Sudachi + bridge `/dict`. iPad: `NLTagger` + `dict.sqlite`. Chạm/click từ → popup **VI + EN** và dịch câu của cue.
+2. **Furigana & Từ điển Mazii**: JMdict (+ JA→VI / EN→VI) kết hợp cơ sở dữ liệu Mazii offline 240k từ. Chạm/hover từ → popup Mazii hiện đại với banner nghĩa cốt lõi, âm Hán Việt, cấp độ JLPT, ví dụ thực tế và từ loại tiếng Việt rõ ràng. Cơ chế **Hover Transit Lock (200ms)** và **Click-to-Pin** (ghim popup) chống nhảy từ khó chịu khi rê chuột qua các token trung gian, cùng thuật toán khử trùng lặp nghĩa (Sense Deduplication).
 3. **Tô màu JLPT / tần suất**: Token màu N5→N1 / unknown từ `freq_ja.json` (chung Desktop và iPad).
 4. **Từ vựng cá nhân**: Desktop đánh dấu Đã biết / Đang học / Bỏ qua / Đặc biệt. iPad: Lưu từ từ popup vào SwiftData (UI đánh dấu trạng thái vẫn ưu tiên Desktop).
 5. **Sửa phụ đề**: Side Panel sửa JA/EN/VI + timeline; Import/Export `.txt`/`.json`. iPad: JA dạng token chạm được; **Sửa JA** để gõ.

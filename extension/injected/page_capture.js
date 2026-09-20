@@ -699,21 +699,28 @@
       lang = u.searchParams.get("lang") || "";
       tlang = u.searchParams.get("tlang") || "";
     } catch (_) {}
-    state.timedtext.url = String(url);
-    state.timedtext.videoId = vid || videoIdFromLocation();
+    const isJaTrack =
+      matchLangFamily(tlang || lang, "ja") ||
+      (!tlang && !lang && /[\u3040-\u30ff\u4e00-\u9faf]/.test(body || ""));
+    if (isJaTrack) {
+      state.timedtext.url = String(url);
+      state.timedtext.videoId = vid || videoIdFromLocation();
+    }
     if (body && String(body).trim().length > 10) {
-      state.timedtext.body = String(body);
       const cues = parseTimedtextBody(body);
       if (cues.length) {
-        state.timedtext.cues = cues;
+        if (isJaTrack) {
+          state.timedtext.body = String(body);
+          state.timedtext.cues = cues;
+        }
         try {
           window.postMessage(
             {
               type: "__HARDSUB_TIMEDTEXT_CAPTURED__",
               source: "youtube",
-              videoId: state.timedtext.videoId,
+              videoId: vid || state.timedtext.videoId,
               count: cues.length,
-              url: state.timedtext.url,
+              url: String(url),
               lang: tlang || lang,
               sourceLang: lang,
               tlang: tlang,
@@ -1460,13 +1467,20 @@
     const pr = getPlayerResponse(videoId);
     const tracks = tracksFromPr(pr);
     const track = pickCaptionTrack(tracks, preferLang);
+    let ttLang = "";
+    try {
+      ttLang = new URL(state.timedtext.url, location.href).searchParams.get("lang") || "";
+    } catch (_) {}
+    const preferIsJa = matchLangFamily(preferLang, "ja");
+    const ttMatches = preferIsJa ? (!ttLang || matchLangFamily(ttLang, "ja")) : true;
     const url = normalizeTimedtextUrl(
-      (state.timedtext.videoId === videoId && state.timedtext.url) ||
-        track?.baseUrl ||
-        state.timedtext.url ||
+      track?.baseUrl ||
+        (ttMatches && state.timedtext.videoId === videoId && state.timedtext.url) ||
+        (ttMatches && state.timedtext.url) ||
         ""
     );
     const cuesForVid =
+      ttMatches &&
       state.timedtext.cues?.length &&
       (!state.timedtext.videoId || state.timedtext.videoId === videoId)
         ? state.timedtext.cues
@@ -1483,7 +1497,7 @@
       ok: !!url || !!cuesForVid.length,
       baseUrl: url,
       videoId,
-      lang: track?.languageCode || "",
+      lang: track?.languageCode || (ttMatches ? urlLang : "") || "",
       asr: track?.kind === "asr",
       intercepted: !!cuesForVid.length,
       cues: cuesForVid,
@@ -1503,7 +1517,7 @@
     } else if (matchLangFamily(lang, "ja")) {
       s += 70;
     }
-    if (!asr) s += 25;
+    if (!asr && s > 0) s += 25;
     return s;
   }
 
@@ -2035,7 +2049,9 @@
         viProbeFailed = false;
         reply({ ok: true });
       } else if (type === "GET_TIMEDTEXT_LINK") reply(getTimedtextLink(payload || {}));
-      else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
+      else if (type === "FETCH_MULTI_LANG_CAPTIONS") {
+        fetchMultiLangCaptions(payload || {}).then(reply).catch((e) => reply({ ok: false, reason: "exception", message: String(e) }));
+      } else if (type === "CAPTION_AT") reply(captionAt(payload && payload.mediaTime));
       else reply({ ok: false, reason: "unknown" });
     } catch (err) {
       reply({ ok: false, reason: "exception", message: String(err) });

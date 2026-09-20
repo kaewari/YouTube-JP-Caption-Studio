@@ -15,6 +15,9 @@ cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
 cg.CGEventSetIntegerValueField.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int64]
 cf.CFRelease.argtypes = [ctypes.c_void_p]
 
+cg.CGWarpMouseCursorPosition.restype = ctypes.c_int32
+cg.CGWarpMouseCursorPosition.argtypes = [CGPoint]
+
 # Event types
 kCGEventLeftMouseDown = 1
 kCGEventLeftMouseUp = 2
@@ -31,10 +34,15 @@ def _create_event(event_type, pt, button=kCGMouseButtonLeft):
     return ev
 
 def move(x, y):
-    pt = CGPoint(x, y)
-    ev = _create_event(kCGEventMouseMoved, pt, kCGMouseButtonLeft)
-    cg.CGEventPost(kCGHIDEventTap, ev)
-    cf.CFRelease(ev)
+    steps = 6
+    for i in range(steps, -1, -1):
+        pt = CGPoint(x - i, y)
+        cg.CGWarpMouseCursorPosition(pt)
+        ev = _create_event(kCGEventMouseMoved, pt, kCGMouseButtonLeft)
+        cg.CGEventPost(kCGHIDEventTap, ev)
+        cf.CFRelease(ev)
+        if i > 0:
+            time.sleep(0.015)
 
 def click(x, y):
     pt = CGPoint(x, y)

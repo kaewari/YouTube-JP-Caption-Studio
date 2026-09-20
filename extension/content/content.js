@@ -352,18 +352,14 @@
     const vid = currentVideoId;
     // Guard against non-Japanese captions arriving in JA slot:
     const detected = detectCuesLanguage(rawCues);
-    if (detected === "vi") {
-      applyYtSecondaryFill({ viCues: rawCues });
-      if (cues.length) {
-        listDirty = true;
-        renderList(true);
-        publishSidePanelState({ forceList: true });
-      }
-      return;
-    }
-    if (detected === "en") {
-      applyYtSecondaryFill({ enCues: rawCues });
-      if (cues.length) {
+    const jaCount = (rawCues || []).filter((c) =>
+      /[\u3040-\u30ff\u4e00-\u9faf]/.test(c?.text || c?.source || "")
+    ).length;
+    const isActuallyJa = jaCount >= Math.max(1, Math.floor((rawCues?.length || 0) * 0.15));
+    if (!isActuallyJa && (detected === "en" || detected === "vi")) {
+      if (cues.length > 0) {
+        if (detected === "vi") applyYtSecondaryFill({ viCues: rawCues });
+        else applyYtSecondaryFill({ enCues: rawCues });
         listDirty = true;
         renderList(true);
         publishSidePanelState({ forceList: true });
@@ -378,8 +374,9 @@
     // Fresh YT only — skip chrome.storage + disk merge (after wipe / hard reset).
     if (opts.skipCache) {
       if (gen !== navigateGen || currentVideoId !== vid) return;
+      const inMemoryWithTrans = (cues || []).filter((c) => c && (c.vi || c.en || c.translated));
       transcriptMeta = emptyMeta();
-      cues = mergeCache(normalized, [], transcriptMeta);
+      cues = mergeCache(normalized, inMemoryWithTrans, transcriptMeta);
       applyYtSecondaryFill(opts);
       listDirty = true;
       // T2: start token enrich in parallel, await it (capped) so the first
@@ -402,7 +399,10 @@
     ]);
     if (gen !== navigateGen || currentVideoId !== vid) return;
     transcriptMeta = meta;
-    const merged = mergeCache(normalized, cached, meta);
+    // Preserve any existing in-memory translations from current cues so re-fetch never wipes them:
+    const inMemoryWithTrans = (cues || []).filter((c) => c && (c.vi || c.en || c.translated));
+    const effectiveCache = inMemoryWithTrans.length ? mergeCacheLists(inMemoryWithTrans, cached) : cached;
+    const merged = mergeCache(normalized, effectiveCache, meta);
     // Owned/import script wins: mergeCache keeps file timeline and does not
     // append unmatched YT cues (score-based pick used to prefer polluted merges).
     if (meta.owned && cached.some(isOwnedCue)) {
@@ -798,13 +798,21 @@
       await showPageDictFromSidePanel(msg);
       return { ok: true };
     }
+    if (cmd === "SCHEDULE_HIDE_DICT" || cmd === "schedule_hide_dict") {
+      scheduleHideDict(msg.delayMs ?? 1000);
+      return { ok: true };
+    }
     if (cmd === "HIDE_PAGE_DICT" || cmd === "hide_dict") {
-      // Never auto-hide popup on timer or mouseout — dismiss only on Esc, close button ✕, or outside click.
+      hideDictImmediately();
       return { ok: true };
     }
     if (cmd === "toggle_star_cue") {
       await toggleStarCue(msg.id);
       return { ok: true, starred: isCueStarred(msg.id), savedCues: Object.values(savedCues || {}) };
+    }
+    if (cmd === "trigger_gemini_translate") {
+      void triggerGeminiTranslationIfNeeded(!!msg.force);
+      return { ok: true };
     }
     if (cmd === "open_settings") {
       openSettingsModal();
@@ -982,18 +990,17 @@
 
   function markButtonsHtml(lemma) {
     const cur = userVocab[lemma] || "";
-    const marks = [
-      ["known", "Đã biết"],
-      ["learning", "Học"],
-      ["ignored", "Đừng học"],
-      ["special", "Đặc biệt"],
-    ];
-    return `<div class="dict-marks" data-lemma="${escapeAttr(lemma)}">${marks
-      .map(
-        ([id, label]) =>
-          `<button type="button" data-mark="${id}" class="${cur === id ? "active" : ""}">${label}</button>`
-      )
-      .join("")}<button type="button" data-mark="">Xóa</button></div>`;
+    const isSpecial = cur === "special";
+    return `<div class="dict-marks" data-lemma="${escapeAttr(lemma)}">
+      <button type="button" data-mark="special" class="dict-save-btn ${isSpecial ? "active" : ""}">
+        <span>${isSpecial ? "★" : "☆"}</span> ${isSpecial ? "Đã lưu từ vựng" : "Lưu từ vựng"}
+      </button>
+      <div class="dict-status-pills">
+        <button type="button" data-mark="learning" class="dict-pill ${cur === "learning" ? "active" : ""}">Đang học</button>
+        <button type="button" data-mark="known" class="dict-pill ${cur === "known" ? "active" : ""}">Đã thuộc</button>
+        <button type="button" data-mark="ignored" class="dict-pill ${cur === "ignored" ? "active" : ""}">Bỏ qua</button>
+      </div>
+    </div>`;
   }
 
   function bindDictMarks(dictEl) {
@@ -1002,11 +1009,19 @@
         e.stopPropagation();
         const wrap = btn.closest(".dict-marks");
         const lemma = wrap?.dataset.lemma || "";
+        const cur = userVocab[lemma] || "";
         const mark = btn.dataset.mark || "";
-        setUserVocabStatus(lemma, mark);
+        const nextMark = cur === mark ? "" : mark;
+        setUserVocabStatus(lemma, nextMark);
         if (wrap) {
-          wrap.querySelectorAll("button").forEach((b) => {
-            b.classList.toggle("active", b.dataset.mark === mark && !!mark);
+          const saveBtn = wrap.querySelector(".dict-save-btn");
+          if (saveBtn) {
+            const isSpec = nextMark === "special";
+            saveBtn.classList.toggle("active", isSpec);
+            saveBtn.innerHTML = `<span>${isSpec ? "★" : "☆"}</span> ${isSpec ? "Đã lưu từ vựng" : "Lưu từ vựng"}`;
+          }
+          wrap.querySelectorAll(".dict-status-pills button").forEach((b) => {
+            b.classList.toggle("active", b.dataset.mark === nextMark && !!nextMark);
           });
         }
       });
@@ -1231,29 +1246,44 @@
 
   function openSettingsModal() {
     if (globalThis.HardsubSettingsModal) {
-      globalThis.HardsubSettingsModal.open(settings, async (newSettings) => {
-        if (newSettings.geminiApiKey !== undefined) {
-          triggerGeminiTranslationIfNeeded();
+      globalThis.HardsubSettingsModal.open(
+        settings,
+        async (newSettings) => {
+          if (newSettings.geminiApiKey !== undefined) {
+            triggerGeminiTranslationIfNeeded();
+          }
+          Object.assign(settings, newSettings);
+          await saveSettings();
+          applyBarVisibility();
+        },
+        {
+          onTranslateNow: () => {
+            void triggerGeminiTranslationIfNeeded(true);
+          },
         }
-        Object.assign(settings, newSettings);
-        await saveSettings();
-        applyBarVisibility();
-      });
+      );
     }
   }
 
-  async function triggerGeminiTranslationIfNeeded() {
+  async function triggerGeminiTranslationIfNeeded(force = false) {
     if (translatingWithGemini) return;
     if (!globalThis.HardsubGeminiTranslate) return;
     const apiKey = await globalThis.HardsubGeminiTranslate.getStoredApiKey();
-    if (!apiKey) return;
+    if (!apiKey) {
+      if (force) toast("Chưa cấu hình Gemini API Key. Hãy nhập key trong mục Cài đặt (⚙) của Side Panel.");
+      return;
+    }
 
     const needsVi = cues.filter(
-      (c) => c && c.source && !String(c.vi || "").trim() && !c.mt_locked
+      (c) => c && c.source && (force || !String(c.vi || "").trim()) && !c.mt_locked
     );
-    if (!needsVi.length) return;
+    if (!needsVi.length) {
+      if (force) toast("Tất cả các câu đều đã có bản dịch.");
+      return;
+    }
 
     translatingWithGemini = true;
+    toast(`Đang dịch Gemini AI (0/${needsVi.length} câu)…`);
     try {
       await globalThis.HardsubGeminiTranslate.translateCues(
         cues,
@@ -1261,13 +1291,18 @@
         ({ done, total }) => {
           const active = cues.find((c) => c.id === activeCueId);
           if (active) updateBar(active);
+          toast(`Đang dịch Gemini AI (${done}/${total} câu)…`);
           publishSidePanelPartial({ cues, activeCueId });
         }
       );
-      publishSidePanelState();
-      void persistScriptToStore();
+      toast(`Đã dịch xong ${needsVi.length} câu bằng Gemini AI!`);
+      listDirty = true;
+      renderList(true);
+      publishSidePanelState({ forceList: true });
+      scheduleSaveTranscript();
     } catch (err) {
       console.warn("[content] Gemini translation error:", err);
+      toast(`Lỗi dịch Gemini AI: ${err.message || err}`);
     } finally {
       translatingWithGemini = false;
     }
@@ -1709,7 +1744,8 @@
    */
   function mergeCache(ytCues, cached, meta = transcriptMeta) {
     let cacheList = cached || [];
-    if (detectCuesLanguage(cacheList) === "vi") {
+    const cacheLang = detectCuesLanguage(cacheList);
+    if (cacheLang === "vi" || cacheLang === "en") {
       cacheList = [];
     }
     const stones = new Set(meta?.tombstones || []);
@@ -1768,15 +1804,17 @@
         const tKey = `${start.toFixed(2)}|${compactSource(source)}`;
         if (stones.has(tKey)) return null;
         const hit = findCachedMatch(cacheList, start, source);
-        const hasMt = !!(hit && (String(hit.vi || "").trim() || String(hit.en || "").trim()));
-        const translated = !!(hit && hit.translated && hasMt);
+        const hasVi = !!(hit && String(hit.vi || "").trim());
+        const hasEn = !!(hit && String(hit.en || "").trim());
+        const hasMt = hasVi || hasEn;
+        const translated = !!(hit && (hit.translated || hasMt));
         return {
           id: (hit && hit.id) || cueId(start, source),
           start_media_time: hit && isOwnedCue(hit) ? Number(hit.start_media_time) || start : start,
           end_media_time: hit && isOwnedCue(hit) ? Number(hit.end_media_time) || end : end,
           source: hit && isOwnedCue(hit) ? String(hit.source || source) : source,
-          en: translated ? hit.en || "" : "",
-          vi: translated ? hit.vi || "" : "",
+          en: (hit && hit.en) || "",
+          vi: (hit && hit.vi) || "",
           tokens: (hit && hit.tokens) || [],
           translated,
           text_source: hit && isOwnedCue(hit) ? hit.text_source : "yt",
@@ -2332,10 +2370,15 @@
     );
   }
 
+  let isInteractingWithPopup = false;
+  let dictPinnedState = false;
+
   function hideDictImmediately() {
     clearDictHideTimer();
     const dictEl = document.getElementById("hardsub-ocr-dict");
     if (!dictEl) return;
+    dictPinnedState = false;
+    isInteractingWithPopup = false;
     dictEl.hidden = true;
     dictEl.style.setProperty("display", "none", "important");
     dictEl.innerHTML = "";
@@ -2343,19 +2386,42 @@
     clearDictTokActive();
   }
 
-  function scheduleHideDict() {
+  function scheduleHideDict(ms = 1000) {
     clearDictHideTimer();
-    // NO-OP: Dictionary popup NEVER auto-hides on a timer or mouseleave.
-    // Dismiss ONLY on Esc key, clicking close button ✕, or clicking outside.
+    dictHideTimer = setTimeout(() => {
+      dictHideTimer = null;
+      if (dictPinnedState) return;
+      const dictEl = document.getElementById("hardsub-ocr-dict");
+      if (!dictEl || dictEl.hidden) return;
+      if (
+        isInteractingWithPopup ||
+        dictEl.matches(":hover") ||
+        document.querySelector("#hardsub-ocr-bar .tok:hover, #hardsub-ocr-bar ruby:hover")
+      ) {
+        return;
+      }
+      hideDictImmediately();
+    }, ms);
   }
 
   function setupBarDict() {
     const dictEl = document.getElementById("hardsub-ocr-dict");
     if (!dictEl || dictEl.dataset.bound) return;
     dictEl.dataset.bound = "1";
-    dictEl.addEventListener("pointerenter", clearDictHideTimer);
-    dictEl.addEventListener("mouseenter", clearDictHideTimer);
-    // Popup persists until user clicks outside, clicks Escape, or clicks the close button.
+    dictEl.addEventListener("pointerenter", () => {
+      isInteractingWithPopup = true;
+      clearDictHideTimer();
+    });
+    dictEl.addEventListener("mouseenter", () => {
+      isInteractingWithPopup = true;
+      clearDictHideTimer();
+    });
+    dictEl.addEventListener("mouseleave", () => {
+      isInteractingWithPopup = false;
+      if (!dictPinnedState) {
+        scheduleHideDict(400);
+      }
+    });
   }
 
   function isPunctuationSurface(surface) {
@@ -2494,9 +2560,33 @@
     });
   }
 
+  function hasVietnameseChars(str) {
+    if (!str || typeof str !== "string") return false;
+    return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(str);
+  }
+
+  function formatPosLabel(pos) {
+    if (!pos) return "";
+    const p = String(pos).toLowerCase();
+    if (p.includes("keiyoushi") || p.includes("i-adjective")) return "Tính từ (-i)";
+    if (p.includes("keiyodoushi") || p.includes("na-adjective")) return "Tính từ (-na)";
+    if (p.includes("futsuumeishi") || p.includes("noun (common)")) return "Danh từ";
+    if (p.includes("noun")) return "Danh từ";
+    if (p.includes("verb") || p.includes("ichidan") || p.includes("godan") || p.includes("suru")) return "Động từ";
+    if (p.includes("fukushi") || p.includes("adverb")) return "Phó từ";
+    if (p.includes("particle") || p.includes("joshi")) return "Trợ từ";
+    if (p.includes("conjunction") || p.includes("setsuzokushi")) return "Liên từ";
+    if (p.includes("pronoun")) return "Đại từ";
+    if (p.includes("expression")) return "Cụm từ";
+    if (p.includes("prefix")) return "Tiền tố";
+    if (p.includes("suffix")) return "Hậu tố";
+    return String(pos).replace(/\s*\([^)]*\)/g, "").trim() || pos;
+  }
+
   function renderDictHtml(dictEl, surface, lemma, d, ctx = {}) {
     const showSent = settings.dictShowSentence !== false;
     dictEl.classList.toggle("dict-hide-sentence", !showSent);
+    dictEl.classList.add("upgraded-mazii-dict");
     const sentenceHtml = sentenceBlockHtml(ctx);
     const hasSentence = !!sentenceHtml;
 
@@ -2512,12 +2602,14 @@
 
     if (!d?.found) {
       dictEl.innerHTML = `<div class="dict-top">
-          ${dictSentToggleHtml(hasSentence)}
-          <div class="dict-head-main">
+          <div class="dict-head-row">
             <strong class="dict-head">${escapeHtml(surface)}</strong>
             <span class="dict-gloss">${escapeHtml(d?.message || "không có trong từ điển")}</span>
           </div>
-          <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
+          <div class="dict-top-actions">
+            ${dictSentToggleHtml(hasSentence)}
+            <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
+          </div>
         </div>${sentenceHtml}`;
       bindDictSentenceToggle(dictEl);
       bindDictClose(dictEl);
@@ -2526,17 +2618,150 @@
 
     const term = d.matched || surface;
     const reading = d.reading || (d.senses?.[0]?.reading || "");
-    const glossHtml = glossBlocksHtml(d);
+    const hanviet = d.hanviet || "";
+    const jlpt = (d.jlpt || ctx?.tokenJlpt || "").toUpperCase();
+    const source = d.source || "Mazii JA-VI";
     const markLemma = d.matched || lemma || surface;
-    dictEl.innerHTML = `<div class="dict-top">
-        ${dictSentToggleHtml(hasSentence)}
-        <div class="dict-head-main">
-          <strong class="dict-head">${escapeHtml(term)}</strong>${
-            reading ? `<span class="dict-reading-top">${escapeHtml(reading)}</span>` : ""
+    const isPinned = !!ctx?.pinned || dictPinnedState;
+
+    // Badges HTML
+    const badges = [];
+    if (reading) {
+      badges.push(`<span class="dict-reading-top">[${escapeHtml(reading)}]</span>`);
+    }
+    if (hanviet) {
+      badges.push(`<span class="dict-badge-hanviet">${escapeHtml(hanviet)}</span>`);
+    }
+    if (jlpt) {
+      const jlptCls = `dict-badge-jlpt jlpt-${jlpt.toLowerCase()}`;
+      badges.push(`<span class="${jlptCls}">${escapeHtml(jlpt)}</span>`);
+    }
+    if (isPinned) {
+      badges.push(`<span class="dict-badge-pinned" title="Popup đã ghim (click lại từ để bỏ ghim)">📌 Đã ghim</span>`);
+    }
+    badges.push(`<span class="dict-badge-source">${escapeHtml(source)}</span>`);
+
+    // Senses & Primary Meaning calculation
+    const senses = d.senses || [];
+    const firstViList = (senses[0]?.gloss_vi || []).filter(Boolean);
+    const firstEnList = (senses[0]?.gloss_en || []).filter(Boolean);
+
+    let primaryText = "";
+    let isPrimaryVi = false;
+
+    if (firstViList.length > 0) {
+      primaryText = firstViList.slice(0, 4).join(", ");
+      isPrimaryVi = hasVietnameseChars(primaryText);
+    }
+    if (!primaryText && firstEnList.length > 0) {
+      primaryText = firstEnList.slice(0, 3).join("; ");
+      isPrimaryVi = false;
+    }
+    if (!primaryText) {
+      const fallback = primaryGlossLine(d);
+      if (fallback.vi && hasVietnameseChars(fallback.vi)) {
+        primaryText = fallback.vi;
+        isPrimaryVi = true;
+      } else if (fallback.en || fallback.vi) {
+        primaryText = fallback.en || fallback.vi;
+        isPrimaryVi = hasVietnameseChars(primaryText);
+      }
+    }
+
+    // Primary Meaning Banner
+    let primaryBannerHtml = "";
+    if (primaryText) {
+      const bannerLabel = isPrimaryVi ? "Ý NGHĨA CHÍNH (TIẾNG VIỆT)" : "ĐỊNH NGHĨA";
+      primaryBannerHtml = `<div class="dict-primary-banner ${isPrimaryVi ? "is-vi" : "is-en"}">
+        <div class="dict-primary-label">${escapeHtml(bannerLabel)}</div>
+        <div class="dict-primary-text">${escapeHtml(primaryText)}</div>
+      </div>`;
+    }
+
+    // Check if gloss_vi is duplicated across all senses
+    const allViIdentical = senses.length > 1 && senses.every((s) => {
+      const sVi = (s.gloss_vi || []).join("; ");
+      const s0Vi = (senses[0].gloss_vi || []).join("; ");
+      return sVi === s0Vi;
+    });
+
+    // Detailed Senses & Definitions HTML
+    let sensesHtml = "";
+    if (senses.length > 0) {
+      const senseRows = [];
+      let senseIdx = 0;
+      for (const s of senses.slice(0, 4)) {
+        senseIdx++;
+        const rawPos = (s.pos || []).filter(Boolean)[0] || "";
+        const posLabel = formatPosLabel(rawPos);
+        const sViRaw = (s.gloss_vi || []).slice(0, 4).join("; ");
+        const sEnRaw = (s.gloss_en || []).slice(0, 3).join("; ");
+        const sViIsReal = hasVietnameseChars(sViRaw);
+
+        let viToShow = "";
+        let enToShow = "";
+
+        if (allViIdentical) {
+          // All senses duplicate identical VI; use distinct EN nuances to differentiate
+          enToShow = sEnRaw || (sViIsReal ? "" : sViRaw);
+        } else {
+          if (sViIsReal) {
+            viToShow = sViRaw;
+            enToShow = sEnRaw;
+          } else {
+            enToShow = sEnRaw || sViRaw;
           }
+        }
+
+        if (!viToShow && !enToShow) continue;
+
+        senseRows.push(`
+          <div class="dict-sense-item">
+            <span class="dict-sense-num">${senseIdx}</span>
+            ${posLabel ? `<span class="dict-pos-badge">${escapeHtml(posLabel)}</span>` : ""}
+            <div class="dict-sense-content">
+              ${viToShow ? `<div class="dict-sense-vi">${escapeHtml(viToShow)}</div>` : ""}
+              ${enToShow ? `<div class="dict-sense-en">${escapeHtml(enToShow)}</div>` : ""}
+            </div>
+          </div>
+        `);
+      }
+      if (senseRows.length > 0) {
+        sensesHtml = `<div class="dict-senses-list">${senseRows.join("")}</div>`;
+      }
+    }
+
+    // Example sentences HTML (Mazii real example or contextual example)
+    let exampleBoxHtml = "";
+    if (d.examples && d.examples.length > 0) {
+      const ex = d.examples[0];
+      exampleBoxHtml = `
+        <div class="dict-example-box">
+          <div class="dict-example-label">VÍ DỤ THỰC TẾ:</div>
+          <div class="dict-example-ja">${escapeHtml(ex.ja)}</div>
+          <div class="dict-example-vi">${escapeHtml(ex.vi)}</div>
         </div>
-        <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
-      </div>${glossHtml}${sentenceHtml}${markButtonsHtml(markLemma)}`;
+      `;
+    }
+
+    dictEl.innerHTML = `
+      <div class="dict-top">
+        <div class="dict-head-row">
+          <strong class="dict-head">${escapeHtml(term)}</strong>
+          ${badges.join(" ")}
+        </div>
+        <div class="dict-top-actions">
+          ${dictSentToggleHtml(hasSentence)}
+          <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
+        </div>
+      </div>
+      ${primaryBannerHtml}
+      ${sensesHtml}
+      ${exampleBoxHtml}
+      ${sentenceHtml}
+      ${markButtonsHtml(markLemma)}
+    `;
+
     bindDictMarks(dictEl);
     bindDictSentenceToggle(dictEl);
     bindDictClose(dictEl);
@@ -2546,15 +2771,20 @@
     dictEl.hidden = false;
     dictEl.style.removeProperty("display");
     dictEl.classList.toggle("dict-hide-sentence", settings.dictShowSentence === false);
+    dictEl.classList.add("upgraded-mazii-dict");
     const sentenceHtml = sentenceBlockHtml(ctx);
     dictEl.innerHTML = `<div class="dict-top">
-        ${dictSentToggleHtml(!!sentenceHtml)}
-        <div class="dict-head-main">
+        <div class="dict-head-row">
           <strong class="dict-head">${escapeHtml(surface)}</strong>
-          <span class="dict-gloss">…</span>
+          <span class="dict-badge-source">Mazii JA-VI</span>
         </div>
-        <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
-      </div>${sentenceHtml}`;
+        <div class="dict-top-actions">
+          ${dictSentToggleHtml(!!sentenceHtml)}
+          <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="dict-loading-shimmer">Đang tra từ điển Mazii...</div>
+      ${sentenceHtml}`;
     bindDictSentenceToggle(dictEl);
     const closeBtn = dictEl.querySelector(".dict-close-btn");
     if (closeBtn) {
@@ -2582,13 +2812,24 @@
     if (seq !== dictReqSeq) return;
     if (!res?.ok) {
       dictEl.innerHTML = `<div class="dict-top">
-          ${dictSentToggleHtml(!!sentenceHtml)}
-          <div class="dict-head-main">
+          <div class="dict-head-row">
             <strong class="dict-head">${escapeHtml(surface)}</strong>
             <span class="dict-gloss">Bridge offline</span>
           </div>
+          <div class="dict-top-actions">
+            ${dictSentToggleHtml(!!sentenceHtml)}
+            <button type="button" class="dict-close-btn" title="Đóng (Esc)">✕</button>
+          </div>
         </div>${sentenceHtml}`;
       bindDictSentenceToggle(dictEl);
+      const cBtn = dictEl.querySelector(".dict-close-btn");
+      if (cBtn) {
+        cBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          hideDictImmediately();
+        });
+      }
       place();
       return;
     }
@@ -2601,9 +2842,13 @@
     setDictTokActive(el);
     const dictEl = document.getElementById("hardsub-ocr-dict");
     if (!dictEl) return;
-    const surface = (el.dataset.surface || el.textContent || "").trim();
-    const lemma = (el.dataset.lemma || "").trim();
-    if (isPunctuationSurface(surface)) return;
+    const isTrans = el.classList.contains("tok-trans");
+    const clusterSurface = el.dataset?.clusterSurface;
+    const clusterLemma = el.dataset?.clusterLemma;
+    const surface = (clusterSurface || el.dataset?.surface || (isTrans ? "" : el.textContent) || "").trim();
+    const lemma = (clusterLemma || el.dataset?.lemma || surface).trim();
+    if (!surface && !lemma) return;
+    if (isPunctuationSurface(surface) && !lemma) return;
     dictEl.dataset.dictSource = "bar";
     const cue = cues.find((c) => c.id === activeCueId);
     const ctx = {
@@ -2611,13 +2856,28 @@
       sentenceEn: cue?.en || "",
       sentenceJa: cue?.source || "",
     };
-    await fetchAndFillDict(dictEl, surface, lemma, () => placeDictNear(ev, el), ctx);
+    await fetchAndFillDict(dictEl, surface || lemma, lemma || surface, () => placeDictNear(ev, el), ctx);
   }
 
   async function showPageDictFromSidePanel(msg) {
     clearDictHideTimer();
     const dictEl = document.getElementById("hardsub-ocr-dict");
     if (!dictEl) return;
+    if (msg.unpin) {
+      dictPinnedState = false;
+      const pinnedBadge = dictEl.querySelector(".dict-badge-pinned");
+      if (pinnedBadge) pinnedBadge.remove();
+      return;
+    }
+    if (isInteractingWithPopup && !msg.pinned) {
+      return;
+    }
+    if (dictPinnedState && !msg.pinned && !msg.force) {
+      return;
+    }
+    if (msg.pinned) {
+      dictPinnedState = true;
+    }
     const surface = String(msg.surface || "").trim();
     const lemma = String(msg.lemma || "").trim();
     if (isPunctuationSurface(surface)) return;
@@ -2627,6 +2887,8 @@
       sentenceVi: msg.sentenceVi || msg.vi || "",
       sentenceEn: msg.sentenceEn || msg.en || "",
       sentenceJa: msg.sentenceJa || msg.source || msg.ja || "",
+      tokenJlpt: msg.tokenJlpt || "",
+      pinned: !!msg.pinned || dictPinnedState,
     };
     await fetchAndFillDict(
       dictEl,
@@ -2637,16 +2899,99 @@
     );
   }
 
+  let barPlayPopoverEl = null;
+  function ensureBarPlayPopover() {
+    if (barPlayPopoverEl) return barPlayPopoverEl;
+    barPlayPopoverEl = document.createElement("div");
+    barPlayPopoverEl.id = "hardsub-bar-play-popover";
+    barPlayPopoverEl.className = "hardsub-bar-play-popover";
+    barPlayPopoverEl.hidden = true;
+    document.body.appendChild(barPlayPopoverEl);
+    return barPlayPopoverEl;
+  }
+
+  function showBarPlayPopover(btn, cue) {
+    if (!cue) return;
+    const pop = ensureBarPlayPopover();
+    const t0 = formatTime(cue.start_media_time);
+    const t1 = formatTime(cue.end_media_time);
+    const jaHtml = rubyHtml(cue);
+    const viText = stripStubPrefix(cue.vi);
+    const enText = stripStubPrefix(cue.en);
+
+    pop.innerHTML = `
+      <div class="sp-pop-header">
+        <span class="sp-pop-badge">▶ Câu hiện tại</span>
+        <span class="sp-pop-time">⏱ ${escapeHtml(t0)} – ${escapeHtml(t1)}</span>
+      </div>
+      <div class="sp-pop-ja">${jaHtml}</div>
+      ${viText ? `<div class="sp-pop-vi"><span class="sp-pop-tag">VI</span> ${escapeHtml(viText)}</div>` : `<div class="sp-pop-vi sp-pop-empty"><span class="sp-pop-tag">VI</span> <em>Chưa có bản dịch</em></div>`}
+      ${enText ? `<div class="sp-pop-en"><span class="sp-pop-tag">EN</span> ${escapeHtml(enText)}</div>` : ""}
+    `;
+    pop.hidden = false;
+
+    const rect = btn.getBoundingClientRect();
+    const popWidth = Math.min(340, window.innerWidth - 20);
+    let left = rect.left;
+    if (left + popWidth > window.innerWidth) {
+      left = Math.max(10, window.innerWidth - popWidth - 10);
+    }
+    let top = rect.top - 12 - (pop.offsetHeight || 120);
+    if (top < 10) {
+      top = rect.bottom + 10;
+    }
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideBarPlayPopover() {
+    if (barPlayPopoverEl) barPlayPopoverEl.hidden = true;
+  }
+
   function bindBarTokenDict(bar) {
-    bar.querySelectorAll("ruby, .tok").forEach((tok) => {
+    bar.querySelectorAll(".tok-cluster-wrapper, ruby, .tok, .tok-trans[data-lemma], .tok-trans").forEach((tok) => {
       tok.addEventListener("mouseenter", (e) => {
         clearDictHideTimer();
-        const dictEl = document.getElementById("hardsub-ocr-dict");
-        // If popup is already open, do not overwrite or flicker on casual mouse brush!
-        if (dictEl && !dictEl.hidden) return;
+        const clusterId = tok.dataset?.clusterId;
+        const lemma = (tok.dataset?.clusterLemma || tok.dataset?.lemma || "").trim().toLowerCase();
+        const surface = (tok.dataset?.clusterSurface || tok.dataset?.surface || "").trim().toLowerCase();
+
+        if (clusterId) {
+          bar.querySelectorAll(`[data-cluster-id="${clusterId}"]`).forEach((node) => {
+            node.classList.add("tok-cluster-active", "tok-hover-sync");
+          });
+        }
+        if (lemma || surface) {
+          const matchedClusterIds = new Set();
+          bar.querySelectorAll(".tok-cluster-wrapper, ruby, .tok, .tok-trans").forEach((node) => {
+            const nLemma = (node.dataset?.clusterLemma || node.dataset?.lemma || "").trim().toLowerCase();
+            const nSurface = (node.dataset?.clusterSurface || node.dataset?.surface || "").trim().toLowerCase();
+            if (
+              (lemma && (nLemma === lemma || nSurface === lemma)) ||
+              (surface && (nSurface === surface || nLemma === surface))
+            ) {
+              node.classList.add("tok-cluster-active", "tok-hover-sync");
+              if (node.dataset?.clusterId) matchedClusterIds.add(node.dataset.clusterId);
+            }
+          });
+          matchedClusterIds.forEach((cId) => {
+            bar.querySelectorAll(`[data-cluster-id="${cId}"]`).forEach((node) => {
+              node.classList.add("tok-cluster-active", "tok-hover-sync");
+            });
+          });
+        } else {
+          tok.classList.add("tok-cluster-active", "tok-hover-sync");
+        }
+
         if (settings.showMiniDict !== false) {
           showBarDict(e, tok);
         }
+      });
+      tok.addEventListener("mouseleave", () => {
+        bar.querySelectorAll(".tok-cluster-active, .tok-hover-sync").forEach((node) => {
+          node.classList.remove("tok-cluster-active", "tok-hover-sync");
+        });
+        scheduleHideDict(400);
       });
       tok.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -3254,27 +3599,62 @@
     captionsInfo = "";
     updateCaptionStatusLine();
 
-    // Reuse SW promise from onNavigate when provided (started ‖ bridge).
     let pageLink = null;
+    // Parallel path 1: Background SW cascade
     const swPromise =
       opts.swPromise ||
       loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
         baseUrl: "",
         lang: settings.sourceLang,
-        // User-initiated Reload bypasses the SW negative-cache.
         force: !!force,
       });
 
-    // T1: the SW pack must not sit behind the page-script handshake — whoever
-    // settles first (usable SW pack vs bridge wait) opens the flow; the bridge
-    // wait only gates the page-intercept paths below.
+    // Parallel path 2: Direct in-page player 3-track concurrent fetch (JA, EN, VI)
+    const multiPromise = (async () => {
+      try {
+        if (!pageBridgeReady) await waitForPageBridge(200);
+        if (pageBridgeReady) {
+          return await pageCall("FETCH_MULTI_LANG_CAPTIONS", { videoId: currentVideoId, lang: settings.sourceLang }, 750);
+        }
+      } catch (_) {}
+      return null;
+    })();
+
+    // T1: whichever resolves first with valid cues paints immediately
+    const fastPack = await Promise.race([
+      multiPromise.then((r) => (r?.ok && r.cues?.length ? { source: "multi", data: r } : new Promise(() => {}))),
+      swPromise.then((r) => (swOk(r) ? { source: "sw", data: r } : new Promise(() => {}))),
+      sleep(800).then(() => null),
+    ]);
+
+    if (stale()) return;
+
+    if (fastPack?.source === "multi") {
+      const multi = fastPack.data;
+      await applyLoadedCues(multi.cues, multi.via || "page_multi", {
+        ...applyOpts,
+        enCues: multi.enCues,
+        viCues: multi.viCues,
+      });
+      if (stale()) return;
+      return;
+    }
+
+    if (fastPack?.source === "sw") {
+      const sw = fastPack.data;
+      await applyLoadedCues(sw.cues || [], swLabel(sw), swApplyOpts(sw));
+      if (stale()) return;
+      kickSecondaryFill(sw);
+      return;
+    }
+
     const ready =
       opts.bridgeReady === true
         ? true
         : opts.bridgeReady === false
           ? false
           : await Promise.race([
-              waitForPageBridge(2500),
+              waitForPageBridge(1500),
               swPromise.then(
                 (r) => (swUsable(r) ? "sw" : new Promise(() => {})),
                 () => new Promise(() => {})
@@ -3282,7 +3662,6 @@
             ]);
     if (stale()) return;
 
-    // T1: SW pack won the race — paint it now, skip the page-intercept dance.
     if (ready === "sw") {
       const sw = await swPromise;
       if (stale()) return;
@@ -3292,7 +3671,6 @@
         kickSecondaryFill(sw);
         return;
       }
-      // Secondary-only pack (en/vi but no JA): fall through to the page paths.
     }
 
     if (ready === true) {
@@ -3434,6 +3812,19 @@
           );
           if (stale()) return;
           kickSecondaryFill(sw);
+          return;
+        }
+      }
+      if (!cues.length) {
+        const swFallback = await swPromise;
+        if (swOk(swFallback)) {
+          await applyLoadedCues(
+            swFallback.cues || [],
+            swLabel(swFallback),
+            swApplyOpts(swFallback)
+          );
+          if (stale()) return;
+          kickSecondaryFill(swFallback);
           return;
         }
       }
@@ -3862,20 +4253,29 @@
     Vocab.applyHighlightVars(bar, settings);
     applyBarStyle(bar);
     const starred = isCueStarred(cue.id);
+    const showJa = settings.barShowJa !== false;
+    const showVi = settings.barShowVi !== false;
+    const showEn = settings.barShowEn !== false;
+    const vi = stripStubPrefix(cue.vi);
+    const en = stripStubPrefix(cue.en);
+    const viHtml = showVi && vi ? Vocab.renderBilingualHtml(vi, "vi", cue.tokens, settings) : "";
+    const enHtml = showEn && en ? Vocab.renderBilingualHtml(en, "en", cue.tokens, settings) : "";
 
     bar.innerHTML = `
       <div class="hardsub-bridge-pill ${bridgeReady ? "ready" : "offline"}" title="${bridgeReady ? "Local Bridge: Connected" : "Local Bridge: Offline (Intl.Segmenter fallback)"}"></div>
       <div class="lr-overlay-wrap">
         <div class="lr-card-ja">
-          <button type="button" class="lr-replay-btn" title="Phát lại (phím S)">▶</button>
-          <div class="lr-text-ja">${rubyHtml(cue)}</div>
+          <button type="button" class="lr-replay-btn" title="Phát lại câu này (phím S / Space)">▶</button>
+          <div class="lr-text-ja">${showJa ? rubyHtml(cue) : ""}</div>
           <div class="lr-card-actions">
-            <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ (A-)">A-</button>
-            <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ (A+)">A+</button>
-            <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu" : "Lưu câu"}">${starred ? "★" : "☆"}</button>
-            <button type="button" class="lr-more-btn" title="Cài đặt">⋮</button>
+            <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ phụ đề (phím [)">A-</button>
+            <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ phụ đề (phím ])">A+</button>
+            <button type="button" class="lr-star-btn ${starred ? "active" : ""}" title="${starred ? "Bỏ lưu câu này (phím S)" : "Lưu câu này vào mục đã lưu (phím S)"}">${starred ? "★" : "☆"}</button>
+            <button type="button" class="lr-more-btn" title="Cài đặt phụ đề & Dịch AI">⋮</button>
           </div>
         </div>
+        ${viHtml ? `<div class="bar-vi">${viHtml}</div>` : ""}
+        ${enHtml ? `<div class="bar-en">${enHtml}</div>` : ""}
       </div>
     `;
     const pill = bar.querySelector(".hardsub-bridge-pill");
@@ -3912,7 +4312,10 @@
     }
     const replayBtn = bar.querySelector(".lr-replay-btn");
     if (replayBtn) {
+      replayBtn.addEventListener("mouseenter", () => showBarPlayPopover(replayBtn, cue));
+      replayBtn.addEventListener("mouseleave", hideBarPlayPopover);
       replayBtn.addEventListener("click", (e) => {
+        hideBarPlayPopover();
         e.stopPropagation();
         e.preventDefault();
         repeatCurrentCue();
@@ -4143,6 +4546,9 @@
     } catch (_) {
       /* bridge offline — chrome.storage already cleared */
     }
+    try {
+      await pageCall("RESET_CAPTIONS", {}, 500);
+    } catch (_) {}
     cues = [];
     activeCueId = "";
     listDirty = true;
@@ -4522,6 +4928,28 @@
     toast("Đã export TXT");
   }
 
+  let prefetchInProgress = false;
+  async function triggerPredictivePrefetch(currentActiveCue) {
+    if (!currentActiveCue || prefetchInProgress || !Array.isArray(cues) || cues.length === 0) return;
+    const curIdx = cues.findIndex((c) => c.id === currentActiveCue.id);
+    if (curIdx === -1) return;
+
+    // Predictive pre-fetching: lookahead 3-5 cues ahead of video playback
+    const lookaheadCues = cues.slice(curIdx + 1, curIdx + 6).filter((c) => c && c.source && !c.vi && !c.mt_locked);
+    if (!lookaheadCues.length) return;
+
+    prefetchInProgress = true;
+    try {
+      if (globalThis.HardsubGeminiTranslate) {
+        await globalThis.HardsubGeminiTranslate.translateCues(lookaheadCues);
+        publishSidePanelPartial({ cues });
+      }
+    } catch (_) {
+    } finally {
+      prefetchInProgress = false;
+    }
+  }
+
   function syncCueAtMediaTime(mediaTime) {
     if (!Number.isFinite(mediaTime)) return;
     const active = findActiveCue(mediaTime);
@@ -4530,6 +4958,7 @@
       activeCueId = nextId;
       updateBar(active);
       publishSidePanelPartial({ activeCueId, currentTime: mediaTime });
+      triggerPredictivePrefetch(active);
     }
 
     if (settings.autoPause && active) {
@@ -4642,6 +5071,16 @@
     if (pageBridgeReady) {
       void pageCall("RESET_CAPTIONS", { videoId: currentVideoId }, 200).catch(() => {});
     }
+    // YouTube: kick background SW ASAP in parallel with storage/disk/bridge setup
+    const swPromise =
+      currentVideoId && currentSource === "youtube"
+        ? loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
+            baseUrl: "",
+            lang: settings.sourceLang,
+            force: true,
+          })
+        : null;
+
     if (currentVideoId) {
       transcriptMeta = await loadTranscriptMeta(currentVideoId);
     }
@@ -4682,16 +5121,25 @@
       return;
     }
 
-    // YouTube: kick background SW in parallel with direct timedtext link.
-    const swPromise =
-      currentVideoId
-        ? loadCaptionsViaBackground(currentVideoId, settings.sourceLang, {
-            baseUrl: "",
-            lang: settings.sourceLang,
-          })
-        : null;
-
     await loadAllCaptions(true, { swPromise });
+    if (gen !== navigateGen) return;
+
+    // Auto-retry pipeline for YouTube SPA navigation if captions weren't immediately ready
+    if (!cues.length && currentSource === "youtube" && currentVideoId) {
+      const retryDelays = [500, 1200, 2500];
+      for (const delay of retryDelays) {
+        if (gen !== navigateGen || cues.length) break;
+        await sleep(delay);
+        if (gen !== navigateGen || cues.length) break;
+        await loadAllCaptions(true, { skipCache: false });
+        if (cues.length) {
+          listDirty = true;
+          publishSidePanelState({ forceList: true });
+          break;
+        }
+      }
+    }
+
     if (gen !== navigateGen) return;
     if (cues.length) await syncToPlayhead();
     else updateBar(null);
@@ -4779,7 +5227,12 @@
           return;
         }
 
-        if (isJaLang(detectedLang) || (!detectedLang && !String(url).includes("tlang="))) {
+        const isJaIntercept =
+          isJaLang(detectedLang) ||
+          (!detectedLang &&
+            !String(url).includes("tlang=") &&
+            detectCuesLanguage(payloadCues) === "ja");
+        if (isJaIntercept) {
           // Direct payload from intercept: apply immediately without refetching
           void applyLoadedCues(payloadCues, `ja intercept · ${payloadCues.length} cues`);
         }
@@ -4874,4 +5327,14 @@
     renderList(true);
     publishSidePanelState();
   });
+
+  if (typeof window !== "undefined") {
+    window.__contentDictDebug = {
+      renderDictHtml,
+      formatPosLabel,
+      hasVietnameseChars,
+      isInteractingWithPopup: () => isInteractingWithPopup,
+      dictPinnedState: () => dictPinnedState,
+    };
+  }
 })();

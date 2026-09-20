@@ -1,14 +1,25 @@
 /**
  * In-page Settings Modal for YouTube JP Caption Studio.
- * Dark-mode minimalist single-column design:
+ * Dark-mode minimalist design:
  * 1. Word colors toggles & preview
  * 2. Display & Overlay (Opacity slider with live preview, dictionary, autopause, etc.)
- * 3. AI Translation (Gemini 3.8 Flash API key test & save)
+ * 3. Supported Platforms (YouTube, Netflix, ABEMA)
+ * 4. JLPT Level Colors (N5..N1, Unknown)
+ * 5. Keyboard Shortcuts Reference
  */
 (function (root) {
   let modalEl = null;
 
-  function createModalHtml(settings, geminiApiKey) {
+  const DEFAULT_JLPT_COLORS = {
+    n5: { on: true, color: "#7fd6a8" },
+    n4: { on: true, color: "#8fd3ff" },
+    n3: { on: true, color: "#f5d76e" },
+    n2: { on: true, color: "#e08a4a" },
+    n1: { on: true, color: "#e74c5c" },
+    unknown: { on: true, color: "#c5c5d0" },
+  };
+
+  function createModalHtml(settings) {
     const s = settings || {};
     const cats = s.vocabCats || {
       known: true,
@@ -18,7 +29,12 @@
       ignored: true,
       special: true,
     };
-    const key = geminiApiKey || "";
+    const platforms = s.enabledPlatforms || {
+      youtube: true,
+      netflix: true,
+      abema: true,
+    };
+    const jlpt = s.levelColors || DEFAULT_JLPT_COLORS;
     const opacityVal = s.barBgOpacity != null ? Number(s.barBgOpacity) : 0.4;
     const opacityPct = Math.round(opacityVal * 100);
 
@@ -40,27 +56,27 @@
               <div class="lr-color-toggles">
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-dot lr-dot-known"></i> Từ đã biết (Known words)</span>
-                  <input type="checkbox" id="lr-cat-known" class="lr-switch" ${cats.known ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-known" class="lr-switch" ${cats.known !== false ? "checked" : ""}>
                 </label>
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-dot lr-dot-suggested"></i> Từ gợi ý học (Suggested Words)</span>
-                  <input type="checkbox" id="lr-cat-suggested" class="lr-switch" ${cats.suggested ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-suggested" class="lr-switch" ${cats.suggested !== false ? "checked" : ""}>
                 </label>
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-dot lr-dot-learning"></i> Đang học (Marked to Learn)</span>
-                  <input type="checkbox" id="lr-cat-learning" class="lr-switch" ${cats.learning ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-learning" class="lr-switch" ${cats.learning !== false ? "checked" : ""}>
                 </label>
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-border-box"></i> Đang học - Viền chữ (Outline)</span>
-                  <input type="checkbox" id="lr-cat-learning-border" class="lr-switch" ${cats.learningBorder ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-learning-border" class="lr-switch" ${cats.learningBorder !== false ? "checked" : ""}>
                 </label>
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-dot lr-dot-ignored"></i> Bỏ qua (Don't learn)</span>
-                  <input type="checkbox" id="lr-cat-ignored" class="lr-switch" ${cats.ignored ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-ignored" class="lr-switch" ${cats.ignored !== false ? "checked" : ""}>
                 </label>
                 <label class="lr-toggle-row">
                   <span class="lr-toggle-label"><i class="lr-dot lr-dot-special"></i> Từ đặc biệt (Special words)</span>
-                  <input type="checkbox" id="lr-cat-special" class="lr-switch" ${cats.special ? "checked" : ""}>
+                  <input type="checkbox" id="lr-cat-special" class="lr-switch" ${cats.special !== false ? "checked" : ""}>
                 </label>
               </div>
 
@@ -114,16 +130,94 @@
 
             <div class="lr-settings-divider"></div>
 
-            <!-- Section 3: AI Translation -->
+            <!-- Section 3: Supported Platforms -->
             <div class="lr-settings-section">
               <div class="lr-settings-section-title">
-                <span>Dịch tự động AI Studio (Gemini 3.8 Flash):</span>
+                <span>Nền tảng kích hoạt Extension & Side Panel:</span>
               </div>
-              <div class="lr-api-input-wrap">
-                <input type="password" id="lr-gemini-key" class="lr-input" placeholder="AIzaSy... (Dán Google AI Studio API Key)" value="${escapeHtml(key)}" />
-                <button type="button" id="lr-save-gemini-key" class="lr-btn-save">Lưu & Thử kết nối</button>
+              <div class="lr-platform-toggles">
+                <label class="lr-toggle-row">
+                  <span class="lr-toggle-label">YouTube (youtube.com)</span>
+                  <input type="checkbox" id="lr-plat-youtube" class="lr-switch" ${platforms.youtube !== false ? "checked" : ""}>
+                </label>
+                <label class="lr-toggle-row">
+                  <span class="lr-toggle-label">Netflix (netflix.com)</span>
+                  <input type="checkbox" id="lr-plat-netflix" class="lr-switch" ${platforms.netflix !== false ? "checked" : ""}>
+                </label>
+                <label class="lr-toggle-row">
+                  <span class="lr-toggle-label">ABEMA TV (abema.tv)</span>
+                  <input type="checkbox" id="lr-plat-abema" class="lr-switch" ${platforms.abema !== false ? "checked" : ""}>
+                </label>
               </div>
-              <div id="lr-gemini-status" class="lr-api-status"></div>
+            </div>
+
+            <div class="lr-settings-divider"></div>
+
+            <!-- Section 4: JLPT Level Colors -->
+            <div class="lr-settings-section">
+              <div class="lr-settings-section-title">
+                <span>Màu cấp độ JLPT (Level Colors):</span>
+              </div>
+              <div class="lr-jlpt-pickers">
+                ${["n5", "n4", "n3", "n2", "n1", "unknown"]
+                  .map((lvl) => {
+                    const cfg = (jlpt && jlpt[lvl]) || DEFAULT_JLPT_COLORS[lvl];
+                    const label = lvl === "unknown" ? "Từ chưa rõ (Unknown)" : `JLPT ${lvl.toUpperCase()}`;
+                    return `
+                      <div class="lr-jlpt-row">
+                        <div class="lr-jlpt-left">
+                          <input type="color" class="lr-color-input" id="lr-jlpt-color-${lvl}" value="${cfg.color || DEFAULT_JLPT_COLORS[lvl].color}">
+                          <span>${label}</span>
+                        </div>
+                        <input type="checkbox" class="lr-switch" id="lr-jlpt-on-${lvl}" ${cfg.on !== false ? "checked" : ""}>
+                      </div>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </div>
+
+            <div class="lr-settings-divider"></div>
+
+            <!-- Section 5: Keyboard Shortcuts -->
+            <div class="lr-settings-section">
+              <div class="lr-settings-section-title">
+                <span>Phím tắt thao tác nhanh (Keyboard Shortcuts):</span>
+              </div>
+              <div class="lr-shortcuts-list">
+                <div class="lr-shortcut-row">
+                  <span>Bật / tắt thanh phụ đề Video</span>
+                  <span class="lr-kbd">Alt + H</span>
+                </div>
+                <div class="lr-shortcut-row">
+                  <span>Bật / tắt Picture-in-Picture (PiP)</span>
+                  <span class="lr-kbd">Alt + P</span>
+                </div>
+                <div class="lr-shortcut-row">
+                  <span>Phát lại câu phụ đề hiện tại</span>
+                  <span class="lr-kbd">S</span>
+                </div>
+                <div class="lr-shortcut-row">
+                  <span>Tạm dừng / Tiếp tục video</span>
+                  <span class="lr-kbd">Space</span>
+                </div>
+              </div>
+            <div class="lr-settings-divider"></div>
+
+            <!-- Section 6: AI Translation (Gemini) -->
+            <div class="lr-settings-section">
+              <div class="lr-settings-section-title">
+                <span>Dịch thuật AI (Gemini 3.8 Flash):</span>
+              </div>
+              <p style="font-size: 11px; color: #a0aec0; margin: 0 0 8px 0; line-height: 1.4;">
+                Tự động dịch JA → VI theo lô 25 câu khi mở video thiếu sub. Nhập Google AI Studio API Key:
+              </p>
+              <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                <input type="password" id="lr-gemini-key-input" placeholder="Dán Gemini API Key (AI Studio) tại đây" autocomplete="off" style="flex: 1; background: #12141a; border: 1px solid #333846; color: #fff; border-radius: 4px; padding: 6px 10px; font-size: 12px; outline: none;">
+                <button type="button" id="lr-save-gemini-key" style="background: #3182ce; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">Lưu Key</button>
+              </div>
+              <div id="lr-gemini-status" style="font-size: 11px; min-height: 16px; margin-bottom: 8px; line-height: 1.3;"></div>
+              <button type="button" id="lr-btn-translate-now" style="width: 100%; background: #232733; color: #cbd5e0; border: 1px solid #3c4257; border-radius: 4px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s;">⚡ Dịch ngay bằng Gemini AI</button>
             </div>
           </div>
 
@@ -135,25 +229,12 @@
     `;
   }
 
-  function escapeHtml(str) {
-    return String(str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  async function openSettingsModal(currentSettings, onSettingsChanged) {
+  async function openSettingsModal(currentSettings, onSettingsChanged, extraActions) {
     if (modalEl) closeModal();
-
-    let apiKey = "";
-    if (globalThis.HardsubGeminiTranslate) {
-      apiKey = await globalThis.HardsubGeminiTranslate.getStoredApiKey();
-    }
 
     const host = document.createElement("div");
     host.id = "lr-settings-modal-host";
-    host.innerHTML = createModalHtml(currentSettings, apiKey);
+    host.innerHTML = createModalHtml(currentSettings);
     document.body.appendChild(host);
     modalEl = host;
 
@@ -195,50 +276,36 @@
       currentSettings.barBgOpacity = val;
       const bar = document.getElementById("hardsub-ocr-bar");
       if (bar) {
-        bar.style.setProperty("--bar-bg-alpha", String(val));
+        bar.style.setProperty("--bar-bg-a", String(val));
       }
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
 
-    // Gemini API key test & save
-    const keyInput = host.querySelector("#lr-gemini-key");
-    const saveKeyBtn = host.querySelector("#lr-save-gemini-key");
-    const statusEl = host.querySelector("#lr-gemini-status");
+    // Platform toggles
+    ["youtube", "netflix", "abema"].forEach((plat) => {
+      const el = host.querySelector(`#lr-plat-${plat}`);
+      el?.addEventListener("change", () => {
+        if (!currentSettings.enabledPlatforms) currentSettings.enabledPlatforms = {};
+        currentSettings.enabledPlatforms[plat] = !!el.checked;
+        if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
+      });
+    });
 
-    saveKeyBtn?.addEventListener("click", async () => {
-      const enteredKey = keyInput?.value?.trim() || "";
-      if (statusEl) {
-        statusEl.className = "lr-api-status lr-api-status--loading";
-        statusEl.textContent = "Đang kiểm tra kết nối Gemini 3.8 Flash...";
-      }
-      if (!enteredKey) {
-        if (globalThis.HardsubGeminiTranslate) {
-          await globalThis.HardsubGeminiTranslate.saveApiKey("");
-        }
-        if (statusEl) {
-          statusEl.className = "lr-api-status";
-          statusEl.textContent = "Đã xóa API key.";
-        }
-        return;
-      }
-      if (globalThis.HardsubGeminiTranslate) {
-        const testRes = await globalThis.HardsubGeminiTranslate.testApiKey(enteredKey);
-        if (testRes.ok) {
-          await globalThis.HardsubGeminiTranslate.saveApiKey(enteredKey);
-          if (statusEl) {
-            statusEl.className = "lr-api-status lr-api-status--ok";
-            statusEl.textContent = "✓ Kết nối Gemini 3.8 Flash thành công!";
-          }
-          if (typeof onSettingsChanged === "function") {
-            onSettingsChanged({ geminiApiKey: enteredKey, hasApiKey: true });
-          }
-        } else {
-          if (statusEl) {
-            statusEl.className = "lr-api-status lr-api-status--err";
-            statusEl.textContent = `✗ Kết nối thất bại: ${testRes.error || "Key không hợp lệ"}`;
-          }
-        }
-      }
+    // JLPT color pickers & toggles
+    ["n5", "n4", "n3", "n2", "n1", "unknown"].forEach((lvl) => {
+      const colorInput = host.querySelector(`#lr-jlpt-color-${lvl}`);
+      const onInput = host.querySelector(`#lr-jlpt-on-${lvl}`);
+      if (!currentSettings.levelColors) currentSettings.levelColors = JSON.parse(JSON.stringify(DEFAULT_JLPT_COLORS));
+      colorInput?.addEventListener("change", () => {
+        if (!currentSettings.levelColors[lvl]) currentSettings.levelColors[lvl] = {};
+        currentSettings.levelColors[lvl].color = colorInput.value;
+        if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
+      });
+      onInput?.addEventListener("change", () => {
+        if (!currentSettings.levelColors[lvl]) currentSettings.levelColors[lvl] = {};
+        currentSettings.levelColors[lvl].on = !!onInput.checked;
+        if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
+      });
     });
 
     // Category toggles & preview
@@ -284,6 +351,62 @@
     optBilingual?.addEventListener("change", () => {
       currentSettings.enableBilingualJlptColor = !!optBilingual.checked;
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
+    });
+
+    // Gemini AI Translation settings
+    const geminiKeyInput = host.querySelector("#lr-gemini-key-input");
+    const saveGeminiKeyBtn = host.querySelector("#lr-save-gemini-key");
+    const geminiStatusEl = host.querySelector("#lr-gemini-status");
+    const translateNowBtn = host.querySelector("#lr-btn-translate-now");
+
+    if (globalThis.HardsubGeminiTranslate && geminiKeyInput) {
+      globalThis.HardsubGeminiTranslate.getStoredApiKey().then((k) => {
+        if (k && geminiKeyInput) geminiKeyInput.value = k;
+      });
+    }
+
+    saveGeminiKeyBtn?.addEventListener("click", async () => {
+      const key = geminiKeyInput?.value.trim() || "";
+      if (!key) {
+        if (geminiStatusEl) {
+          geminiStatusEl.textContent = "Vui lòng nhập Gemini API Key.";
+          geminiStatusEl.style.color = "#f56565";
+        }
+        return;
+      }
+      if (geminiStatusEl) {
+        geminiStatusEl.textContent = "Đang kiểm tra API Key...";
+        geminiStatusEl.style.color = "#a0aec0";
+      }
+      try {
+        if (globalThis.HardsubGeminiTranslate) {
+          const check = await globalThis.HardsubGeminiTranslate.testApiKey(key);
+          if (!check.ok) {
+            if (geminiStatusEl) {
+              geminiStatusEl.textContent = `Lỗi key: ${check.error || "Không hợp lệ"}`;
+              geminiStatusEl.style.color = "#f56565";
+            }
+            return;
+          }
+          await globalThis.HardsubGeminiTranslate.saveApiKey(key);
+        }
+        if (geminiStatusEl) {
+          geminiStatusEl.textContent = "✓ Đã lưu API Key thành công!";
+          geminiStatusEl.style.color = "#48bb78";
+        }
+      } catch (err) {
+        if (geminiStatusEl) {
+          geminiStatusEl.textContent = `Lỗi: ${err.message || String(err)}`;
+          geminiStatusEl.style.color = "#f56565";
+        }
+      }
+    });
+
+    translateNowBtn?.addEventListener("click", () => {
+      if (typeof extraActions?.onTranslateNow === "function") {
+        extraActions.onTranslateNow();
+      }
+      closeModal();
     });
   }
 

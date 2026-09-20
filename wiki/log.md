@@ -254,3 +254,32 @@ Execution pending; no source functionality changed.
   3. Guaranteed `followBtn.hidden = false` and descriptive dynamic titles in `syncFollowBtn()`.
   4. Synced changes to main repo `/Users/hoangson/Projects/YouTube JP Caption Studio/`.
 - Verification: Reloaded extension in Google Chrome, tested real DOM layout geometry (`width: 60.8px, height: 25.8px`), active green style (`rgb(35, 53, 36)`), click toggle off (`rgb(36, 36, 52)`), and click toggle on (`rgb(35, 53, 36)`) via `scripts/test_scroll_button_qa.js` (Exit code 0).
+
+## [2026-09-20] ingest | Code-taste migration plan and agent hooks
+
+- Filed research and migration plan; detailed style stays in CODE_STYLE.md.
+- Native hook configs installed for Codex, Claude, Gemini, ZCode, Antigravity, Hermes, VS Code and Cline; Roo uses shared rules.
+- Tests execute protocols, real Git fixtures and installed handlers. Xcode setup, full IDE session coverage and final independent review remain NOT VERIFIED.
+- Reconciled preliminary research suggestions with actual manifests and installed hook protocols; no production code migration performed.
+
+## [2026-09-20] ingest | Code-taste hook verification and remaining blockers
+
+- Filed review/code-taste-hooks-verification-2026-09-20.md with commands, actual output and scoped requirements.
+- Independent review found three reproducible issues; fixes now have passing regression checks. Reviewer re-check hit the usage limit.
+- Xcode app shows the Apple agreement dialog; Roo remains rules-only. All-IDE activation is NOT VERIFIED.
+
+## [2026-09-20] ingest | Xcode hook preparation and independent fix verification
+
+- New follow-up: review/code-taste-hooks-followup-2026-09-20.md.
+- Xcode first-launch blocker cleared; prepared isolated Claude/Codex configs and executed their handlers with exit 0.
+- Independent reviewer verified all three prior fixes. Xcode login/agent trust and live-session coverage remain open; Roo is rules-only.
+
+## [2026-09-20] ingest | Live Codex edit hook delivery
+
+- Filed review/code-taste-codex-live-probe-2026-09-20.md: sandboxed Codex CLI created a temporary file, exit 0.
+- Native session log records before/after hook context around the completed edit; other IDE dispatch remains unverified.
+
+## [2026-09-20] ingest | Claude live hook delivery and client auth blockers
+
+- Filed review/code-taste-other-clients-live-2026-09-20.md: native Claude before/after Write context verified; Hermes real write plus style guidance observed.
+- Gemini lacks auth/trust and ZCode has an invalid signing credential; their probes stopped before edits. Full all-client coverage remains unverified.

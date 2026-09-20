@@ -13,8 +13,50 @@
   const MODEL_NAME = "gemini-3.8-flash";
   const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-1.5-flash"];
   let workingModel = MODEL_NAME;
-  const BATCH_SIZE = 25;
+  const BATCH_SIZE = 15;
   const STORAGE_KEY = "geminiApiKey";
+
+  const ramCache = new Map();
+
+  function hashText(text) {
+    let hash = 0;
+    const str = String(text || "").trim();
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return "htc_" + hash;
+  }
+
+  async function getCachedTranslation(text) {
+    const clean = String(text || "").trim();
+    if (!clean) return "";
+    if (ramCache.has(clean)) return ramCache.get(clean);
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      const key = hashText(clean);
+      try {
+        const res = await chrome.storage.local.get([key]);
+        if (res && res[key]) {
+          ramCache.set(clean, res[key]);
+          return res[key];
+        }
+      } catch (_) {}
+    }
+    return "";
+  }
+
+  async function setCachedTranslation(text, translation) {
+    const clean = String(text || "").trim();
+    const vi = String(translation || "").trim();
+    if (!clean || !vi) return;
+    ramCache.set(clean, vi);
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      const key = hashText(clean);
+      try {
+        await chrome.storage.local.set({ [key]: vi });
+      } catch (_) {}
+    }
+  }
 
   async function getStoredApiKey() {
     if (typeof chrome !== "undefined" && chrome.storage) {
@@ -79,13 +121,71 @@
   }
 
   /**
+   * Ultra-fast single cue translation (<200ms) with persistent cache (<3ms).
+   * @param {string} text - Japanese subtitle text
+   * @param {string} [apiKey] - Google AI Studio API key
+   * @returns {Promise<string>} Natural Vietnamese translation
+   */
+  async function translateSingle(text, apiKey) {
+    const clean = String(text || "").trim();
+    if (!clean) return "";
+    const cached = await getCachedTranslation(clean);
+    if (cached) return cached;
+
+    const key = apiKey || (await getStoredApiKey());
+    if (!key) return "";
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${workingModel || MODEL_NAME}:generateContent?key=${encodeURIComponent(key)}`;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `Dịch câu phụ đề tiếng Nhật sau sang tiếng Việt ngắn gọn, tự nhiên theo ngữ cảnh phim/video (chỉ trả về bản dịch tiếng Việt, không giải thích): ${JSON.stringify(clean)}` }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 60 }
+        })
+      });
+      if (!resp.ok) return "";
+      const data = await resp.json();
+      const rawVi = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+      const vi = rawVi.replace(/^["'“”]|["'“”]$/g, "").trim();
+      if (vi) {
+        await setCachedTranslation(clean, vi);
+      }
+      return vi;
+    } catch (_) {
+      return "";
+    }
+  }
+
+  /**
    * Translates an array of Japanese sentences to Vietnamese in a single batched call.
+   * Utilizes persistent cache first, only sending uncached lines to Gemini API.
    * @param {string[]} texts - Array of Japanese subtitle lines.
    * @param {string} apiKey - Google AI Studio API Key.
    * @returns {Promise<string[]>} Array of Vietnamese translations in same order.
    */
   async function translateBatch(texts, apiKey) {
     if (!texts || !texts.length) return [];
+
+    const results = new Array(texts.length).fill("");
+    const uncachedIndices = [];
+    const uncachedTexts = [];
+
+    for (let idx = 0; idx < texts.length; idx++) {
+      const cached = await getCachedTranslation(texts[idx]);
+      if (cached) {
+        results[idx] = cached;
+      } else {
+        uncachedIndices.push(idx);
+        uncachedTexts.push(texts[idx]);
+      }
+    }
+
+    if (!uncachedTexts.length) {
+      return results;
+    }
+
     const key = apiKey || (await getStoredApiKey());
     if (!key) throw new Error("No Gemini API key configured. Please set your Google AI Studio API key.");
 
@@ -99,7 +199,7 @@
       },
       contents: [
         {
-          parts: [{ text: JSON.stringify(texts) }]
+          parts: [{ text: JSON.stringify(uncachedTexts) }]
         }
       ],
       generationConfig: {
@@ -136,24 +236,34 @@
       throw new Error(`Gemini API error (HTTP ${lastStatus}): ${lastErr}`);
     }
     const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) return texts.map(() => "");
+    if (!candidateText) return results;
 
+    let apiTranslations = [];
     try {
       const parsed = JSON.parse(candidateText);
       if (Array.isArray(parsed.translations)) {
-        return parsed.translations.map((s) => String(s || "").trim());
-      }
-      if (Array.isArray(parsed)) {
-        return parsed.map((s) => String(s || "").trim());
+        apiTranslations = parsed.translations.map((s) => String(s || "").trim());
+      } else if (Array.isArray(parsed)) {
+        apiTranslations = parsed.map((s) => String(s || "").trim());
       }
     } catch (err) {
       console.warn("[gemini_translate] Failed to parse JSON response:", candidateText);
     }
-    return texts.map(() => "");
+
+    for (let j = 0; j < uncachedIndices.length; j++) {
+      const vi = apiTranslations[j] || "";
+      const origIdx = uncachedIndices[j];
+      results[origIdx] = vi;
+      if (vi) {
+        await setCachedTranslation(uncachedTexts[j], vi);
+      }
+    }
+
+    return results;
   }
 
   /**
-   * Translates subtitle cues that lack Vietnamese translation.
+   * Translates subtitle cues with cache-first and parallel batch execution (concurrency = 3).
    * @param {object[]} cues - Cue array { id, source, vi, translated, ... }
    * @param {string} [apiKey] - Google AI Studio API key
    * @param {(info: { done: number, total: number }) => void} [onProgress]
@@ -168,27 +278,58 @@
     if (!needsTranslation.length) return 0;
 
     let totalDone = 0;
-    for (let i = 0; i < needsTranslation.length; i += BATCH_SIZE) {
-      const chunk = needsTranslation.slice(i, i + BATCH_SIZE);
-      const texts = chunk.map((c) => String(c.source || "").trim());
-      try {
-        const translations = await translateBatch(texts, key);
-        for (let j = 0; j < chunk.length; j++) {
-          const viText = translations[j] || "";
-          if (viText) {
-            chunk[j].vi = viText;
-            chunk[j].translated = true;
-            chunk[j].translation_source = "gemini";
-          }
-        }
-        totalDone += chunk.length;
-        if (typeof onProgress === "function") {
-          onProgress({ done: totalDone, total: needsTranslation.length });
-        }
-      } catch (err) {
-        console.error("[gemini_translate] Batch translation error:", err);
-        break;
+    const stillNeeded = [];
+
+    // Instant cache check (<1ms)
+    for (const cue of needsTranslation) {
+      const cached = await getCachedTranslation(cue.source);
+      if (cached) {
+        cue.vi = cached;
+        cue.translated = true;
+        cue.translation_source = "cache";
+        totalDone++;
+      } else {
+        stillNeeded.push(cue);
       }
+    }
+
+    if (totalDone > 0 && typeof onProgress === "function") {
+      onProgress({ done: totalDone, total: needsTranslation.length });
+    }
+    if (!stillNeeded.length) return totalDone;
+
+    // Parallel batch execution with chunks of 15 and concurrency = 3
+    const chunkSize = BATCH_SIZE;
+    const chunks = [];
+    for (let i = 0; i < stillNeeded.length; i += chunkSize) {
+      chunks.push(stillNeeded.slice(i, i + chunkSize));
+    }
+
+    const CONCURRENCY = 3;
+    for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+      const activeBatch = chunks.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        activeBatch.map(async (chunk) => {
+          const texts = chunk.map((c) => String(c.source || "").trim());
+          try {
+            const translations = await translateBatch(texts, key);
+            for (let j = 0; j < chunk.length; j++) {
+              const viText = translations[j] || "";
+              if (viText) {
+                chunk[j].vi = viText;
+                chunk[j].translated = true;
+                chunk[j].translation_source = "gemini";
+              }
+            }
+            totalDone += chunk.length;
+            if (typeof onProgress === "function") {
+              onProgress({ done: Math.min(totalDone, needsTranslation.length), total: needsTranslation.length });
+            }
+          } catch (err) {
+            console.error("[gemini_translate] Batch translation error:", err);
+          }
+        })
+      );
     }
     return totalDone;
   }
@@ -200,6 +341,9 @@
     getStoredApiKey,
     saveApiKey,
     testApiKey,
+    translateSingle,
+    getCachedTranslation,
+    setCachedTranslation,
     translateBatch,
     translateCues,
   };

@@ -4,21 +4,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ComingSoonPanel } from "@/components/ComingSoonPanel";
 import { PageTabs } from "@/components/PageTabs";
+import { SavedCuesList } from "@/components/SavedCuesList";
 import { SavedWordsList } from "@/components/SavedWordsList";
 import { SavedWordsToolbar } from "@/components/SavedWordsToolbar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SideNav, type NavId } from "@/components/SideNav";
 import { isExtensionPage } from "@/lib/chrome-env";
 import {
+  deleteSavedCueAsync,
+  loadSavedCuesAsync,
   loadWordsAsync,
   persistWordsAsync,
   resetToMock,
   setWordStatus,
+  subscribeSavedCues,
   subscribeVocab,
   type DataSource,
 } from "@/lib/vocab-store";
 import {
   STATUS_ORDER,
+  type SavedCue,
   type SavedItemsTab,
   type SavedWord,
   type VocabStatus,
@@ -49,6 +54,7 @@ export function SavedItemsApp() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<VocabStatusFilter>("all");
   const [ready, setReady] = useState(false);
+  const [cues, setCues] = useState<SavedCue[]>([]);
 
   useEffect(() => {
     wordsRef.current = words;
@@ -73,6 +79,24 @@ export function SavedItemsApp() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await loadSavedCuesAsync();
+      if (cancelled) return;
+      setCues(result.cues);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return subscribeSavedCues((next) => {
+      setCues(next);
+    });
   }, []);
 
   useEffect(() => {
@@ -151,6 +175,11 @@ export function SavedItemsApp() {
     if (id === "saved" || id === "settings") setView(id);
   }
 
+  async function handleDeleteCue(cueId: string) {
+    setCues((prev) => prev.filter((c) => c.id !== cueId));
+    await deleteSavedCueAsync(cueId);
+  }
+
   return (
     <div className="hs-popup-root flex min-h-screen w-full max-w-none bg-[var(--background)] text-white">
       <SideNav
@@ -207,9 +236,9 @@ export function SavedItemsApp() {
               )}
 
               {tab === "saved-phrases" && (
-                <ComingSoonPanel
-                  title="Câu đã lưu"
-                  description="Lưu câu / ngữ cảnh từ phụ đề (sao LR). Extension hiện chỉ lưu trạng thái lemma trong userVocab — câu sẽ thêm sau."
+                <SavedCuesList
+                  cues={cues}
+                  onDelete={handleDeleteCue}
                 />
               )}
             </main>

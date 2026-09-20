@@ -250,7 +250,13 @@ Triển khai task trong phạm vi đã thống nhất. Viết/cập nhật test 
 Review độc lập yêu cầu gốc, diff hiện tại trên disk và code liên quan. Không tin báo cáo của agent sửa code. Tự chạy các kiểm tra liên quan; xác minh HTTP response và database side effect khi cần. Không sửa file. Trả về PASS, FAIL hoặc NOT VERIFIED cùng requirement, command, exit code, output thật, vấn đề và sửa chữa cần thiết.
 ```
 
-## 2. Strict Machine-Wide Cursor Ban (Zero Tolerance)
+## 2. Bilingual Token Segmentation & JLPT Color Invariants
+- **Anti-Clumping**: Never insert entire clauses or multi-phrase sentences (>3-4 syllables) into compound tables (`VIETNAMESE_COMPOUND_WORDS`, `BILINGUAL_MAP`, `GRAMMAR_PATTERNS`). Keep compound entries strictly lexical (e.g. `cuối tuần`, `tuyệt vời`, `sự nỗ lực`, `sau khi`). Surrounding pronouns, particles, and auxiliary verbs must remain independent tokens.
+- **Dynamic 1-to-1 Color Matching**: Every translated word must inherit the exact JLPT level of its corresponding Japanese lemma/surface in the active cue (e.g. `自分` N4 -> `Tôi` N4; `びっくり` N3 -> `ngạc nhiên` N3; `始める` N4 -> `bắt đầu` N4).
+- **Anti-Monochrome (Zero Blanket Fallbacks)**: Never use a sentence-wide fallback level (e.g. `sentenceContentLevel = "n5"`) that paints unmapped content words green. Unmapped words must render as plain neutral text without `jlpt-*` color classes.
+- **Generalization Across All Cues**: Never write cue-index-specific or hardcoded single-sentence branches. Every heuristic must be driven by token POS, lemma dictionary lookup, de-inflection, and systematic grammar pattern matching that works uniformly on any YouTube caption cue.
+
+## 3. Strict Machine-Wide Cursor Ban (Zero Tolerance)
 - **Absolute Prohibition:** Never create, edit, suggest, recommend, or maintain any Cursor files or directories (`.cursorrules`, `.cursor/`, `.cursorignore`, etc.).
 - **Auto-Purge:** If any Cursor file or directory is detected in any workspace or repository, delete it immediately without asking.
 - **Standard Alternatives Only:** Use standard configuration files (`AGENTS.md`, `CLAUDE.md`, standard config files).

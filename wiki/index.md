@@ -7,6 +7,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 
 | Page | Summary |
 |------|---------|
+| [topics/code-taste-migration.md](topics/code-taste-migration.md) | Plan + native hooks installed; full IDE coverage **NOT VERIFIED** |
 | [log.md](log.md) | Append-only ingest / query / lint timeline |
 | [topics/repo-layout.md](topics/repo-layout.md) | Folder map + skill catalog + knowledge map §G — **xong** (flatten 2026-08-05) |
 | [topics/p0-data-loss.md](topics/p0-data-loss.md) | Drive cue-merge + backup + extension rev guard — **done** (2026-08-05) |
@@ -26,6 +27,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 
 | Status | Topic | Plan | Review |
 |--------|-------|------|--------|
+| partial | Code taste: migration plan and edit hooks | [plan](../plan/migrate-codebase-to-house-style-2026-09-20.md) | [Live client evidence and gaps](../review/code-taste-other-clients-live-2026-09-20.md) |
 | done | Studio Caption Fixes, Performance & UX Optimization | [plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md) | [review/code-review-2026-09-19.md](../review/code-review-2026-09-19.md) |
 
 ## Raw catalogs (immutable)
@@ -34,6 +36,8 @@ Do not rewrite these from the wiki. Link only.
 
 ### Plans (`plan/`)
 
+- [agent-code-taste-migration-research-2026-09-20.md](../plan/agent-code-taste-migration-research-2026-09-20.md)
+- [migrate-codebase-to-house-style-2026-09-20.md](../plan/migrate-codebase-to-house-style-2026-09-20.md)
 - [auto-dich-sau-edit-2026-07-28.md](../plan/auto-dich-sau-edit-2026-07-28.md)
 - [bridge-ram-sqlite-2026-08-01.md](../plan/bridge-ram-sqlite-2026-08-01.md)
 - [codebase-improvement-plan-2026-08-22.md](../plan/codebase-improvement-plan-2026-08-22.md)
@@ -71,6 +75,10 @@ Do not rewrite these from the wiki. Link only.
 
 ### Reviews (`review/`)
 
+- [code-taste-other-clients-live-2026-09-20.md](../review/code-taste-other-clients-live-2026-09-20.md)
+- [code-taste-codex-live-probe-2026-09-20.md](../review/code-taste-codex-live-probe-2026-09-20.md)
+- [code-taste-hooks-followup-2026-09-20.md](../review/code-taste-hooks-followup-2026-09-20.md)
+- [code-taste-hooks-verification-2026-09-20.md](../review/code-taste-hooks-verification-2026-09-20.md)
 - [bridge-refactor-review-pass-2026-07-29.md](../review/bridge-refactor-review-pass-2026-07-29.md)
 - [bugbot-review-2026-08-01.md](../review/bugbot-review-2026-08-01.md)
 - [code-review-2026-09-19.md](../review/code-review-2026-09-19.md)

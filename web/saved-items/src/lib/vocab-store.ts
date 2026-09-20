@@ -6,7 +6,7 @@ import {
   type ChromeStorageChange,
 } from "@/lib/chrome-env";
 import { IS_DEV, MOCK_SAVED_WORDS } from "@/lib/mock-data";
-import type { SavedWord, UserVocabMap, VocabStatus } from "@/types/vocab";
+import type { SavedCue, SavedWord, UserVocabMap, VocabStatus } from "@/types/vocab";
 
 const STORAGE_KEY = "ytcaption.savedWords.v1";
 export const CHROME_USER_VOCAB_KEY = "userVocab";
@@ -354,4 +354,156 @@ export function subscribeVocab(
     })();
   }, 1500);
   return () => window.clearInterval(id);
+}
+
+export const CHROME_SAVED_CUES_KEY = "savedCues";
+const LOCAL_SAVED_CUES_KEY = "ytcaption.savedCues.v1";
+
+export function normalizeSavedCuesList(raw: unknown): SavedCue[] {
+  if (!raw) return [];
+  const items = Array.isArray(raw) ? raw : typeof raw === "object" ? Object.values(raw) : [];
+  const cues: SavedCue[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as Record<string, unknown>;
+    const id = String(c.id || "").trim();
+    const source = String(c.source || "").trim();
+    if (!id || !source) continue;
+    cues.push({
+      id,
+      source,
+      startTime: Number(c.startTime || c.start_media_time) || 0,
+      endTime: Number(c.endTime || c.end_media_time) || 0,
+      vi: c.vi ? String(c.vi) : undefined,
+      en: c.en ? String(c.en) : undefined,
+      videoTitle: c.videoTitle ? String(c.videoTitle) : undefined,
+      savedAt: Number(c.savedAt) || Date.now(),
+    });
+  }
+  return cues.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+}
+
+export async function loadSavedCuesAsync(): Promise<{ cues: SavedCue[]; source: DataSource; note: string }> {
+  if (typeof window === "undefined") {
+    return { cues: [], source: "mock", note: "SSR" };
+  }
+
+  if (hasChromeStorage()) {
+    try {
+      const store = getChromeStorage()!;
+      const data = await store.get(CHROME_SAVED_CUES_KEY);
+      const raw = data[CHROME_SAVED_CUES_KEY];
+      if (raw && (Array.isArray(raw) || typeof raw === "object")) {
+        const cues = normalizeSavedCuesList(raw);
+        return {
+          cues,
+          source: "chrome.storage",
+          note: `Live · chrome.storage (${cues.length} câu)`,
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // fallback localStorage
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SAVED_CUES_KEY);
+    if (raw) {
+      const cues = normalizeSavedCuesList(JSON.parse(raw));
+      return { cues, source: "localStorage", note: `Local · ${cues.length} câu` };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return { cues: [], source: "mock", note: "Chưa có câu đã lưu" };
+}
+
+export async function deleteSavedCueAsync(cueId: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (hasChromeStorage()) {
+    try {
+      const store = getChromeStorage()!;
+      const data = await store.get(CHROME_SAVED_CUES_KEY);
+      const raw = data[CHROME_SAVED_CUES_KEY];
+      if (Array.isArray(raw)) {
+        const next = (raw as Record<string, unknown>[]).filter(
+          (c) => c && c.id !== cueId,
+        );
+        await store.set({ [CHROME_SAVED_CUES_KEY]: next });
+      } else if (raw && typeof raw === "object") {
+        const next: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+        delete next[cueId];
+        await store.set({ [CHROME_SAVED_CUES_KEY]: next });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Also update localStorage
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SAVED_CUES_KEY);
+    if (raw) {
+      const cues = normalizeSavedCuesList(JSON.parse(raw)).filter((c) => c.id !== cueId);
+      window.localStorage.setItem(LOCAL_SAVED_CUES_KEY, JSON.stringify(cues));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeSavedCues(
+  onChange: (cues: SavedCue[], source: DataSource) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const onChanged = getChromeStorageOnChanged();
+  if (hasChromeStorage() && onChanged) {
+    const listener = (
+      changes: Record<string, ChromeStorageChange>,
+      area: string,
+    ) => {
+      if (area !== "local" || !changes[CHROME_SAVED_CUES_KEY]) return;
+      const raw = changes[CHROME_SAVED_CUES_KEY].newValue;
+      onChange(normalizeSavedCuesList(raw), "chrome.storage");
+    };
+    onChanged.addListener(listener);
+    return () => onChanged.removeListener(listener);
+  }
+  return () => {};
+}
+
+export function exportSavedCuesAnki(cues: SavedCue[]): void {
+  if (!cues.length) return;
+  const header = [
+    "#separator:Tab",
+    "#html:true",
+    "#tags:yt-caption,saved-cues",
+    ["Câu tiếng Nhật", "Dịch tiếng Việt", "Dịch tiếng Anh", "Thời gian", "Video"].join("\t"),
+  ];
+
+  const rows = cues.map((c) => {
+    const ja = (c.source || "").replaceAll("\t", " ").replaceAll("\n", "<br>");
+    const vi = (c.vi || "").replaceAll("\t", " ").replaceAll("\n", "<br>");
+    const en = (c.en || "").replaceAll("\t", " ").replaceAll("\n", "<br>");
+    const t0 = Math.floor(c.startTime);
+    const m = Math.floor(t0 / 60);
+    const s = t0 % 60;
+    const time = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    const video = (c.videoTitle || "").replaceAll("\t", " ");
+    return [ja, vi, en, time, video].join("\t");
+  });
+
+  const tsv = "\uFEFF" + [...header, ...rows].join("\n");
+  const blob = new Blob([tsv], { type: "text/tab-separated-values;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `yt-caption-cues-${new Date().toISOString().slice(0, 10)}.tsv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
