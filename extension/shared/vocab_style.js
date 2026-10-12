@@ -113,7 +113,7 @@
     "に加えて": { level: "n2", vi: ["thêm vào đó", "ngoài ra"], en: ["in addition to"] },
 
     // Auxiliary Verb Chains & Endings (N5-N3)
-    "てください": { level: "n5", vi: ["chúc bạn có một", "chúc bạn một", "chúc bạn có", "chúc bạn", "xin vui lòng", "hãy", "mời", "xin hãy", "chúc", "nhé"], en: ["please", "please do", "wish you", "have a"] },
+    "てください": { level: "n5", vi: ["xin vui lòng", "hãy", "mời", "xin hãy", "chúc", "nhé"], en: ["please", "please do"] },
     "てはいけない": { level: "n4", vi: ["không được", "cấm"], en: ["must not", "cannot"] },
     "なくてもいい": { level: "n4", vi: ["không cần", "không phải"], en: ["don't have to", "need not"] },
     "なければならない": { level: "n4", vi: ["phải", "bắt buộc phải"], en: ["must", "have to"] },
@@ -130,7 +130,7 @@
     "てくる": { level: "n4", vi: ["bắt đầu", "dần dần"], en: ["come to", "begin to"] },
     "ている": { level: "n5", vi: ["đang"], en: ["is doing", "are doing", "doing"] },
     "てある": { level: "n4", vi: ["được làm sẵn"], en: ["is done"] },
-    "てほしい": { level: "n4", vi: ["muốn ai đó làm"], en: ["want someone to do"] },
+    "てほしい": { level: "n4", vi: [], en: [] },
 
     // Modality & Sentence Endings (N4-N2)
     "わけにはいかない": { level: "n2", vi: ["không thể nào"], en: ["cannot", "must not"] },
@@ -145,7 +145,7 @@
     "べきだ": { level: "n3", vi: ["nên", "phải"], en: ["should", "ought to"] },
     "つもりだ": { level: "n4", vi: ["dự định", "nghĩ rằng"], en: ["plan to", "intend to"] },
     "ことになっている": { level: "n3", vi: ["được quy định là"], en: ["is scheduled to", "is expected to"] },
-    "ことにしている": { level: "n3", vi: ["tự quyết định là"], en: ["make it a rule to"] },
+    "ことにしている": { level: "n3", vi: ["tự quyết định là"], en: ["make a rule"] },
     "ことができる": { level: "n5", vi: ["có thể làm"], en: ["can do", "able to"] },
     "ことがある": { level: "n4", vi: ["thỉnh thoảng làm"], en: ["sometimes do"] },
     "たことがある": { level: "n5", vi: ["đã từng làm"], en: ["have done before"] },
@@ -155,15 +155,14 @@
     "ようにする": { level: "n4", vi: ["cố gắng làm"], en: ["try to", "make sure to"] },
 
     // Special Conversational & Common Idioms
-    "最初から最後まで": { level: "n3", vi: ["từ đầu đến cuối"], en: ["from beginning to end", "from start to finish"] },
     "おはようございます": { level: "n5", vi: ["chào buổi sáng"], en: ["good morning"] },
     "ありがとうございます": { level: "n5", vi: ["cảm ơn", "xin cảm ơn"], en: ["thank you", "thanks"] },
     "すみませんでした": { level: "n5", vi: ["đã xin lỗi"], en: ["excuse me", "i was sorry"] },
-    "お疲れ様でした": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực của bạn", "sự nỗ lực", "nỗ lực", "vất vả rồi"], en: ["thank you for your hard work", "thanks for your hard work", "hard work"] },
-    "お疲れ様です": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực hết mình", "sự nỗ lực", "nỗ lực hết mình", "hết mình", "vất vả rồi"], en: ["thank you for your hard work", "thanks for your hard work", "good job"] },
-    "お疲れ様": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực hết mình", "sự nỗ lực", "nỗ lực hết mình", "hết mình", "vất vả rồi", "vất vả"], en: ["thank you for your hard work", "hard work", "good job"] },
+    "お疲れ様でした": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "nỗ lực", "vất vả rồi"], en: ["hard work"] },
+    "お疲れ様です": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "hết mình", "vất vả rồi"], en: ["good job"] },
+    "お疲れ様": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "hết mình", "vất vả rồi", "vất vả"], en: ["hard work", "good job"] },
     "ようこそ": { level: "n4", vi: ["chào mừng", "hoan nghênh"], en: ["welcome to", "welcome"] },
-    "送ってください": { lemma: "送る", level: "n4", vi: ["chúc bạn có một", "chúc các bạn có một", "chúc bạn một", "chúc bạn có", "chúc các bạn", "chúc một", "chúc bạn", "chúc", "trải qua", "tận hưởng", "đón", "có một"], en: ["have a", "wish you a", "wish you", "spend"] },
+    "送ってください": { lemma: "送る", level: "n4", vi: ["chúc", "trải qua", "tận hưởng", "đón"], en: ["spend"] },
   };
 
   /**
@@ -276,10 +275,7 @@
     return aToU[last] ? base + aToU[last] : stem + "う";
   }
 
-  /**
-   * High-frequency Japanese words mapped to JLPT bands.
-   * Guarantees vibrant coloring and 0% unknown levels for content vocabulary.
-   */
+  /** Curated JLPT bands; unmatched words stay neutral. */
   const COMMON_JLPT_WORDS = {
     // Greetings & Social (N5)
     "おはよう": "n5", "おはようございます": "n5",
@@ -407,9 +403,9 @@
     "さようなら": { level: "n5", vi: ["tạm biệt"], en: ["goodbye", "bye"] },
     "ありがとう": { level: "n5", vi: ["cảm ơn", "cám ơn"], en: ["thank you", "thanks"] },
     "ありがとうございます": { level: "n5", vi: ["cảm ơn", "xin cảm ơn"], en: ["thank you", "thanks"] },
-    "お疲れ様": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực của bạn", "sự nỗ lực hết mình", "sự nỗ lực", "nỗ lực hết mình", "hết mình", "nỗ lực", "vất vả rồi", "vất vả"], en: ["thank you for your hard work", "thanks for your hard work", "hard work", "good job"] },
-    "お疲れ様でした": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực của bạn", "sự nỗ lực", "nỗ lực", "vất vả rồi"], en: ["thank you for your hard work", "thanks for your hard work", "hard work"] },
-    "お疲れ様です": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn bạn", "cảm ơn", "sự nỗ lực của bạn", "sự nỗ lực hết mình", "sự nỗ lực", "nỗ lực hết mình", "hết mình", "vất vả rồi"], en: ["thank you for your hard work", "thanks for your hard work", "good job"] },
+    "お疲れ様": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "hết mình", "nỗ lực", "vất vả rồi", "vất vả"], en: ["hard work", "good job"] },
+    "お疲れ様でした": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "nỗ lực", "vất vả rồi"], en: ["hard work"] },
+    "お疲れ様です": { lemma: "お疲れ様", level: "n4", vi: ["cảm ơn", "sự nỗ lực", "hết mình", "vất vả rồi"], en: ["good job"] },
     "ようこそ": { level: "n4", vi: ["chào mừng", "hoan nghênh"], en: ["welcome to", "welcome"] },
     "ポッドキャスト": { level: "n4", vi: ["podcast"], en: ["podcast"], pos: "名詞" },
     "チョコ": { level: "n5", vi: ["sô cô la", "socola", "sô-cô-la"], en: ["chocolate"], pos: "名詞" },
@@ -421,16 +417,16 @@
     "不思議": { level: "n3", vi: ["kỳ lạ", "bí ẩn", "kỳ diệu"], en: ["mysterious", "strange"], pos: "形状詞" },
     "起きる": { level: "n5", vi: ["xảy ra", "thức dậy"], en: ["happen", "occur", "wake up"], pos: "動詞" },
     "韓国": { level: "n5", vi: ["Hàn Quốc"], en: ["Korea", "South Korea"], pos: "名詞" },
-    "今週": { level: "n5", vi: ["trong tuần này", "tuần này"], en: ["this week", "in this week"] },
-    "1週間": { level: "n5", vi: ["suốt 1 tuần", "suốt một tuần", "1 tuần", "một tuần"], en: ["one week", "1 week", "a week"] },
-    "一週間": { level: "n5", vi: ["suốt 1 tuần", "suốt một tuần", "1 tuần", "một tuần"], en: ["one week", "1 week", "a week"] },
+    "今週": { level: "n5", vi: ["tuần này"], en: ["this week", "in this week"] },
+    "1週間": { level: "n5", vi: ["1 tuần", "một tuần"], en: ["one week", "1 week", "a week"] },
+    "一週間": { level: "n5", vi: ["1 tuần", "một tuần"], en: ["one week", "1 week", "a week"] },
     "週間": { level: "n5", vi: ["tuần", "hàng tuần"], en: ["week", "weeks"] },
     "本当": { level: "n4", vi: ["thật sự", "thực sự", "rất nhiều", "rất"], en: ["really", "truly", "very much"] },
     "本当に": { level: "n4", vi: ["thật sự", "thực sự", "rất nhiều", "rất"], en: ["really", "truly", "very much"] },
     "鈴か": { level: "unknown", vi: ["Suzuka"], en: ["Suzuka"] },
     "鈴かの": { level: "unknown", vi: ["Suzukano"], en: ["Suzukano"] },
-    "これ": { level: "n5", vi: ["đây là", "đây", "này"], en: ["this is", "this"] },
-    "こちら": { level: "n5", vi: ["đây là", "đây", "bên này"], en: ["this is", "here"] },
+    "これ": { level: "n5", vi: ["đây", "này"], en: ["this is", "this"] },
+    "こちら": { level: "n5", vi: ["đây", "bên này"], en: ["this is", "here"] },
     "へ": { level: "n5", vi: ["đến với", "đến"], en: ["to"] },
     "で": { level: "n5", vi: ["ở", "tại", "bằng", "với"], en: ["at", "in", "by", "with"] },
     "に": { level: "n5", vi: ["cho", "vào", "ở"], en: ["to", "for", "at"] },
@@ -441,7 +437,7 @@
     "すみません": { level: "n5", vi: ["xin lỗi", "làm phiền"], en: ["excuse me", "sorry"] },
     "ごめんなさい": { level: "n5", vi: ["xin lỗi"], en: ["sorry", "i'm sorry"] },
     "どうぞ": { level: "n5", vi: ["xin mời", "làm ơn"], en: ["please", "go ahead"] },
-    "よろしく": { level: "n5", vi: ["rất mong được giúp đỡ", "nhờ bạn"], en: ["nice to meet you", "regards"] },
+    "よろしく": { level: "n5", vi: ["nhờ bạn"], en: ["nice to meet you", "regards"] },
     "ください": { level: "n5", vi: ["xin vui lòng", "hãy", "mời", "xin"], en: ["please", "give me"] },
     "です": { level: "n5", vi: ["là"], en: ["this is", "is", "are", "am"] },
     "だ": { level: "n5", vi: ["là"], en: ["is", "are", "am"] },
@@ -505,19 +501,18 @@
     "さいきん": { level: "n3", vi: ["gần đây", "dạo gần đây", "mới đây", "dạo này"], en: ["recently", "recent", "lately"] },
     "出来事": { level: "n3", vi: ["sự kiện", "sự việc", "biến cố", "chuyện"], en: ["event", "events", "incident", "incidents"] },
     "できごと": { level: "n3", vi: ["sự kiện", "sự việc", "biến cố", "chuyện"], en: ["event", "events", "incident", "incidents"] },
-    "最初": { level: "n3", vi: ["từ đầu", "đầu tiên", "ban đầu", "lúc đầu"], en: ["beginning", "first", "start", "the beginning"] },
-    "さいしょ": { level: "n3", vi: ["từ đầu", "đầu tiên", "ban đầu", "lúc đầu"], en: ["beginning", "first", "start", "the beginning"] },
-    "最後": { level: "n3", vi: ["đến cuối", "cuối cùng", "kết thúc", "cuối"], en: ["end", "ending", "last", "finally", "the end"] },
-    "さいご": { level: "n3", vi: ["đến cuối", "cuối cùng", "kết thúc", "cuối"], en: ["end", "ending", "last", "finally", "the end"] },
-    "最初から最後まで": { level: "n3", vi: ["từ đầu đến cuối"], en: ["from beginning to end", "from start to finish"] },
+    "最初": { level: "n3", vi: ["đầu", "đầu tiên", "ban đầu", "lúc đầu"], en: ["beginning", "first", "start", "the beginning"] },
+    "さいしょ": { level: "n3", vi: ["đầu", "đầu tiên", "ban đầu", "lúc đầu"], en: ["beginning", "first", "start", "the beginning"] },
+    "最後": { level: "n3", vi: ["cuối cùng", "kết thúc", "cuối"], en: ["end", "ending", "last", "finally", "the end"] },
+    "さいご": { level: "n3", vi: ["cuối cùng", "kết thúc", "cuối"], en: ["end", "ending", "last", "finally", "the end"] },
     "是非": { level: "n3", vi: ["nhất định", "rất mong", "mời"], en: ["please", "by all means", "definitely"] },
     "ぜひ": { level: "n3", vi: ["nhất định", "rất mong", "mời"], en: ["please", "by all means", "definitely"] },
     "素敵": { level: "n4", vi: ["tuyệt vời", "tuyệt hảo", "tuyệt", "đẹp", "tuyệt diệu"], en: ["wonderful", "lovely", "great", "nice", "fantastic"] },
     "すてき": { level: "n4", vi: ["tuyệt vời", "tuyệt hảo", "tuyệt", "đẹp", "tuyệt diệu"], en: ["wonderful", "lovely", "great", "nice", "fantastic"] },
-    "週末": { level: "n4", vi: ["cuối tuần", "dịp cuối tuần"], en: ["weekend"] },
-    "しゅうまつ": { level: "n4", vi: ["cuối tuần", "dịp cuối tuần"], en: ["weekend"] },
-    "送る": { level: "n4", vi: ["chúc bạn có một", "chúc bạn một", "chúc bạn có", "chúc bạn", "chúc một", "chúc", "trải qua", "tận hưởng", "đón", "có một", "gửi", "đưa tiễn", "sống"], en: ["have a", "wish you a", "wish you", "spend", "send", "see off"] },
-    "おくる": { level: "n4", vi: ["chúc bạn có một", "chúc bạn một", "chúc bạn có", "chúc bạn", "chúc một", "chúc", "trải qua", "tận hưởng", "đón", "có một", "gửi", "đưa tiễn", "sống"], en: ["have a", "wish you a", "wish you", "spend", "send", "see off"] },
+    "週末": { level: "n4", vi: ["cuối tuần"], en: ["weekend"] },
+    "しゅうまつ": { level: "n4", vi: ["cuối tuần"], en: ["weekend"] },
+    "送る": { level: "n4", vi: ["chúc", "trải qua", "tận hưởng", "đón", "gửi", "đưa tiễn", "sống"], en: ["spend", "send", "see off"] },
+    "おくる": { level: "n4", vi: ["chúc", "trải qua", "tận hưởng", "đón", "gửi", "đưa tiễn", "sống"], en: ["spend", "send", "see off"] },
 
     // Numbers & Quantities (N5)
     "1つ": { level: "n5", vi: ["thứ nhất", "một", "một cái"], en: ["the first", "first", "one"] },
@@ -542,7 +537,7 @@
     // Core Verbs (N5-N3)
     "話す": { level: "n5", vi: ["nói", "nói về", "kể", "trò chuyện"], en: ["talk", "talk about", "speak", "speaking", "tell"] },
     "はなす": { level: "n5", vi: ["nói", "nói về", "kể", "trò chuyện"], en: ["talk", "talk about", "speak", "speaking", "tell"] },
-    "話します": { level: "n5", vi: ["nói", "nói về", "sẽ nói", "kể"], en: ["talk", "talk about", "speaking", "will talk", "speak"] },
+    "話します": { level: "n5", vi: ["nói", "nói về", "kể"], en: ["talk", "talk about", "speaking", "speak"] },
     "見る": { level: "n5", vi: ["xem", "nhìn", "theo dõi", "quan sát"], en: ["watch", "see", "look", "watching"] },
     "みる": { level: "n5", vi: ["xem", "nhìn", "theo dõi", "quan sát"], en: ["watch", "see", "look", "watching"] },
     "見て": { level: "n5", vi: ["xem", "nhìn", "hãy xem"], en: ["watch", "see", "look"] },
@@ -574,8 +569,7 @@
     "買う": { level: "n5", vi: ["mua"], en: ["buy", "buying"] },
     "かう": { level: "n5", vi: ["mua"], en: ["buy", "buying"] },
     "する": { level: "n5", vi: ["làm"], en: ["do", "doing"] },
-    "やる": { level: "n5", vi: ["thử những việc", "thử", "làm", "thực hiện"], en: ["try", "do"] },
-    "やって": { level: "n5", vi: ["thử những việc", "thử", "làm"], en: ["try", "do"] },
+    "やる": { level: "n5", vi: ["thử", "làm", "thực hiện"], en: ["try", "do"] },
     "やってみる": { level: "n5", vi: ["muốn thử", "làm thử", "thử"], en: ["like to try", "try"] },
     "始める": { level: "n4", vi: ["bắt đầu"], en: ["start", "begin"] },
     "はじめる": { level: "n4", vi: ["bắt đầu"], en: ["start", "begin"] },
@@ -613,10 +607,10 @@
     "だけ": { level: "n4", vi: ["chỉ vì", "chỉ là", "chỉ", "mỗi"], en: ["just because", "just", "only"] },
     "でも": { level: "n5", vi: ["nhưng", "tuy nhiên"], en: ["but", "however"] },
     "そして": { level: "n5", vi: ["và", "rồi thì"], en: ["and", "then"] },
-    "たい": { level: "n5", vi: ["muốn", "muốn thử", "muốn đưa ra"], en: ["would like", "like to", "want to", "want"] },
+    "たい": { level: "n5", vi: ["muốn", "muốn thử"], en: ["would like", "like to", "want to", "want"] },
     "欲しい": { level: "n5", vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
     "ほしい": { level: "n5", vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
-    "ない": { level: "n5", vi: ["không nhận được", "không có", "không", "chẳng"], en: ["didn't get", "didn't", "no", "not", "without"] },
+    "ない": { level: "n5", vi: ["không có", "không", "chẳng"], en: ["didn't get", "didn't", "no", "not", "without"] },
     "チャンス": { level: "n3", vi: ["cơ hội"], en: ["opportunities", "opportunity", "chance", "chances"] },
     "機会": { level: "n3", vi: ["cơ hội", "dịp"], en: ["opportunity", "chance"] },
     "きかい": { level: "n3", vi: ["cơ hội", "dịp"], en: ["opportunity", "chance"] },
@@ -661,6 +655,7 @@
     "大切": { level: "n4", vi: ["quan trọng", "quý giá"], en: ["important", "precious"] },
     "必要": { level: "n4", vi: ["cần thiết", "cần"], en: ["necessary", "need"] },
     "重要": { level: "n3", vi: ["quan trọng"], en: ["important"] },
+    "単純": { level: "n3", vi: ["đơn giản"], en: ["simple"], pos: "形状詞" },
     "簡単": { level: "n4", vi: ["đơn giản", "dễ dàng", "dễ"], en: ["easy", "simple"] },
     "難しい": { level: "n4", vi: ["khó khăn", "khó"], en: ["difficult", "hard"] },
     "問題": { level: "n4", vi: ["vấn đề", "câu hỏi"], en: ["problem", "question", "issue"] },
@@ -691,13 +686,13 @@
     "何で": { level: "n4", vi: ["tại sao", "vì sao", "sao"], en: ["why", "how come"] },
     "なぜ": { level: "n4", vi: ["tại sao", "vì sao"], en: ["why"] },
     "どうして": { level: "n5", vi: ["tại sao", "làm sao"], en: ["why", "how come"] },
-    "ない": { level: "n5", vi: ["không nhận được", "không có", "không", "chẳng"], en: ["didn't get", "didn't", "no", "not", "without"] },
+    "ない": { level: "n5", vi: ["không có", "không", "chẳng"], en: ["didn't get", "didn't", "no", "not", "without"] },
     "こういう": { level: "n4", vi: ["như thế này", "như này", "kiểu này"], en: ["like this", "such", "this kind of"] },
     "そう": { level: "n5", vi: ["như vậy", "thế"], en: ["so", "like that"] },
     "こと": { level: "n4", vi: ["những việc", "việc", "điều", "chuyện"], en: ["things", "thing", "matter"] },
     "事": { level: "n4", vi: ["những việc", "việc", "điều", "chuyện"], en: ["things", "thing", "matter"] },
-    "やる": { level: "n5", vi: ["thử những việc", "thử", "làm", "thực hiện"], en: ["try", "do"] },
-    "やって": { level: "n5", vi: ["thử những việc", "thử", "làm", "thực hiện"], en: ["try", "do"] },
+    "やる": { level: "n5", vi: ["thử", "làm", "thực hiện"], en: ["try", "do"] },
+    "やって": { level: "n5", vi: ["thử", "làm", "thực hiện"], en: ["try", "do"] },
     "やってみる": { level: "n5", vi: ["muốn thử", "làm thử", "thử"], en: ["like to try", "try"] },
     "発表": { level: "n3", vi: ["những thông báo", "thông báo", "công bố", "phát biểu"], en: ["announcements", "announcement", "presentation"] },
     "はっぴょう": { level: "n3", vi: ["những thông báo", "thông báo", "công bố", "phát biểu"], en: ["announcements", "announcement", "presentation"] },
@@ -712,7 +707,7 @@
     "受け取る": { level: "n3", vi: ["nhận được", "nhận"], en: ["get", "receive"] },
     "出す": { level: "n5", vi: ["đưa ra", "phát ra", "lấy ra"], en: ["make", "give out", "put out"] },
     "だす": { vi: ["đưa ra", "phát ra", "lấy ra"], en: ["make", "give out", "put out"] },
-    "たい": { vi: ["muốn", "muốn thử", "muốn đưa ra"], en: ["would like", "like to", "want to", "want"] },
+    "たい": { vi: ["muốn", "muốn thử"], en: ["would like", "like to", "want to", "want"] },
     "欲しい": { vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
     "ほしい": { vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
   };
@@ -734,15 +729,6 @@
     return SKIP_POS.test(String(pos || ""));
   }
 
-  function isCoreContentPos(pos) {
-    return /^(名詞|動詞|形容詞|形状詞)/.test(String(pos || ""));
-  }
-
-  function isOtherContentPos(pos) {
-    if (isSkipPos(pos)) return false;
-    return !isCoreContentPos(pos);
-  }
-
   function isContentWord(token) {
     if (!token) return false;
     const surface = String(token.surface || "");
@@ -755,7 +741,7 @@
     return true;
   }
 
-  /** Normalize bridge jlpt field → n5…n1 or lookup fallback. */
+  /** Normalize an explicit bridge level or resolve a curated JLPT entry. */
   function jlptLevel(token) {
     if (!token) return "";
     const raw = String(token.jlpt || token.level || "")
@@ -792,41 +778,14 @@
       if (Object.hasOwn(GRAMMAR_PATTERNS, cand) && GRAMMAR_PATTERNS[cand]?.level) return GRAMMAR_PATTERNS[cand].level;
     }
 
-    // 5. Frequency rank fallback
-    if (token.freq_rank != null) {
-      const rank = Number(token.freq_rank);
-      if (Number.isFinite(rank) && rank > 0) {
-        if (rank <= 1500) return "n5";
-        if (rank <= 3500) return "n4";
-        if (rank <= 7000) return "n3";
-        if (rank <= 13000) return "n2";
-        return "n1";
-      }
-    }
-
-    // 6. Content word fallback: default to N3 vibrant gold (zero level-unknown!)
-    if (isContentWord(token)) {
-      return "n3";
-    }
-
     return "";
   }
 
-  /**
-   * JLPT / difficulty class:
-   * - Noun, Verb, Adjective: gets jlpt-${level}
-   * - Other content POS (Adverb, Pronoun, Interjection...): gets tok-other-pos
-   * - Particles / Punctuation: gets empty string (neutral text)
-   * @returns {string} e.g. "jlpt-n3", "jlpt-n5", or "tok-other-pos"
-   */
+  /** Known JLPT levels apply to every content POS; unknown words stay neutral. */
   function jlptClassForToken(token) {
     if (!isContentWord(token)) return "";
-    const pos = String(token.pos || "");
-    if (!pos || isCoreContentPos(pos)) {
-      const level = jlptLevel(token) || "n3";
-      return `jlpt-${level}`;
-    }
-    return "tok-other-pos";
+    const level = jlptLevel(token);
+    return JLPT_LEVELS.has(level) ? `jlpt-${level}` : "";
   }
 
   /**
@@ -990,22 +949,26 @@
 
   /**
    * Fuses compound kanji nouns split by morphological analyzers (e.g. 週 + 末 -> 週末),
-   * and handles intervening fullwidth or halfwidth whitespace (e.g. 週 + 　 + 末 -> 週末).
+   * Only adjacent source tokens may fuse; whitespace remains authoritative.
    */
   function fuseCompoundTokens(tokens) {
     if (!Array.isArray(tokens) || tokens.length < 2) return tokens;
     const result = [];
     let i = 0;
     while (i < tokens.length) {
-      let nextIdx = i + 1;
-      while (nextIdx < tokens.length && /^\s+$/u.test(tokens[nextIdx].surface || "")) {
-        nextIdx++;
-      }
+      const nextIdx = i + 1;
       if (nextIdx < tokens.length) {
         const combined = (tokens[i].surface || "") + (tokens[nextIdx].surface || "");
         const compound = COMPOUND_TOKENS_TABLE[combined];
-        if (compound) {
+        const left = tokens[i];
+        const right = tokens[nextIdx];
+        const hasOffsets = left.end != null || right.start != null;
+        const contiguous = !hasOffsets || (Number.isInteger(left.end) && left.end === right.start && left.offsetUnit === right.offsetUnit);
+        if (compound && contiguous) {
           result.push({
+            ...left,
+            ...(right.end != null ? { end: right.end } : {}),
+            ...((left.sourceRefs || right.sourceRefs) ? { sourceRefs: [...(left.sourceRefs || []), ...(right.sourceRefs || [])] } : {}),
             surface: combined,
             reading: compound.reading,
             lemma: compound.lemma,
@@ -1027,7 +990,16 @@
    * Attaches _clusterId, _clusterSurface, _clusterLemma, _clusterLevel to grouped tokens.
    */
   function detectGrammarClusters(tokens) {
-    if (!Array.isArray(tokens) || tokens.length < 2) return tokens;
+    if (!Array.isArray(tokens)) return tokens;
+    // Recompute renderer annotations; cached annotations must not override a new cue level.
+    for (const token of tokens) {
+      delete token._clusterId;
+      delete token._clusterSurface;
+      delete token._clusterLemma;
+      delete token._clusterLevel;
+      delete token._clusterPos;
+    }
+    if (tokens.length < 2) return tokens;
 
     let i = 0;
     let clusterCounter = 1;
@@ -1049,7 +1021,7 @@
 
       if (matchedGrammar) {
         const clusterId = `gc_${clusterCounter++}_${i}`;
-        const level = matchedGrammar.entry.level || "n3";
+        const level = matchedGrammar.entry.level || "";
         const rootLemma = matchedGrammar.entry.lemma || (tokens[i] && tokens[i].lemma && !isSkipPos(tokens[i].pos) ? tokens[i].lemma : matchedGrammar.pattern);
         for (let k = 0; k < matchedLen; k++) {
           tokens[i + k]._clusterId = clusterId;
@@ -1087,7 +1059,7 @@
           const clusterId = `vc_${clusterCounter++}_${i}`;
           const combinedSurface = tokens.slice(i, i + chainLen).map((t) => t.surface || "").join("");
           const rootLemma = curr.lemma || curr.surface || combinedSurface;
-          const level = jlptLevel(curr) || "n5";
+          const level = jlptLevel(curr);
           for (let k = 0; k < chainLen; k++) {
             tokens[i + k]._clusterId = clusterId;
             tokens[i + k]._clusterSurface = combinedSurface;
@@ -1111,22 +1083,81 @@
     if (!cue.tokens?.length) {
       return escapeHtml(cue.source || "");
     }
+    if (typeof cue.source === "string" && cue.tokens.map(t => t.surface || "").join("") !== cue.source) {
+      return escapeHtml(cue.source);
+    }
     const showFurigana = options.showFurigana ?? true;
     const settings = options.settings || DEFAULT_VOCAB_SETTINGS;
     const userVocab = options.userVocab || {};
     const Kana = globalThis.HardsubRomajiKana;
 
-    cue.tokens = fuseCompoundTokens(cue.tokens);
-    detectGrammarClusters(cue.tokens);
+    const tokens = detectGrammarClusters(fuseCompoundTokens(cue.tokens.map(t => ({ ...t }))));
+
+    if (Array.isArray(cue.words) && cue.words.length && Array.isArray(tokens)) {
+      const src = cue.source || tokens.map(t => t.surface || "").join("");
+      let curPos = 0;
+      const wordSpans = [];
+      for (const w of cue.words) {
+        if (!w || !w.word) continue;
+        let found = src.indexOf(w.word, curPos);
+        if (found === -1) found = src.indexOf(w.word);
+        if (found !== -1) {
+          wordSpans.push({ word: w.word, start: w.start, end: w.end, charStart: found, charEnd: found + w.word.length });
+          curPos = found + w.word.length;
+        }
+      }
+      let tPos = 0;
+      for (const t of tokens) {
+        const sLen = (t.surface || "").length;
+        const tStart = tPos, tEnd = tPos + sLen;
+        tPos = tEnd;
+        if (t.start == null && wordSpans.length) {
+          const match = wordSpans.find(w => Math.max(tStart, w.charStart) < Math.min(tEnd, w.charEnd));
+          if (match) {
+            t.start = match.start;
+            t.end = match.end;
+          }
+        }
+      }
+      if (tokens.some(t => t.start == null)) {
+        let wIdx = 0;
+        for (const t of tokens) {
+          if (t.start == null && wIdx < cue.words.length) {
+            const w = cue.words[wIdx];
+            if (w.word === t.surface || w.word.includes(t.surface) || t.surface.includes(w.word)) {
+              t.start = w.start;
+              t.end = w.end;
+              wIdx++;
+            }
+          }
+        }
+      }
+    }
+
+    const currentTime = options.currentTime ?? options.currentMediaTime;
+    const hasTime = typeof currentTime === "number" && Number.isFinite(currentTime);
+    const activeWords = (hasTime && Array.isArray(cue.words))
+      ? cue.words.filter(w => currentTime >= w.start && currentTime < w.end)
+      : [];
 
     function renderSingleToken(t) {
       const s = escapeHtml(t.surface);
       const lemma = escapeHtml(t.lemma || t.surface);
       const surfaceAttr = escapeHtml(t.surface);
-      const cls = classForToken(t, settings, userVocab);
+      let cls = classForToken(t, settings, userVocab);
+      const isKaraoke = hasTime && (
+        (t.start != null && t.end != null && currentTime >= t.start && currentTime < t.end) ||
+        (activeWords.length > 0 && activeWords.some(w => w.word && (w.word.includes(t.surface) || t.surface.includes(w.word))))
+      );
+      if (isKaraoke) {
+        cls = cls ? `${cls} tok-karaoke-active` : "tok-karaoke-active";
+      }
       const classAttr = cls ? `tok ${cls}` : "tok";
       const clusterAttrs = t._clusterId
         ? ` data-cluster-id="${escapeHtml(t._clusterId)}" data-cluster-surface="${escapeHtml(t._clusterSurface || t.surface)}" data-cluster-lemma="${escapeHtml(t._clusterLemma || t.lemma || t.surface)}"`
+        : "";
+      const timeAttrs = (t.start != null && t.end != null)
+        ? ` data-start="${t.start}" data-end="${t.end}"`
         : "";
       if (showFurigana && t.reading && !isSkipPos(t.pos) && /[\u4e00-\u9faf\u3400-\u4dbf]/.test(t.surface)) {
         const rawReading = t.reading || "";
@@ -1135,22 +1166,22 @@
             ? Kana.katakanaToHiragana(rawReading)
             : rawReading;
         if (hiragana) {
-          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}"${clusterAttrs}>${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
+          return `<ruby class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}"${clusterAttrs}${timeAttrs}>${s}<rt>${escapeHtml(hiragana)}</rt></ruby>`;
         }
       }
-      return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}"${clusterAttrs}>${s}</span>`;
+      return `<span class="${classAttr.trim()}" data-surface="${surfaceAttr}" data-lemma="${lemma}"${clusterAttrs}${timeAttrs}>${s}</span>`;
     }
 
     const renderedParts = [];
     let i = 0;
-    while (i < cue.tokens.length) {
-      const t = cue.tokens[i];
+    while (i < tokens.length) {
+      const t = tokens[i];
       const clusterId = t._clusterId;
       if (clusterId) {
         const clusterTokens = [t];
         let j = i + 1;
-        while (j < cue.tokens.length && cue.tokens[j]._clusterId === clusterId) {
-          clusterTokens.push(cue.tokens[j]);
+        while (j < tokens.length && tokens[j]._clusterId === clusterId) {
+          clusterTokens.push(tokens[j]);
           j++;
         }
         const innerHtml = clusterTokens.map(renderSingleToken).join("");
@@ -1265,13 +1296,7 @@
     // Adjectives & Feelings (N4-N2)
     "cuối tuần": { level: "n4", lemma: "週末", surface: "しゅうまつ" },
     "tuyệt vời": { level: "n4", lemma: "素敵", surface: "すてき" },
-    "chúc bạn có một": { level: "n4", lemma: "送る", surface: "送ってください" },
-    "chúc bạn một": { level: "n4", lemma: "送る", surface: "送ってください" },
-    "chúc bạn có": { level: "n4", lemma: "送る", surface: "送ってください" },
-    "chúc bạn": { level: "n4", lemma: "送る", surface: "送ってください" },
-    "chúc một": { level: "n4", lemma: "送る", surface: "送ってください" },
     "chúc": { level: "n4", lemma: "送る", surface: "送ってください" },
-    "có một": { level: "n4", lemma: "送る", surface: "送ってください" },
     "vô cùng": { level: "n4", lemma: "すごい", surface: "すっごい" },
     "cực kỳ": { level: "n3", lemma: "非常", surface: "ひじょう" },
     "rất": { level: "n5", lemma: "とても", surface: "とても" },
@@ -1296,13 +1321,11 @@
     "dễ dàng": { level: "n4", lemma: "簡単", surface: "かんたん" },
 
     // Verbs & Common Actions (N5-N3)
-    "không nhận được": { level: "n5", lemma: "ない", surface: "ない" },
     "không có": { level: "n5", lemma: "ない", surface: "ない" },
     "không": { level: "n5", lemma: "ない", surface: "ない" },
     "chưa": { level: "n5", lemma: "まだ", surface: "まだ" },
     "cơ hội": { level: "n3", lemma: "チャンス", surface: "チャンス" },
     "muốn thử": { level: "n5", lemma: "たい", surface: "やってみたい" },
-    "muốn đưa ra": { level: "n5", lemma: "たい", surface: "してみたい" },
     "muốn làm": { level: "n5", lemma: "たい", surface: "したい" },
     "muốn": { level: "n5", lemma: "たい", surface: "たい" },
     "thử": { level: "n5", lemma: "やる", surface: "やってみる" },
@@ -1588,65 +1611,6 @@
     return false;
   }
 
-  const VIETNAMESE_COMPOUND_WORDS = [
-    // Sweets & Food
-    "sô cô la", "sô-cô-la", "socola", "bánh kẹo", "đồ ngọt",
-
-    // Greetings, Wishes & Courtesy
-    "chào mừng", "hoan nghênh",
-    "chúc bạn có một", "chúc các bạn có một", "chúc bạn một", "chúc bạn có", "chúc các bạn", "chúc bạn", "chúc một", "chúc mừng",
-    "xin vui lòng", "xin hãy", "làm ơn",
-    "cảm ơn", "xin cảm ơn", "cám ơn", "xin chào", "tạm biệt", "xin lỗi",
-    "không có gì", "chúc ngủ ngon", "chúc may mắn", "hân hạnh", "rất vui được", "hẹn gặp lại",
-
-    // Effort, Attitude & Dedication
-    "sự nỗ lực hết mình", "sự nỗ lực của bạn", "sự nỗ lực", "nỗ lực hết mình", "nỗ lực", "hết mình", "vất vả rồi", "vất vả",
-    "cố gắng hết sức", "cố gắng", "chăm chỉ", "nhiệt tình", "tận tâm", "kiên trì", "công sức",
-
-    // Time & Calendar
-    "trong tuần này", "tuần này", "tuần trước", "tuần sau", "suốt 1 tuần", "suốt một tuần", "1 tuần", "một tuần",
-    "cuối tuần", "dịp cuối tuần", "đầu tuần", "hôm nay", "ngày mai", "hôm qua", "ngày kia", "hôm kia",
-    "tháng này", "tháng trước", "tháng sau", "năm nay", "năm ngoái", "năm sau", "bây giờ", "hiện tại", "quá khứ", "tương lai",
-    "thời gian", "ban ngày", "ban đêm", "buổi sáng", "buổi trưa", "buổi chiều", "buổi tối",
-    "nửa đêm", "hàng ngày", "hàng tuần", "hàng tháng", "hàng năm", "mỗi ngày", "mỗi tuần",
-    "mỗi tháng", "mỗi năm", "thỉnh thoảng", "thường xuyên", "liên tục", "vừa mới",
-    "ngay lập tức", "lập tức", "sắp tới", "sau này", "trước đây", "từ trước đến nay", "từ trước", "dạo này", "gần đây", "dạo gần đây",
-    "từ đầu đến cuối", "đầu tiên", "cuối cùng",
-
-    // Common Adjectives & States
-    "tuyệt vời", "tuyệt hảo", "tuyệt diệu", "tuyệt đẹp", "đơn giản", "dễ dàng", "khó khăn", "quan trọng", "cần thiết",
-    "đặc biệt", "nguy hiểm", "an toàn", "tự do", "yên tĩnh", "náo nhiệt", "ồn ào", "sạch sẽ",
-    "gọn gàng", "ngăn nắp", "rộng rãi", "chật hẹp", "sáng sủa", "tối tăm", "ấm áp", "mát mẻ",
-    "lạnh lẽo", "nóng nực", "vui vẻ", "hạnh phúc", "buồn bã", "mệt mỏi", "khỏe mạnh",
-    "thông minh", "lười biếng", "tốt bụng", "thân thiện", "lịch sự", "dễ thương",
-    "xinh đẹp", "đẹp trai", "ngon miệng", "thú vị", "hấp dẫn", "nhàm chán", "rõ ràng", "chắc chắn",
-    "rất nhiều", "vô cùng", "cực kỳ", "hoàn toàn", "thực sự", "thực ra", "có lẽ", "thất vọng", "ấm ức", "tiếc nuối", "còn trẻ",
-    "ngạc nhiên", "bất ngờ", "kinh ngạc", "sau khi", "kể từ khi",
-
-    // Entities & Common Nouns
-    "Nhật Bản", "nước Nhật", "Việt Nam", "tiếng Nhật", "tiếng Việt", "tiếng Anh", "ngoại ngữ",
-    "gia đình", "bạn bè", "người thân", "bố mẹ", "cha mẹ", "anh chị", "anh em", "chị em",
-    "vợ chồng", "con cái", "ông bà", "thầy giáo", "cô giáo", "học sinh", "sinh viên", "giáo viên",
-    "bác sĩ", "kỹ sư", "nhân viên", "khách hàng", "giám đốc", "đồng nghiệp", "mọi người", "tất cả mọi người",
-    "chúng tôi", "chúng ta", "các bạn", "bản thân", "con người",
-    "thành phố", "thủ đô", "nông thôn", "công ty", "trường học", "bệnh viện", "nhà hàng",
-    "khách sạn", "sân bay", "nhà ga", "xe buýt", "tàu điện", "máy bay", "xe hơi", "xe đạp", "xe máy",
-    "điện thoại", "máy tính", "vấn đề", "kết quả", "kinh nghiệm", "cơ hội", "ý kiến", "thành công",
-    "sức khỏe", "cuộc sống", "công việc", "thời tiết", "trình độ", "cấp độ", "phụ đề", "đoạn phim",
-
-    // Verbs & Actions
-    "làm việc", "học tập", "nói chuyện", "gặp gỡ", "bắt đầu", "kết thúc", "chuẩn bị", "quyết định",
-    "nghỉ ngơi", "du lịch", "mua sắm", "nấu ăn", "ăn uống", "giúp đỡ", "tìm kiếm",
-    "chia sẻ", "tham gia", "sử dụng", "phát triển", "thay đổi", "giải thích", "giới thiệu", "liên lạc",
-    "trải qua", "tận hưởng", "đưa tiễn", "có một", "có thể", "đến với", "bước vào", "quay lại", "trở về",
-    "nhận được", "đưa ra", "thực hiện", "theo dõi", "quan sát", "lắng nghe", "cảm thấy", "tự hỏi", "suy nghĩ",
-
-    // Discourse & Connectors
-    "đây là", "như thế này", "như này", "kiểu này", "như vậy", "tại sao", "vì sao", "làm sao",
-    "bởi vì", "cho nên", "nhưng mà", "tuy nhiên", "mặc dù", "ví dụ", "chẳng hạn", "nói chung",
-    "tóm lại", "trước tiên", "một chút", "tất cả", "toàn bộ", "không bao giờ", "như là", "với tư cách", "đặc biệt là", "nhất là"
-  ];
-
   function renderBilingualHtml(text, lang, tokens, settings) {
     if (!text) return "";
     const s = { ...DEFAULT_VOCAB_SETTINGS, ...(settings || {}) };
@@ -1654,23 +1618,8 @@
       return escapeHtml(text);
     }
 
-    const jaTokens = Array.isArray(tokens) ? detectGrammarClusters(fuseCompoundTokens(tokens)) : [];
+    const jaTokens = Array.isArray(tokens) ? detectGrammarClusters(fuseCompoundTokens(tokens.map(t => ({ ...t })))) : [];
     const targetMap = new Map();
-
-    // Check sentence concept presence to prevent global dictionary hijacking
-    const sentenceLemmas = new Set();
-    const sentenceSurfaces = new Set();
-    for (const t of jaTokens) {
-      if (t.lemma) sentenceLemmas.add(String(t.lemma).toLowerCase());
-      if (t.surface) sentenceSurfaces.add(String(t.surface).toLowerCase());
-      if (t._clusterLemma) sentenceLemmas.add(String(t._clusterLemma).toLowerCase());
-      if (t._clusterSurface) sentenceSurfaces.add(String(t._clusterSurface).toLowerCase());
-    }
-
-    const hasOtsukare = sentenceLemmas.has("お疲れ様") || sentenceLemmas.has("お疲れ様でした") || sentenceLemmas.has("お疲れ様です");
-    const hasArigato = sentenceLemmas.has("ありがとう") || sentenceLemmas.has("ありがとうございます");
-    const hasYoukoso = sentenceLemmas.has("ようこそ") || sentenceSurfaces.has("ようこそ");
-    const hasKonnichiwa = sentenceLemmas.has("こんにちは") || sentenceSurfaces.has("こんにちは");
 
     function addTarget(kw, level, lemma, surface, force = false, priority = 10) {
       if (!kw || typeof kw !== "string") return;
@@ -1678,6 +1627,11 @@
       if (trimmed.length < 1) return;
       const lower = trimmed.toLowerCase();
       const existing = targetMap.get(lower);
+      if (existing && (existing.lemma !== (lemma || trimmed) || existing.level !== (level || ""))) {
+        existing.ambiguous = true;
+        return;
+      }
+      if (existing?.ambiguous) return;
       if (!existing || force || priority > (existing.priority || 0)) {
         targetMap.set(lower, {
           word: trimmed,
@@ -1689,19 +1643,6 @@
       }
     }
 
-    // Determine sentence default JLPT content level (e.g. n4 or n5 or unknown)
-    let sentenceContentLevel = "";
-    if (jaTokens.length) {
-      for (const t of jaTokens) {
-        const lvl = t._clusterLevel || jlptLevel(t);
-        if (lvl && lvl !== "unknown") {
-          sentenceContentLevel = lvl;
-          break;
-        }
-      }
-    }
-    if (!sentenceContentLevel) sentenceContentLevel = "n5";
-
     // Tier 1: Token-anchored matching from the CURRENT sentence (Priority: 100)
     if (jaTokens.length) {
       for (const t of jaTokens) {
@@ -1709,9 +1650,7 @@
         if (isSkipPos(pos) && !t._clusterId) {
           continue;
         }
-        const isCore = isCoreContentPos(pos);
-        const isOther = isOtherContentPos(pos);
-        const tokenLevel = isCore ? (t._clusterLevel || jlptLevel(t) || "n5") : (isOther ? "other" : "");
+        const tokenLevel = t._clusterLevel || jlptLevel(t);
         const surface = String(t._clusterSurface || t.surface || "");
         const lemma = String(t._clusterLemma || t.lemma || surface);
 
@@ -1720,7 +1659,7 @@
         if (gram) {
           const kws = lang === "vi" ? gram.vi : lang === "en" ? gram.en : [];
           const targetLemma = gram.lemma || lemma;
-          for (const kw of kws || []) addTarget(kw, gram.level || tokenLevel, targetLemma, surface, true, 100);
+          for (const kw of kws || []) addTarget(kw, tokenLevel, targetLemma, surface, true, 100);
         }
 
         // Check BILINGUAL_MAP
@@ -1728,13 +1667,7 @@
         if (mapEntry) {
           const kws = lang === "vi" ? mapEntry.vi : lang === "en" ? mapEntry.en : [];
           const targetLemma = lemma || mapEntry.lemma || surface;
-          const entryPos = String(mapEntry.pos || pos);
-          const entryIsCore = isCoreContentPos(entryPos);
-          const entryIsOther = isOtherContentPos(entryPos);
-          const entryLevel = entryIsCore
-            ? (tokenLevel !== "other" && tokenLevel ? tokenLevel : (mapEntry.level || "n5"))
-            : (entryIsOther ? "other" : "");
-          for (const kw of kws || []) addTarget(kw, entryLevel, targetLemma, surface, true, 100);
+          for (const kw of kws || []) addTarget(kw, tokenLevel, targetLemma, surface, true, 100);
         }
 
         // Try candidate de-inflected lemmas
@@ -1744,13 +1677,7 @@
           if (cEntry) {
             const kws = lang === "vi" ? cEntry.vi : lang === "en" ? cEntry.en : [];
             const targetLemma = lemma || cEntry.lemma || cand;
-            const entryPos = String(cEntry.pos || pos);
-            const entryIsCore = isCoreContentPos(entryPos);
-            const entryIsOther = isOtherContentPos(entryPos);
-            const entryLevel = entryIsCore
-              ? (tokenLevel !== "other" && tokenLevel ? tokenLevel : (cEntry.level || "n5"))
-              : (entryIsOther ? "other" : "");
-            for (const kw of kws || []) addTarget(kw, entryLevel, targetLemma, surface, false, 90);
+            for (const kw of kws || []) addTarget(kw, tokenLevel, targetLemma, surface, false, 90);
           }
         }
 
@@ -1770,76 +1697,8 @@
       }
     }
 
-    // Tier 2: GRAMMAR_PATTERNS direct alignment (Priority: 50)
-    for (const [jaPattern, entry] of Object.entries(GRAMMAR_PATTERNS)) {
-      if (jaTokens.length && hasOtsukare && !hasArigato && (jaPattern === "ありがとうございます" || jaPattern === "ありがとう")) {
-        continue;
-      }
-      const kws = lang === "vi" ? entry.vi : lang === "en" ? entry.en : [];
-      const targetLemma = entry.lemma || jaPattern;
-      for (const kw of kws || []) {
-        addTarget(kw, entry.level, targetLemma, jaPattern, false, 50);
-      }
-    }
-
-    // Tier 3: BILINGUAL_MAP direct alignment (Priority: 40)
-    for (const [jaWord, entry] of Object.entries(BILINGUAL_MAP)) {
-      if (jaTokens.length && hasOtsukare && !hasArigato && (jaWord === "ありがとうございます" || jaWord === "ありがとう")) {
-        continue;
-      }
-      if (jaTokens.length && hasYoukoso && !hasKonnichiwa && jaWord === "こんにちは") {
-        continue;
-      }
-      const kws = lang === "vi" ? entry.vi : lang === "en" ? entry.en : [];
-      const targetLemma = entry.lemma || jaWord;
-      const entryPos = String(entry.pos || "");
-      const entryIsCore = !entryPos || isCoreContentPos(entryPos);
-      const entryLvl = entryIsCore ? entry.level : "other";
-      for (const kw of kws || []) {
-        addTarget(kw, entryLvl, targetLemma, jaWord, false, 40);
-      }
-    }
-
-    // Tier 4: Direct dictionary (DIRECT_VI_WORDS / DIRECT_EN_WORDS) (Priority: 30)
-    const directDict = lang === "vi" ? DIRECT_VI_WORDS : lang === "en" ? DIRECT_EN_WORDS : null;
-    if (directDict) {
-      for (const [kw, entry] of Object.entries(directDict)) {
-        if (jaTokens.length && hasOtsukare && !hasArigato && (kw === "cảm ơn" || kw === "xin cảm ơn")) {
-          continue;
-        }
-        if (jaTokens.length && hasYoukoso && !hasKonnichiwa && kw === "chào") {
-          continue;
-        }
-        const dPos = String(entry.pos || "");
-        const dIsCore = !dPos || isCoreContentPos(dPos);
-        const dLvl = dIsCore ? entry.level : "other";
-        addTarget(kw, dLvl, entry.lemma, entry.surface, false, 30);
-      }
-    }
-
-    // Tier 5: Multi-syllable Vietnamese compound unification (Priority: 10)
-    if (lang === "vi") {
-      const lowerText = text.toLowerCase();
-      for (const phrase of VIETNAMESE_COMPOUND_WORDS) {
-        const lower = phrase.toLowerCase();
-        if (!targetMap.has(lower) && lowerText.includes(lower)) {
-          targetMap.set(lower, {
-            word: phrase,
-            level: "",
-            lemma: phrase,
-            surface: phrase,
-            priority: 10,
-          });
-        }
-      }
-    }
-
     const targets = Array.from(targetMap.values());
-    if (!targets.length) {
-      return text.replace(/([\p{L}\p{N}]+)/gu, (w) => {
-        return `<span class="tok-trans" data-lemma="${escapeHtml(w)}" data-surface="${escapeHtml(w)}">${escapeHtml(w)}</span>`;
-      });
-    }
+    if (!targets.length) return escapeHtml(text);
 
     // Sort targets by length descending so longer phrases match first
     targets.sort((a, b) => {
@@ -1858,7 +1717,7 @@
         if (!part) return "";
         const lower = part.toLowerCase();
         const found = targetMap.get(lower);
-        if (found) {
+        if (found && !found.ambiguous) {
           const lAttr = escapeHtml(found.lemma || found.word);
           const sAttr = escapeHtml(found.surface || found.lemma || found.word);
           const lvl = found.level;
@@ -1871,25 +1730,6 @@
               ? escapeHtml(`[JLPT ${lvl.toUpperCase()}] ${found.surface || found.lemma || found.word}`)
               : escapeHtml(found.surface || found.lemma || found.word));
           return `<span class="${cls}" data-lemma="${lAttr}" data-surface="${sAttr}" title="${title}">${escapeHtml(part)}</span>`;
-        }
-        // Fallback for non-whitespace words: preserve punctuation and spaces, wrap words
-        if (/\p{L}|\p{N}/u.test(part)) {
-          return part.replace(/([\p{L}\p{N}]+)/gu, (w) => {
-            const wLower = w.toLowerCase();
-            const wFound = targetMap.get(wLower);
-            const wLvl = wFound?.level;
-            const wLemma = escapeHtml(wFound?.lemma || w);
-            const wSurface = escapeHtml(wFound?.surface || w);
-            const wCls = wLvl === "other"
-              ? "tok-trans tok-other-pos"
-              : (wLvl && wLvl !== "unknown" ? `tok-trans jlpt-${wLvl}` : "tok-trans");
-            const wTitle = wLvl === "other"
-              ? escapeHtml(`[${wSurface}]`)
-              : (wLvl && wLvl !== "unknown"
-                ? escapeHtml(`[JLPT ${wLvl.toUpperCase()}] ${wSurface}`)
-                : escapeHtml(wSurface));
-            return `<span class="${wCls}" data-lemma="${wLemma}" data-surface="${wSurface}" title="${wTitle}">${escapeHtml(w)}</span>`;
-          });
         }
         return escapeHtml(part);
       })

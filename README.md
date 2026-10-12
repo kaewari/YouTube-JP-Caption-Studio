@@ -10,6 +10,50 @@
 
 [English](#english) | [日本語](#日本語) | [Tiếng Việt](#tiếng-việt)
 
+**YouTube sentence MVP (experimental preview):** Original/Enhanced share source
+mapping and authentic cue windows. Enhanced opens Original for edits, persists
+revision-bound Undo in a disposable local sidecar, and saves sentence snapshots
+with provenance. Sentence translation uses one worker queue; sentence NLP keeps
+validated UTF16 spans. The sidepanel offers **Xuất số đo** for a local trace of
+foreground playback readiness bounds, JP paint, HTTP attempts and latency; absent
+observations/account billing remain unverified. Native Reload and a fresh YouTube
+document exported the trace and selected track fingerprint on one Parako video.
+The latest export code also retains per-attempt token usage, including thinking, and
+reports a dated standard list-price estimate with missing attempts marked partial.
+Account billing remains unverified. A subsequent native Reload and fresh document
+on video TJ2zrbH0BB4 confirmed the estimate schema and visible TXT warning. Its
+short trace has six distinct Original JA onsets and zero discontinuities; no
+translation attempt was observed, so estimated and actual cost remain null.
+Reviewed clock code was loaded, but this different video/session and lack of raw
+samples do not establish causality or a complete playback baseline.
+Readiness bounds reflect sampled state; intervening clear/restore is unobserved,
+so the trace does not certify a release gate. Source fingerprints invalidate sentence
+cache identities when raw source changes. The sidepanel offers explicit JSON backup, restore and
+return to the state before restore. TXT export now warns that locks, Enhanced and
+saved items require JSON backup; the note was verified in native Chrome.
+Three rollback flags in existing settings independently gate Enhanced, grouping
+and automatic translation prefetch. Disabling Enhanced/grouping returns to Original
+while preserving sidecar metadata; manual translation remains available when only
+automatic prefetch is disabled. Their bounded runtime review passed and the code
+is now loaded in native Chrome; individual native flag-toggle checks remain open.
+The worktree trace now records logical group preparation, filtered translation
+submissions and accepted/cache/error/discarded outcomes for Original and Enhanced.
+It exports trace-local ordinals rather than dialogue-bearing IDs. After independent
+runtime review, these three files were copied with hash receipts. Submission and
+accepted results do not establish HTTP dispatch or readiness at playback. A fresh
+native export confirms group-preparation lifecycle activation; translation lifecycle
+and individual native flag-toggle checks remain unverified.
+Shared writes protect concurrent stars and
+restores. Native Chrome toggle/export was checked on one Parako video after updating
+the installed extension. Cache IDs stay unique and deleted/locked/edited rows have
+behavioral regressions. Drive, audio gold, native protected-data round trips and
+measured translation readiness remain open. Current worktree and main source default
+eligible new YouTube tracks to Enhanced; same-track Original choices and explicit
+restore remain Original. Post-copy native activation is pending. See the
+[default-mode review](review/youtube-sentence-mvp-enhanced-default-2026-10-11.md),
+[current status](wiki/topics/youtube-sentence-enhancement-mvp.md)
+and [how to try it](walkthrough.md#youtube-sentence-preview).
+
 ---
 
 <a id="english"></a>
@@ -31,7 +75,7 @@
 9. **Personal Vocabulary Tracker**: Mark Known / Learning / Ignore / Special, save words and starred sentences into `savedCues`.
 10. **Native iPad / iPhone**: Standalone SwiftUI apps (`ipad-app/`, sibling `iphone-app/`) — hardsub, side panel, tokenize, dict popup, import/export.
 11. **Drive Sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder.
-12. **Bilingual Hover Sync & 100% Coloring**: Hovering any word on Japanese, Vietnamese, or English subtitles highlights its counterpart in other lines (`.tok-hover-sync`). 100% of Vietnamese/English words are colored by JLPT bands without leaving white text.
+12. **Bilingual Hover Sync & JLPT Coloring**: Hovering mapped words highlights their counterparts (`.tok-hover-sync`). The sentence MVP requires levels from corresponding Japanese tokens; unmapped words stay neutral. Group-level NLP/color verification is pending.
 13. **Instant Overlay Dict & Cue Popover**: Hovering overlay tokens immediately opens dictionary definitions. Hovering any Play button `▶` reveals a sentence breakdown popover (JA with furigana, VI, EN).
 
 ## 🏗 System Architecture
@@ -173,7 +217,7 @@ curl -s http://127.0.0.1:8765/health
 
 **YouTube JP Caption Studio** là công cụ học tiếng Nhật qua YouTube kiểu Language Reactor. Nền tảng: **Chrome Extension** (Desktop) và **Native iPad / iPhone App**. Hỗ trợ bắt timedtext JA, overlay, Side Panel, furigana (Sudachi / NaturalLanguage), từ điển JMdict (gloss **EN + VI**), tô màu theo JLPT, import/export EN–VI thủ công.
 
-**Không** dùng OCR. **Không** dùng dịch máy (NLLB / Opus / Gemini). Bản dịch lấy từ track EN/VI trên YouTube (nếu có), Import, hoặc sửa tay. Trên Desktop, extension cũng đọc phụ đề native của **ABEMA** và các web video khác (qua `<track>`/WebVTT/textTracks) — mọi tính năng còn lại giữ nguyên.
+Không dùng OCR. Bản dịch có thể lấy từ track EN/VI, Import, sửa tay hoặc Gemini tùy cấu hình API key trên Desktop. Luồng dịch câu của sentence MVP đang triển khai; chưa có số đo readiness/latency cho bản này. Extension cũng đọc phụ đề native của ABEMA và web video khác qua `<track>`/WebVTT/textTracks.
 
 ## 🌟 Tính năng chính
 1. **Phụ đề thông minh**: Bắt timedtext JA từ YouTube (và phụ đề native từ ABEMA / web video khác qua textTrack/WebVTT) → overlay + Side Panel (toggle JA/EN/VI; EN+VI mặc định bật). Nếu video có track EN/VI trên YouTube thì union-merge (±0,35s; orphan thành cue mới; không ghi đè Import/sửa tay).

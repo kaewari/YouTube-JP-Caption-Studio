@@ -17,6 +17,7 @@ import shutil
 import threading
 import time
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,12 @@ _HEAD_RE = re.compile(
     rf"^\[(\d+(?:-\d+)?)\]\s+({_TIME_TOKEN})(?:\s*(?:→|->|–|—|-)\s*({_TIME_TOKEN}))?"
 )
 _device_id: str = ""
+
+
+class ScriptRevisionConflict(ValueError):
+    def __init__(self, current_rev: int):
+        self.current_rev = current_rev
+        super().__init__(f"stale script revision; current revision is {current_rev}")
 
 
 def _finite_time(value: Any, fallback: float = 0.0) -> float:
@@ -80,13 +87,11 @@ def device_id() -> str:
 
 
 def _format_time_plain(sec: float) -> str:
-    s = max(0.0, float(sec or 0.0))
-    total = int(s)
-    m, r = divmod(total, 60)
-    frac = s - total
-    if frac >= 0.05:
-        return f"{m}:{r:02d}.{int(round(frac * 10))}"
-    return f"{m}:{r:02d}"
+    # TXT is canonical on load: never quantize the original source clocks.
+    whole, _, fraction = format(Decimal(str(max(0.0, float(sec or 0.0)))), "f").partition(".")
+    minutes, seconds = divmod(int(whole), 60)
+    fraction = fraction.rstrip("0")
+    return f"{minutes}:{seconds:02d}" + (f".{fraction}" if fraction else "")
 
 
 def render_script_txt(
@@ -158,8 +163,7 @@ def _parse_time_token(raw: str) -> float:
     m = re.fullmatch(r"(\d+):(\d{1,2})(?:\.(\d+))?", s)
     if not m:
         return float("nan")
-    frac = float(f"0.{m.group(3)}") if m.group(3) else 0.0
-    return int(m.group(1)) * 60 + int(m.group(2)) + frac
+    return float(f"{int(m.group(1)) * 60 + int(m.group(2))}.{m.group(3) or '0'}")
 
 
 def parse_script_txt(text: str) -> list[dict[str, Any]]:
@@ -223,8 +227,8 @@ def parse_script_txt(text: str) -> list[dict[str, Any]]:
 def _cue_content_sig(cues: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
     return [
         (
-            round(float(c.get("start_media_time") or c.get("start") or 0), 3),
-            round(float(c.get("end_media_time") or c.get("end") or 0), 3),
+            float(c.get("start_media_time") or c.get("start") or 0),
+            float(c.get("end_media_time") or c.get("end") or 0),
             str(c.get("source") or c.get("text") or "").strip(),
             str(c.get("en") or "").strip(),
             str(c.get("vi") or "").strip(),
@@ -246,6 +250,11 @@ def _cues_from_txt(
         vi = str(c.get("vi") or "")
         old = old_cues[i] if i < len(old_cues) else {}
         cue_id = str(old.get("id") or "").strip() or f"{int(start * 1000)}-txt-{i}"
+        # Generated TXT must not turn an unchanged YouTube cue into an owned script.
+        unchanged = (start, end, source, en, vi) == (
+            old.get("start_media_time"), old.get("end_media_time"),
+            old.get("source"), old.get("en"), old.get("vi"),
+        )
         cleaned.append(
             {
                 "id": cue_id,
@@ -255,7 +264,7 @@ def _cues_from_txt(
                 "en": en,
                 "vi": vi,
                 "translated": bool(en.strip() or vi.strip()),
-                "text_source": "script",
+                "text_source": str(old.get("text_source") or "script") if unchanged else "script",
                 "mt_locked": bool(old.get("mt_locked")),
                 "translation_source": str(old.get("translation_source") or ""),
             }
@@ -392,6 +401,10 @@ def _save_script_locked(
 
     prev = _read_json(meta_path)
     prev = prev if isinstance(prev, dict) else {}
+    current_rev = int(prev.get("rev") or 0)
+    # Legacy callers omit rev; keep that contract until they support version checks.
+    if rev is not None and int(rev) < current_rev:
+        raise ScriptRevisionConflict(current_rev)
     new_tokens = _split_tokens(cleaned)
     old_tokens = _read_json(tokens_path)
     if isinstance(old_tokens, dict):
@@ -407,7 +420,7 @@ def _save_script_locked(
         "cue_count": len(cleaned),
         "translated_count": sum(1 for c in cleaned if c.get("translated")),
         "owned": bool(prev.get("owned")) if owned is None else bool(owned),
-        "rev": max(int(prev.get("rev") or 0), int(rev or 0)) + 1,
+        "rev": max(current_rev, int(rev or 0)) + 1,
         "deviceId": device_id(),
     }
 
@@ -477,6 +490,11 @@ def load_script(video_id: str) -> dict[str, Any] | None:
         vid = _safe_video_id(video_id)
     except ValueError:
         return None
+    with _video_lock(vid):
+        return _load_script_locked(vid)
+
+
+def _load_script_locked(vid: str) -> dict[str, Any] | None:
     folder = scripts_root() / vid
     cues_path = folder / "cues.json"
     meta_path = folder / "meta.json"
@@ -632,51 +650,116 @@ def list_scripts() -> list[dict[str, Any]]:
 
 def read_files(video_id: str) -> dict[str, str] | None:
     """The 3 mirrorable files as text. Existing script.txt is returned as-is (never overwritten)."""
-    data = load_script(video_id)
-    if not data:
+    try:
+        vid = _safe_video_id(video_id)
+    except ValueError:
         return None
-    vid = data["video_id"]
-    folder = Path(data["path"])
-    full_meta = _read_json(folder / "meta.json")
-    full_meta = full_meta if isinstance(full_meta, dict) else data.get("meta") or {}
-    cues = data["cues"]
-    txt_path = folder / "script.txt"
-    if txt_path.is_file():
-        txt = txt_path.read_text(encoding="utf-8")
-    else:
-        txt = render_script_txt(
-            cues,
-            video_id=vid,
-            url=str(full_meta.get("url") or ""),
-            title=str(full_meta.get("title") or ""),
-            tokens=load_tokens(vid),
-        )
-        _atomic_write_text(txt_path, txt)
-    return {
-        "cues.json": _dump({"video_id": vid, "cues": cues, "meta": full_meta}),
-        "meta.json": _dump(full_meta),
-        "script.txt": txt,
-    }
+    with _video_lock(vid):
+        data = _load_script_locked(vid)
+        if not data:
+            return None
+        vid = data["video_id"]
+        folder = Path(data["path"])
+        full_meta = _read_json(folder / "meta.json")
+        full_meta = full_meta if isinstance(full_meta, dict) else data.get("meta") or {}
+        cues = data["cues"]
+        txt_path = folder / "script.txt"
+        if txt_path.is_file():
+            txt = txt_path.read_text(encoding="utf-8")
+        else:
+            txt = render_script_txt(
+                cues,
+                video_id=vid,
+                url=str(full_meta.get("url") or ""),
+                title=str(full_meta.get("title") or ""),
+                tokens=load_tokens(vid),
+            )
+            _atomic_write_text(txt_path, txt)
+        return {
+            "cues.json": _dump({"video_id": vid, "cues": cues, "meta": full_meta}),
+            "meta.json": _dump(full_meta),
+            "script.txt": txt,
+        }
 
 
 def write_files(video_id: str, files: dict[str, Any]) -> dict[str, Any]:
     """Drive → disk. JSON files are parsed first so a bad mirror cannot corrupt disk."""
     vid = _safe_video_id(video_id)
-    folder = video_dir(vid)
-    written: list[str] = []
+    validated: dict[str, str] = {}
+    incoming_rev: int | None = None
     for name in FILE_NAMES:
         content = files.get(name)
         if not isinstance(content, str) or not content.strip():
             continue
         if name.endswith(".json"):
             try:
-                json.loads(content)
+                parsed = json.loads(content)
             except ValueError as exc:
                 raise ValueError(f"{name} is not valid JSON: {exc}") from exc
-        _atomic_write_text(folder / name, content)
-        written.append(name)
-    if not written:
+        if name == "meta.json" and isinstance(parsed, dict) and parsed.get("rev") is not None:
+            incoming_rev = parsed["rev"]
+            if type(incoming_rev) is not int or incoming_rev < 0:
+                raise ValueError("meta.json rev must be a non-negative integer")
+        validated[name] = content
+    if not validated:
         raise ValueError("no known files in payload")
+    with _video_lock(vid):
+        folder = scripts_root() / vid
+        previous = _read_json(folder / "meta.json")
+        current_rev = int(previous.get("rev") or 0) if isinstance(previous, dict) else 0
+        if incoming_rev is not None and incoming_rev < current_rev:
+            raise ScriptRevisionConflict(current_rev)
+        if incoming_rev == current_rev and isinstance(previous, dict):
+            # Different devices can produce the same counter; only an exact replay is safe.
+            for name, content in validated.items():
+                path = folder / name
+                if not path.is_file() or path.read_bytes() != content.encode("utf-8"):
+                    raise ScriptRevisionConflict(current_rev)
+        if incoming_rev is not None and incoming_rev > current_rev and "cues.json" in validated:
+            # Old clients push JSON only; unchanged TXT must not undo their newer edit.
+            incoming = json.loads(validated["cues.json"])
+            old = _read_json(folder / "cues.json")
+            if not isinstance(incoming, dict) or not isinstance(incoming.get("cues"), list):
+                raise ValueError("cues.json must contain a cues array")
+            cues = incoming["cues"]
+            if not all(isinstance(cue, dict) for cue in cues):
+                raise ValueError("cues.json cues must be objects")
+            try:
+                for cue in cues:
+                    for key in ("start_media_time", "end_media_time", "start", "end"):
+                        value = cue.get(key)
+                        if isinstance(value, bool) or (value is not None and not isinstance(value, (int, float, str))):
+                            raise ValueError("invalid cue timing type")
+                    for primary, alias in (("start_media_time", "start"), ("end_media_time", "end")):
+                        if cue.get(primary) is not None and cue.get(alias) is not None:
+                            if float(cue[primary]) != float(cue[alias]):
+                                raise ValueError("conflicting cue timing aliases")
+                new_sig = _cue_content_sig(cues)
+                old_sig = _cue_content_sig(old.get("cues", [])) if isinstance(old, dict) else []
+                if any(not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < start
+                       for start, end, *_ in new_sig):
+                    raise ValueError("invalid cue timing")
+                txt_path = folder / "script.txt"
+                if txt_path.is_file() and _cue_content_sig(parse_script_txt(txt_path.read_text(encoding="utf-8"))) != old_sig:
+                    raise ScriptRevisionConflict(current_rev)
+                incoming_txt = validated.get("script.txt")
+                txt_sig = _cue_content_sig(parse_script_txt(incoming_txt)) if incoming_txt is not None else None
+                if txt_sig is not None and txt_sig != new_sig and txt_sig != old_sig:
+                    raise ScriptRevisionConflict(current_rev)
+                if txt_sig != new_sig:
+                    meta = json.loads(validated["meta.json"])
+                    validated["script.txt"] = render_script_txt(
+                        cues, video_id=vid, url=str(meta.get("url") or ""),
+                        title=str(meta.get("title") or ""), tokens=load_tokens(vid),
+                    )
+                    if _cue_content_sig(parse_script_txt(validated["script.txt"])) != new_sig:
+                        raise ValueError("cues.json cannot round-trip through script.txt")
+            except (TypeError, OverflowError) as exc:
+                raise ValueError("invalid cues.json content") from exc
+        folder = video_dir(vid)
+        for name, content in validated.items():
+            _atomic_write_text(folder / name, content)
+    written = list(validated)
     logger.info("Wrote %s from mirror → %s", ", ".join(written), folder)
     return {"ok": True, "video_id": vid, "path": str(folder), "written": written}
 
@@ -684,21 +767,22 @@ def write_files(video_id: str, files: dict[str, Any]) -> dict[str, Any]:
 def delete_script(video_id: str) -> dict[str, Any]:
     """Remove data/subtitles/{videoId}/ (cues/tokens/meta/script.txt)."""
     vid = _safe_video_id(video_id)
-    folder = scripts_root() / vid
-    if not folder.exists():
+    with _video_lock(vid):
+        folder = scripts_root() / vid
+        if not folder.exists():
+            return {
+                "ok": True,
+                "video_id": vid,
+                "deleted": False,
+                "path": str(folder),
+                "message": "not found",
+            }
+        shutil.rmtree(folder)
+        logger.info("Deleted script folder %s", folder)
         return {
             "ok": True,
             "video_id": vid,
-            "deleted": False,
+            "deleted": True,
             "path": str(folder),
-            "message": "not found",
+            "message": "deleted",
         }
-    shutil.rmtree(folder)
-    logger.info("Deleted script folder %s", folder)
-    return {
-        "ok": True,
-        "video_id": vid,
-        "deleted": True,
-        "path": str(folder),
-        "message": "deleted",
-    }

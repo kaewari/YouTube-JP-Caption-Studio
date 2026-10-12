@@ -294,7 +294,8 @@ def build_sqlite() -> None:
     # Reset pragmas and vacuum
     cur.execute("PRAGMA user_version = 4;")
     cur.execute("PRAGMA synchronous = NORMAL;")
-    cur.execute("PRAGMA journal_mode = WAL;")
+    # Publish a standalone read-only dictionary, without WAL/SHM sidecars.
+    cur.execute("PRAGMA journal_mode = DELETE;")
     cur.execute("VACUUM;")
     conn.commit()
     conn.close()

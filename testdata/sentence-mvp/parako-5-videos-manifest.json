@@ -1,0 +1,146 @@
+[
+  {
+    "videoId": "ylnxFdPhLCo",
+    "title": "ドライブで本音トークするやつ",
+    "url": "https://www.youtube.com/watch?v=ylnxFdPhLCo",
+    "category": "drive_dialogue",
+    "keyExcerpts": [
+      {
+        "time": "1:00-1:09",
+        "note": "乗せて + ないんですか？ (broken sentence across cues)"
+      },
+      {
+        "time": "1:09-1:18",
+        "note": "どこ + 行くんですか？ (question split across cues)"
+      }
+    ],
+    "transport": "android",
+    "cueCount": 109,
+    "sha256": "bccdbdc831fee350311f3ec3ac67c754aba580b32a9255d2c28c442db3f30bb7",
+    "fixturePath": "testdata/sentence-mvp/parako-ylnxFdPhLCo-cues.json",
+    "firstCue": {
+      "id": "1160-0",
+      "start": 1160,
+      "duration": 2920,
+      "text": "やっと涼しくなってきたね。ああ、"
+    },
+    "lastCue": {
+      "id": "379960-108",
+      "start": 379960,
+      "duration": 5239,
+      "text": "味ちけたら[音楽]です。"
+    }
+  },
+  {
+    "videoId": "MNGOykySDto",
+    "title": "身体測定で見栄はりすぎるやつ",
+    "url": "https://www.youtube.com/watch?v=MNGOykySDto",
+    "category": "classroom_comedy",
+    "keyExcerpts": [
+      {
+        "time": "0:00-0:10",
+        "note": "身体測定って気合い入るよな (school comedy dialogue)"
+      }
+    ],
+    "transport": "android",
+    "cueCount": 112,
+    "sha256": "5bcb231315e5231b66a18de6b555a2f3aa3ad8e0c8fc8f7d09c9707b9cb53cb5",
+    "fixturePath": "testdata/sentence-mvp/parako-MNGOykySDto-cues.json",
+    "firstCue": {
+      "id": "399-0",
+      "start": 399,
+      "duration": 5800,
+      "text": "身体測定って気合い入るよな。"
+    },
+    "lastCue": {
+      "id": "263560-111",
+      "start": 263560,
+      "duration": 5000,
+      "text": "見つけ[音楽]たらバニです。"
+    }
+  },
+  {
+    "videoId": "H3p-NUAaaB8",
+    "title": "不思議の国編 総集編",
+    "url": "https://www.youtube.com/watch?v=H3p-NUAaaB8",
+    "category": "long_story_arc",
+    "keyExcerpts": [
+      {
+        "time": "0:06-0:15",
+        "note": "なんでもない日。おめでとう。 (fast dialogue arc)"
+      }
+    ],
+    "transport": "android",
+    "cueCount": 791,
+    "sha256": "afc776334aeb2d0bae5957d20b0d2e66eaa91ad62fa77ad45888b01b4ee9370e",
+    "fixturePath": "testdata/sentence-mvp/parako-H3p-NUAaaB8-cues.json",
+    "firstCue": {
+      "id": "6680-0",
+      "start": 6680,
+      "duration": 5879,
+      "text": "なんでもない日。おめでとう。"
+    },
+    "lastCue": {
+      "id": "3016309-790",
+      "start": 3016309,
+      "duration": 2020,
+      "text": "[音楽]"
+    }
+  },
+  {
+    "videoId": "fYSHkuI8t-k",
+    "title": "どっかで見たことあるやつしかいないクラス",
+    "url": "https://www.youtube.com/watch?v=fYSHkuI8t-k",
+    "category": "rapid_speech",
+    "keyExcerpts": [
+      {
+        "time": "0:00-0:10",
+        "note": "おはようはえ教室間違えてない (rapid greeting without punctuation)"
+      }
+    ],
+    "transport": "android",
+    "cueCount": 34,
+    "sha256": "e397929628223390d3b9d97f1c8a010589bea13a22f519d3edc48fc4fb744acb",
+    "fixturePath": "testdata/sentence-mvp/parako-fYSHkuI8t-k-cues.json",
+    "firstCue": {
+      "id": "800-0",
+      "start": 800,
+      "duration": 9320,
+      "text": "おはようはえ教室間違えてない"
+    },
+    "lastCue": {
+      "id": "122880-33",
+      "start": 122880,
+      "duration": 6400,
+      "text": "説あるまだりたくないね"
+    }
+  },
+  {
+    "videoId": "2GjTe4uQyX8",
+    "title": "野生の動物が荒らしたやつ",
+    "url": "https://www.youtube.com/watch?v=2GjTe4uQyX8",
+    "category": "exclamatory_banter",
+    "keyExcerpts": [
+      {
+        "time": "0:00-0:10",
+        "note": "上下段荒れてる本当だ野生の動物が (exclamation dialogue)"
+      }
+    ],
+    "transport": "android",
+    "cueCount": 61,
+    "sha256": "6192cbe93ad9873778dc6baa28fead9484b84d61953a97b0a22cc9bea64139a3",
+    "fixturePath": "testdata/sentence-mvp/parako-2GjTe4uQyX8-cues.json",
+    "firstCue": {
+      "id": "520-0",
+      "start": 520,
+      "duration": 6540,
+      "text": "上下段荒れてる本当だ野生の動物が"
+    },
+    "lastCue": {
+      "id": "167280-60",
+      "start": 167280,
+      "duration": 2030,
+      "text": "うん"
+    }
+  }
+]

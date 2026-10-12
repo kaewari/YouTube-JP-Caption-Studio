@@ -8,23 +8,26 @@
   </head>
   <body>
     <header class="sp-header">
-      <div class="sp-tabs">
-        <button type="button" class="sp-tab active" data-tab="subtitles">Subtitles</button>
-        <button type="button" class="sp-tab" data-tab="words">Words</button>
-        <button type="button" class="sp-tab" data-tab="saved">Saved</button>
+      <div class="sp-header-top">
+        <div class="sp-tabs">
+          <button type="button" class="sp-tab active" data-tab="subtitles">Subtitles</button>
+          <button type="button" class="sp-tab" data-tab="words">Words</button>
+          <button type="button" class="sp-tab" data-tab="saved">Saved</button>
+        </div>
+        <div class="sp-header-actions">
+          <button type="button" id="sp-btn-settings" class="sp-header-btn" title="Cài đặt">⚙</button>
+          <button type="button" id="sp-btn-popout" class="sp-header-btn" title="Mở trang đầy đủ">↗</button>
+          <button type="button" id="sp-btn-close" class="sp-header-btn" title="Đóng">✕</button>
+        </div>
       </div>
       <div id="sp-sub-visibility" class="sp-sub-visibility">
+        <button type="button" id="sp-caption-mode" class="sp-sub-btn" aria-pressed="false" title="Bật Enhanced thử nghiệm để xem câu ghép; Original giữ cue nguồn">Original</button>
         <div class="sp-sub-toggles">
           <button type="button" id="sp-toggle-ja" class="sp-sub-btn active" data-sub="ja" title="Bật/tắt dòng tiếng Nhật">JA</button>
           <button type="button" id="sp-toggle-vi" class="sp-sub-btn active" data-sub="vi" title="Bật/tắt dòng tiếng Việt">VI</button>
           <button type="button" id="sp-toggle-en" class="sp-sub-btn active" data-sub="en" title="Bật/tắt dòng tiếng Anh">EN</button>
           <button type="button" id="sp-toggle-furi" class="sp-sub-btn active" data-sub="furi" title="Bật/tắt chữ Furigana">Furi</button>
         </div>
-      </div>
-      <div class="sp-header-actions">
-        <button type="button" id="sp-btn-settings" class="sp-header-btn" title="Cài đặt">⚙</button>
-        <button type="button" id="sp-btn-popout" class="sp-header-btn" title="Mở trang đầy đủ">↗</button>
-        <button type="button" id="sp-btn-close" class="sp-header-btn" title="Đóng">✕</button>
       </div>
     </header>
 
@@ -93,6 +96,15 @@
       </div>
     </section>
 
+    <section id="sp-backup-panel" class="sp-import-panel" hidden>
+      <div class="sp-import-head"><strong>Khôi phục backup JSON</strong>
+        <button type="button" id="sp-backup-cancel" class="sp-import-cancel" title="Đóng">×</button>
+      </div>
+      <p id="sp-backup-summary" class="sp-import-hint"></p>
+      <p class="sp-import-hint">Thay script và câu đã lưu của video này bằng bản trong file. Giữ khóa, timeline và dữ liệu Enhanced. Bản hiện tại được lưu để quay lại.</p>
+      <div class="sp-import-actions"><button type="button" id="sp-backup-apply">Khôi phục video này</button></div>
+    </section>
+
     <footer class="sp-footer">
       <div class="sp-footer-toolbar sp-footer-single-row">
         <button type="button" id="sp-add-cue" class="sp-footer-btn" title="Thêm câu phụ đề mới tại thời điểm hiện tại">+ Cue</button>
@@ -108,12 +120,22 @@
               <span class="sp-popover-icon">📥</span> Nhập bản dịch (Import)
             </button>
             <input type="file" id="sp-import-file" accept=".json,.txt,application/json,text/plain" hidden />
-            <button type="button" id="sp-export" class="sp-popover-item" title="Xuất toàn bộ script phụ đề ra file TXT">
+            <button type="button" id="sp-export" class="sp-popover-item" aria-describedby="sp-export-note" title="Xuất script dạng văn bản; dùng Sao lưu JSON để khôi phục đầy đủ">
               <span class="sp-popover-icon">📤</span> Xuất script (Export TXT)
             </button>
+            <p id="sp-export-note" class="sp-export-note">TXT không giữ khóa, dữ liệu Enhanced hay câu đã lưu. Dùng Sao lưu JSON để khôi phục đầy đủ.</p>
             <button type="button" id="sp-drive-upload" class="sp-popover-item" title="Đồng bộ script phụ đề lên Google Drive">
               <span class="sp-popover-icon">☁</span> Đồng bộ Drive
             </button>
+            <button type="button" id="sp-export-json" class="sp-popover-item" title="Sao lưu cue gốc, nguồn và dữ liệu Enhanced vào JSON cục bộ">
+              <span class="sp-popover-icon">📤</span> Sao lưu JSON
+            </button>
+            <button type="button" id="sp-export-benchmark" class="sp-popover-item" title="Xuất số đo playback và readiness cục bộ; chưa đo không có tỷ lệ xác minh">
+              <span class="sp-popover-icon">📊</span> Xuất số đo
+            </button>
+            <button type="button" id="sp-restore-json" class="sp-popover-item">📥 Khôi phục JSON</button>
+            <input type="file" id="sp-backup-file" accept=".json,application/json" hidden />
+            <button type="button" id="sp-recover-json" class="sp-popover-item">↶ Quay lại trước khôi phục</button>
             <div class="sp-popover-divider"></div>
             <button type="button" id="sp-clear-mt" class="sp-popover-item sp-popover-item-warning" title="Xóa bản dịch tiếng Việt và tiếng Anh (giữ nguyên tiếng Nhật)">
               <span class="sp-popover-icon">🗑</span> Xóa bản dịch (VI/EN)

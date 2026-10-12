@@ -10,13 +10,17 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from app.services import script_store as store  # noqa: E402
 from app.services.script_store import (  # noqa: E402
+    ScriptRevisionConflict,
     list_scripts,
     load_meta,
     load_script,
@@ -94,11 +98,17 @@ def test_rev_monotonic_and_owned(root: Path) -> None:
     assert save_script(vid, [cue(1)])["rev"] == 2
     # A client echoing a higher rev (seen on Drive/iPad) pulls the counter up…
     assert save_script(vid, [cue(1)], rev=41)["rev"] == 42
-    # …and a stale client can never push it back down.
-    assert save_script(vid, [cue(1)], rev=3)["rev"] == 43
+    # A stale client cannot overwrite content or advance the counter.
+    before = {p.name: p.read_bytes() for p in (root / vid).iterdir()}
+    try:
+        save_script(vid, [], owned=False, rev=3)
+        raise AssertionError("stale script revision accepted")
+    except ScriptRevisionConflict as exc:
+        assert exc.current_rev == 42
+    assert {p.name: p.read_bytes() for p in (root / vid).iterdir()} == before
 
     meta = load_meta(vid)
-    assert meta is not None and meta["rev"] == 43
+    assert meta is not None and meta["rev"] == 42
     assert meta["deviceId"] and meta["owned"] is False
     save_script(vid, [cue(1)], owned=True)
     assert load_meta(vid)["owned"] is True, "owned not persisted to meta.json"
@@ -106,7 +116,62 @@ def test_rev_monotonic_and_owned(root: Path) -> None:
     assert load_meta(vid)["owned"] is True, "owned lost when caller omits it"
 
     listed = {s["video_id"]: s for s in list_scripts()}
-    assert listed[vid]["rev"] == 45 and listed[vid]["owned"] is True
+    assert listed[vid]["rev"] == 44 and listed[vid]["owned"] is True
+
+
+def test_load_and_save_share_revision_lock(root: Path) -> None:
+    vid = "loadRace01"
+    assert save_script(vid, [cue(1)], rev=4)["rev"] == 5
+    (root / vid / "script.txt").write_text(
+        render_script_txt([{**cue(1), "source": "TXT edit"}], video_id=vid),
+        encoding="utf-8",
+    )
+    entered, release, writer_started = threading.Event(), threading.Event(), threading.Event()
+    original_write = store._atomic_write_text
+    reader_thread = None
+
+    def held_write(path: Path, text: str) -> None:
+        if threading.current_thread() is reader_thread and path.name == "cues.json":
+            entered.set()
+            assert release.wait(5), "reader was never released"
+        original_write(path, text)
+
+    def read() -> dict:
+        nonlocal reader_thread
+        reader_thread = threading.current_thread()
+        return load_script(vid)
+
+    def write() -> list:
+        writer_started.set()
+        results = []
+        for rev in (5, 6):
+            try:
+                results.append(save_script(vid, [{**cue(1), "source": f"writer{rev + 1}"}], rev=rev)["rev"])
+            except ScriptRevisionConflict as exc:
+                results.append(("conflict", exc.current_rev))
+        return results
+
+    with mock.patch.object(store, "_atomic_write_text", held_write), ThreadPoolExecutor(max_workers=2) as pool:
+        reader = pool.submit(read)
+        writer = None
+        try:
+            assert entered.wait(5), "reader never reached its disk write"
+            writer = pool.submit(write)
+            assert writer_started.wait(5)
+            try:
+                early = writer.result(timeout=.1)
+            except TimeoutError:
+                early = None
+        finally:
+            release.set()
+        assert reader.result(timeout=5)["meta"]["rev"] == 6
+        results = writer.result(timeout=5)
+    actual = load_meta(vid)["rev"]
+    print(f"  load/save race: early={early}, writer results={results}, disk rev={actual}")
+    assert early is None, "writer bypassed the reader's per-video lock"
+    assert results == [("conflict", 6), 7]
+    assert actual == 7
+    assert load_script(vid)["cues"][0]["source"] == "writer7"
 
 
 def test_files_mirror_roundtrip(root: Path) -> None:
@@ -133,6 +198,58 @@ def test_files_mirror_roundtrip(root: Path) -> None:
             raise AssertionError(f"write_files accepted {bad!r}")
         except ValueError:
             pass
+
+
+def test_mirror_read_and_delete_share_video_lock(root: Path, *, actions=("read", "delete")) -> None:
+    for action in actions:
+        vid = "mirrorRace" + action
+        save_script(vid, [cue(1)], title="old")
+        old_files = read_files(vid)
+        save_script(vid, [cue(2)], title="new")
+        new_files = read_files(vid)
+        # Reset this disposable fixture; a stale mirror must not roll back a real store.
+        store.delete_script(vid)
+        write_files(vid, old_files)
+        entered, release, observer_started = threading.Event(), threading.Event(), threading.Event()
+        original_write = store._atomic_write_text
+        writer_thread = None
+
+        def held_write(path: Path, text: str) -> None:
+            original_write(path, text)
+            if threading.current_thread() is writer_thread and path.name == "cues.json":
+                entered.set()
+                assert release.wait(5), "mirror writer was never released"
+
+        def write() -> dict:
+            nonlocal writer_thread
+            writer_thread = threading.current_thread()
+            return write_files(vid, new_files)
+
+        def observe():
+            observer_started.set()
+            return read_files(vid) if action == "read" else store.delete_script(vid)
+
+        with mock.patch.object(store, "_atomic_write_text", held_write), ThreadPoolExecutor(max_workers=2) as pool:
+            writer = pool.submit(write)
+            observer = None
+            try:
+                assert entered.wait(5)
+                observer = pool.submit(observe)
+                assert observer_started.wait(5)
+                try:
+                    early = observer.result(timeout=.1)
+                except TimeoutError:
+                    early = None
+            finally:
+                release.set()
+            writer.result(timeout=5)
+            observed = observer.result(timeout=5)
+        print(f"  mirror/{action}: observer blocked={early is None}")
+        assert early is None, f"{action} bypassed in-progress mirror write"
+        if action == "read":
+            assert observed == new_files, "mirror read returned a mixed revision"
+        else:
+            assert observed["deleted"] and not (root / vid).exists()
 
 
 def test_script_txt_always_emits_ja_en_vi() -> None:
@@ -357,6 +474,40 @@ def test_read_files_keeps_existing_script_txt(root: Path) -> None:
     assert (folder / "script.txt").read_text(encoding="utf-8") == custom
 
 
+def test_unchanged_txt_preserves_cue_provenance(root: Path) -> None:
+    vid = "provenance01"
+    rows = [{**cue(i), "text_source": origin, "mt_locked": True,
+             "translation_source": "user"}
+            for i, origin in enumerate(("yt", "edit", "manual", "script"), 1)]
+    saved = save_script(vid, rows, owned=True, rev=8)
+    for _ in range(2):
+        loaded = load_script(vid)
+        assert loaded["meta"]["rev"] == saved["rev"]
+        for expected, actual in zip(rows, loaded["cues"], strict=True):
+            for field in expected:
+                assert actual[field] == expected[field], (field, actual, expected)
+        assert json.loads((root / vid / "cues.json").read_text())["cues"] == loaded["cues"]
+
+    # Existing mirror transport must retain provenance through a separate folder.
+    write_files("provenance02", read_files(vid))
+    assert load_script("provenance02")["cues"] == loaded["cues"]
+
+    # TXT edits remain authoritative, even if the change is below 1 ms.
+    txt = root / vid / "script.txt"
+    txt.write_text(render_script_txt([{**rows[0], "start_media_time": 1.00001},
+                                      *rows[1:]], video_id=vid), encoding="utf-8")
+    changed = load_script(vid)
+    assert changed["cues"][0]["start_media_time"] == 1.00001
+    assert changed["cues"][0]["text_source"] == "script"
+    assert changed["meta"]["rev"] == saved["rev"] + 1, "Exact TXT time edits must advance revision"
+    assert [c["text_source"] for c in changed["cues"][1:]] == ["edit", "manual", "script"]
+
+    # A changed target must not be mistaken for the original unmodified row.
+    txt.write_text(render_script_txt([{**rows[0], "vi": "đã sửa"}, *rows[1:]],
+                                     video_id=vid), encoding="utf-8")
+    assert load_script(vid)["cues"][0]["text_source"] == "script"
+
+
 def main() -> None:
     test_script_txt_always_emits_ja_en_vi()
     print("  [ok] test_script_txt_always_emits_ja_en_vi")
@@ -366,11 +517,14 @@ def main() -> None:
         test_tokens_split_merge_roundtrip,
         test_legacy_inline_tokens_migrate_on_read,
         test_rev_monotonic_and_owned,
+        test_load_and_save_share_revision_lock,
         test_files_mirror_roundtrip,
+        test_mirror_read_and_delete_share_video_lock,
         test_load_prefers_script_txt_over_garbage_cues,
         test_load_script_txt_rescues_inline_tokens,
         test_save_sanitizes_non_finite_times,
         test_read_files_keeps_existing_script_txt,
+        test_unchanged_txt_preserves_cue_provenance,
     ):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -146,6 +146,14 @@ body {
   color: #fff;
 }
 
+.sp-export-note {
+  max-width: 170px;
+  margin: 0 10px 3px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .sp-popover-icon {
   font-size: 13px;
   display: inline-flex;
@@ -422,7 +430,6 @@ body {
 
 /* Subtitle visibility toolbar in Header */
 .sp-sub-visibility {
-  order: 3;
   width: 100%;
   display: flex;
   align-items: center;
@@ -588,6 +595,8 @@ body {
 .sp-copy,
 .sp-copy-menu summary,
 .sp-add-after,
+.sp-original-edit,
+.sp-undo-sentence,
 .sp-del {
   background: #242436;
   color: #ddd;
@@ -599,6 +608,8 @@ body {
 }
 
 .sp-add-after:hover,
+.sp-original-edit:hover,
+.sp-undo-sentence:hover,
 .sp-del:hover,
 .sp-copy:hover {
   background: #3a3a50;
@@ -902,6 +913,13 @@ textarea.sp-ja {
   color: var(--jlpt-unknown, #e2e8f0);
   opacity: 0.85;
 }
+.tok-karaoke-active {
+  background: rgba(255, 215, 0, 0.35) !important;
+  color: #fff !important;
+  border-radius: 3px;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  transition: background 0.15s ease, text-shadow 0.15s ease;
+}
 
 .sp-ja-view ruby.jlpt-n5 rt,
 .sp-ja-view ruby.jlpt-n4 rt,
@@ -1026,19 +1044,22 @@ textarea.sp-ja {
 .sp-header {
   flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 8px 12px 6px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
-  row-gap: 6px;
-  column-gap: 8px;
+  gap: 6px;
   z-index: 10;
 }
 
+.sp-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .sp-tabs {
-  order: 1;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1069,7 +1090,6 @@ textarea.sp-ja {
 }
 
 .sp-header-actions {
-  order: 2;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -1096,29 +1116,6 @@ textarea.sp-ja {
   background: #252536;
   border-color: #38384f;
   color: #fff;
-}
-
-/* Wide sidepanel / popout container (>= 520px): merge into single elegant row */
-@container (min-width: 520px) {
-  .sp-header {
-    flex-wrap: nowrap;
-    row-gap: 0;
-    padding: 8px 12px;
-  }
-
-  .sp-sub-visibility {
-    order: 2;
-    width: auto;
-    border-top: none;
-    padding-top: 0;
-    margin-left: 8px;
-    margin-right: auto;
-  }
-
-  .sp-header-actions {
-    order: 3;
-    margin-left: 0;
-  }
 }
 
 /* Compact sidepanel (<= 340px) */

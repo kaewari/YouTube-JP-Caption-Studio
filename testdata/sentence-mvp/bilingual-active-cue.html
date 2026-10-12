@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bilingual active-cue runtime checks</title>
+<link rel="stylesheet" href="/extension/sidepanel/sidepanel.css">
+<style>body{overflow:auto;padding:18px}.case{padding:14px;margin:10px 0;border:1px solid #666}.line{min-height:30px;font-size:20px}</style>
+<h1>Isolated production vocabulary renderer</h1>
+<p>Deterministic token inputs; no installed Chrome storage, Gemini or video/audio claims.</p>
+<button id="change-level">Change 自分 to N2</button>
+<div id="cases"></div>
+<script src="/extension/shared/vocab_style.js"></script>
+<script>
+const cases = [
+  {id:'self', tokens:[{surface:'自分',lemma:'自分',jlpt:'n4',pos:'代名詞'}],vi:'Tôi và gia đình Zéphyr.',en:'I and family Zéphyr.'},
+  {id:'surprise',tokens:[{surface:'びっくり',lemma:'びっくり',jlpt:'n3',pos:'副詞'}],vi:'ngạc nhiên',en:'surprised'},
+  {id:'start',tokens:[{surface:'始め',lemma:'始める',jlpt:'n4',pos:'動詞'}],vi:'bắt đầu',en:'start'},
+  {id:'missing',tokens:[],vi:'gia đình và bạn bè <img src=x onerror=alert(1)>',en:'family and friends <img src=x onerror=alert(1)>'},
+  {id:'unrelated',tokens:[{surface:'猫',lemma:'猫',jlpt:'n4',pos:'名詞'}],vi:'gia đình và bạn bè',en:'family and friends'},
+  {id:'wish',tokens:[{surface:'素敵',lemma:'素敵',jlpt:'n4',pos:'形状詞'},{surface:'週末',lemma:'週末',jlpt:'n4',pos:'名詞'},{surface:'送る',lemma:'送る',jlpt:'n4',pos:'動詞'}],vi:'Chúc bạn có một cuối tuần tuyệt vời!',en:'Have a wonderful weekend!'},
+  {id:'gap',source:'週 末',tokens:[{surface:'週',reading:'しゅう',lemma:'週',pos:'名詞',start:0,end:1,offsetUnit:'utf16',sourceRefs:[{cueId:'gap',charStart:0,charEnd:1}]},{surface:' ',reading:'',lemma:' ',pos:'空白',start:1,end:2,offsetUnit:'utf16',sourceRefs:[{cueId:'gap',charStart:1,charEnd:2}]},{surface:'末',reading:'まつ',lemma:'末',pos:'接尾辞',start:2,end:3,offsetUnit:'utf16',sourceRefs:[{cueId:'gap',charStart:2,charEnd:3}]}],vi:'cuối tuần',en:'weekend'},
+  {id:'cluster',source:'送って',tokens:[{surface:'送っ',lemma:'送る',jlpt:'n4',pos:'動詞',start:0,end:2,offsetUnit:'utf16',sourceRefs:[{cueId:'cluster',charStart:0,charEnd:2}]},{surface:'て',lemma:'て',pos:'助詞',start:2,end:3,offsetUnit:'utf16',sourceRefs:[{cueId:'cluster',charStart:2,charEnd:3}]}],vi:'gửi',en:'send'},
+  {id:'simple',tokens:[{surface:'単純',lemma:'単純',jlpt:'n3',pos:'形状詞'}],vi:'đơn giản',en:'simple'},
+  {id:'range',tokens:[{surface:'最初',lemma:'最初',jlpt:'n3',pos:'名詞'},{surface:'から',lemma:'から',pos:'助詞'},{surface:'最後',lemma:'最後',jlpt:'n4',pos:'名詞'},{surface:'まで',lemma:'まで',pos:'助詞'}],vi:'từ đầu đến cuối',en:'from beginning to end'}
+];
+function render(){
+  HardsubVocab.applyHighlightVars(document.documentElement,{});
+  const container=document.getElementById('cases');container.replaceChildren();
+  for(const c of cases){
+    const card=document.createElement('section');card.className='case';card.dataset.id=c.id;
+    const label=document.createElement('strong');label.textContent=c.id;card.append(label);
+    const before=JSON.stringify(c.tokens);
+    const ja=document.createElement('div');ja.className='line sp-ja';ja.dataset.lang='ja';
+    ja.innerHTML=HardsubVocab.renderRubyHtml({source:c.source||c.tokens.map(t=>t.surface).join(''),tokens:c.tokens},{showFurigana:true});card.append(ja);
+    for(const lang of ['vi','en']){
+      const line=document.createElement('div');line.className='line sp-'+lang;line.dataset.lang=lang;
+      line.innerHTML=HardsubVocab.renderBilingualHtml(c[lang],lang,c.tokens,{enableBilingualJlptColor:true});
+      card.append(line);
+    }
+    card.dataset.tokensUnchanged=String(before===JSON.stringify(c.tokens));container.append(card);
+  }
+}
+document.getElementById('change-level').onclick=()=>{cases[0].tokens[0].jlpt='n2';render()};
+render();
+</script>

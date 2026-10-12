@@ -22,6 +22,9 @@
   const DEFAULTS = {
     /** Caption engine (tick / overlay / panel sync). */
     enabled: true,
+    enhanced_subtitles_enabled: true,
+    sentence_grouping_enabled: true,
+    sentence_translation_prefetch_enabled: true,
     showOnVideo: false,
     /** Try open side panel once per tab session (default off — use DỊCH toggle). */
     autoOpen: false,
@@ -102,6 +105,21 @@
   const pending = new Map();
   /** @type {Cue[]} */
   let cues = [];
+  let captionMode = "original";
+  let sentenceProjection = null;
+  let sentenceProjectionCues = null;
+  let sentenceSourceKey = "";
+  let enhancedCues = [];
+  let sentenceTranslations = {};
+  let sentenceTokens = {};
+  let sentenceUndoIds = new Set();
+  let sentenceUndoRevisions = {};
+  let sentenceStateLoadedKey = "", sentenceStateLoadedGen = -1, sentenceStateLoad = null;
+  let sentenceRawTrack = null;
+  let sentenceBenchmark = null;
+  let sentenceRestorePending = false;
+  const sentenceTokenPending = new Set(), sentenceTokenRetryAt = new Map();
+  let currentMediaTime = 0;
   let currentVideoId = "";
   /** Video gần nhất đã reset overlay — mỗi video mới luôn bắt đầu tắt overlay. */
   let lastOverlayResetVideo = "";
@@ -161,8 +179,8 @@
     c.translation_source = "";
   }
 
-  // Must match page_capture.js API_VER — stale MAIN-world inject lacks FETCH_MULTI_LANG.
-  const PAGE_API_VER = 6;
+  // Must match MAIN parser/capture capability, including source provenance.
+  const PAGE_API_VER = 7;
   let pageBridgeReady = false;
   // Capability token: per-injection secret the MAIN-world reply must echo back,
   // so a hostile page script can't forge caption results by spoofing
@@ -196,7 +214,13 @@
       encodeURIComponent(chrome.runtime.getManifest().version) +
       "&cap=" +
       encodeURIComponent(pageCapToken);
-    (document.head || document.documentElement).appendChild(s);
+    const parser = document.createElement("script");
+    parser.src = chrome.runtime.getURL("shared/timedtext_parse.js") + "?api=" + PAGE_API_VER;
+    parser.async = false;
+    s.async = false;
+    const parent = document.head || document.documentElement;
+    parent.appendChild(parser);
+    parent.appendChild(s);
   }
 
   function sleep(ms) {
@@ -240,9 +264,9 @@
   }
 
   const decodeEntities = (s) => Timedtext.decodeEntities(s);
-  const parseJson3Cues = (data) => Timedtext.parseJson3Cues(data);
+  const parseJson3Cues = (data) => Timedtext.parseJson3Cues(data, { includeSource: true });
   const parseTimedtextXml = (xml) => Timedtext.parseTimedtextXml(xml);
-  const parseTimedtextBody = (body) => Timedtext.parseTimedtextBody(body);
+  const parseTimedtextBody = (body) => Timedtext.parseTimedtextBody(body, { includeSource: true });
 
   async function loadCaptionsViaBackground(videoId, lang, extra = {}) {
     try {
@@ -341,6 +365,7 @@
     const mtRes = await pageCall("GET_MEDIA_TIME", {}, 400);
     const mediaTime = Number(mtRes?.mediaTime);
     if (!Number.isFinite(mediaTime)) return null;
+    currentMediaTime = mediaTime;
     const active = findActiveCue(mediaTime);
     activeCueId = active?.id || "";
     updateBar(active);
@@ -370,7 +395,16 @@
     captionsStatus = "ok";
     captionsInfo = info;
     paintPendingT0 = performance.now();
-    const normalized = Normalize.normalizeCues(rawCues);
+    const normalized = Normalize.normalizeCues(rawCues, { includeSource: true });
+    if (currentSource === "youtube" && gen === navigateGen && vid === currentVideoId) {
+      const sourceKey = sentenceTrackKey();
+      const sourceTrack = opts.sourceTrack ? Object.fromEntries(["trackId", "language", "kind", "format"]
+        .map(key => [key, typeof opts.sourceTrack[key] === "string" ? opts.sourceTrack[key] : null])) : null;
+      const fingerprint = await sentenceSourceFingerprint(sourceKey, rawCues, sourceTrack);
+      if (gen !== navigateGen || vid !== currentVideoId || sourceKey !== sentenceTrackKey()) return;
+      sentenceRawTrack = { version: 1, sourceKey, fingerprint, sourceTrack, cues: structuredClone(rawCues) };
+      sentenceBenchmark?.trackLoaded(performance.now());
+    }
     // Fresh YT only — skip chrome.storage + disk merge (after wipe / hard reset).
     if (opts.skipCache) {
       if (gen !== navigateGen || currentVideoId !== vid) return;
@@ -405,12 +439,8 @@
     const merged = mergeCache(normalized, effectiveCache, meta);
     // Owned/import script wins: mergeCache keeps file timeline and does not
     // append unmatched YT cues (score-based pick used to prefer polluted merges).
-    if (meta.owned && cached.some(isOwnedCue)) {
-      cues = merged.length ? merged : cuesFromSavedScript(cached);
-      captionsInfo = `${info} · owned script`;
-    } else {
-      cues = merged;
-    }
+    cues = merged;
+    if (meta.owned) captionsInfo = `${info} · owned script`;
     applyYtSecondaryFill(opts);
     listDirty = true;
     // T2: enrich in parallel with playhead-align; cap the wait so cold-bridge
@@ -703,6 +733,33 @@
       publishSidePanelState({ forceList: true });
       return { ok: true, videoId: currentVideoId, count: cues.length };
     }
+    if (cmd === "set_caption_mode") {
+      await loadSentenceState();
+      cancelSentencePrefetch();
+      refreshSentenceProjection(true);
+      captionMode = msg.mode === "enhanced" && sentenceProjection && sentenceEnhancementEnabled() ? "enhanced" : "original";
+      await syncToPlayhead();
+      publishSidePanelState({ forceList: true });
+      void enrichSentenceGroups();
+      void triggerGeminiTranslationIfNeeded();
+      return { ok: true, captionMode };
+    }
+    if (cmd === "undo_sentence") {
+      cancelSentencePrefetch();
+      refreshSentenceProjection();
+      const unit = enhancedCues.find(c => c.id === msg.id);
+      if (!unit) return { ok: false, error: "Sentence changed; refresh before undo" };
+      for (const ref of unit.sourceRefs) sentenceUndoIds.add(ref.cueId);
+      for (const ref of unit.sourceRefs) {
+        const original = cues.find(c => c.id === ref.cueId);
+        if (original) sentenceUndoRevisions[original.id] = sentenceCueRevision(original);
+      }
+      refreshSentenceProjection(true);
+      await saveSentenceState();
+      await syncToPlayhead();
+      publishSidePanelState({ forceList: true });
+      return { ok: true };
+    }
     if (cmd === "reload") {
       toast("Đang tải caption…");
       if (!currentVideoId) {
@@ -740,6 +797,80 @@
     if (cmd === "export") {
       exportTxt();
       return { ok: true };
+    }
+    if (cmd === "export_json") {
+      const gen = navigateGen, key = sentenceTrackKey();
+      await loadSentenceState();
+      if (gen !== navigateGen || key !== sentenceTrackKey()) return { ok: false, error: "Video changed; export again" };
+      const backup = sentenceBackupSnapshot();
+      downloadCaptionFile(JSON.stringify(backup, null, 2), `yt-caption-${currentVideoId || "session"}.json`, "application/json;charset=utf-8");
+      toast("Đã xuất backup JSON");
+      return { ok: true };
+    }
+    if (cmd === "export_benchmark") {
+      if (!sentenceBenchmark) return { ok: false, error: "Số đo chưa khả dụng; tải lại video YouTube" };
+      const benchmark = sentenceBenchmark.snapshot({ videoId: currentVideoId, sourceKey: sentenceTrackKey(),
+        fingerprint: sentenceRawTrack?.sourceKey === sentenceTrackKey() ? sentenceRawTrack.fingerprint || null : null,
+        network: navigator.connection?.effectiveType || null });
+      downloadCaptionFile(JSON.stringify(benchmark, null, 2), `yt-caption-${currentVideoId}-benchmark.json`, "application/json;charset=utf-8");
+      return { ok: true };
+    }
+    if (cmd === "restore_sentence_backup" || cmd === "restore_previous_backup") {
+      if (sentenceRestorePending) return { ok: false, error: "Restore already in progress" };
+      const gen = navigateGen, key = sentenceTrackKey();
+      sentenceRestorePending = true;
+      return withTranscriptWrite(async () => {
+        try {
+          if (gen !== navigateGen || key !== sentenceTrackKey()) return { ok: false, error: "Video changed; restore again" };
+          await loadSentenceState();
+          const recoveryKey = `sentenceRecovery:v1:${key}`;
+          const backup = cmd === "restore_previous_backup"
+            ? (await chrome.storage.local.get(recoveryKey))[recoveryKey] : msg.backup;
+          if (gen !== navigateGen || key !== sentenceTrackKey()) return { ok: false, error: "Video changed; restore again" };
+          validateSentenceBackup(backup);
+          const restored = structuredClone(backup);
+          // Original token arrays are disposable too; legacy offsets may be code points.
+          for (const cue of restored.cues) {
+            if (Object.hasOwn(cue, "tokens") && !originalTokensMatch(cue.source, cue.tokens)) cue.tokens = [];
+          }
+          const diskMeta = await loadDiskMeta(currentVideoId);
+          if (gen !== navigateGen || key !== sentenceTrackKey()) return { ok: false, error: "Video changed; restore again" };
+          const recovery = sentenceBackupSnapshot();
+          // Restore gets a new revision; the write queue orders older local saves.
+          restored.transcriptMeta.rev = Math.max(Number(transcriptMeta.rev) || 0,
+            Number(restored.transcriptMeta.rev) || 0, Number(diskMeta?.rev) || 0) + 1;
+          if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+          // The worker serializes the global saved map with stars from every tab.
+          const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", op: "restore_video",
+            videoId: currentVideoId, sourceKey: key, entries: restored.savedSentences, patch: { [recoveryKey]: recovery,
+            [`transcript:${tabPrefix()}${currentVideoId}`]: restored.cues,
+            [metaStorageKey(currentVideoId)]: restored.transcriptMeta,
+            [sentenceStateStorageKey()]: restored.enhancement,
+            [`tokens:${tabPrefix()}${currentVideoId}`]: Object.fromEntries(restored.cues.map(c => [c.id, c.tokens || []])) } });
+          if (!result?.ok) throw new Error(result?.error || "Backup storage failed");
+          if (gen !== navigateGen || key !== sentenceTrackKey()) return { ok: false, error: "Restored previous video; reopen it to view" };
+          cancelSentencePrefetch();
+          navigateGen++;
+          cues = restored.cues;
+          transcriptMeta = restored.transcriptMeta;
+          savedCues = result.savedCues;
+          captionMode = "original";
+          sentenceSourceKey = key;
+          sentenceUndoRevisions = restored.enhancement.undoRevisions || {};
+          sentenceTranslations = restored.enhancement.translations || {};
+          sentenceTokens = restored.enhancement.tokens || {};
+          sentenceRawTrack = restored.enhancement.rawTrack || null;
+          sentenceStateLoadedKey = sentenceStateStorageKey();
+          sentenceStateLoadedGen = navigateGen;
+          sentenceStateLoad = Promise.resolve();
+          listDirty = true;
+          refreshSentenceProjection(true);
+          await saveTranscriptToDisk(cues);
+          await syncToPlayhead();
+          publishSidePanelState({ forceList: true });
+          return { ok: true, count: cues.length, recoveryAvailable: true };
+        } finally { sentenceRestorePending = false; }
+      });
     }
     if (cmd === "play") {
       void seekToTime(Number(msg.mediaTime));
@@ -807,7 +938,9 @@
       return { ok: true };
     }
     if (cmd === "toggle_star_cue") {
-      await toggleStarCue(msg.id);
+      refreshSentenceProjection();
+      const sentence = enhancedCues.find(c => c.id === msg.id);
+      await toggleStarCue(sentence || msg.id);
       return { ok: true, starred: isCueStarred(msg.id), savedCues: Object.values(savedCues || {}) };
     }
     if (cmd === "trigger_gemini_translate") {
@@ -983,7 +1116,7 @@
     }
     await chrome.storage.local.set({ userVocab: { ...userVocab } });
     listDirty = true;
-    const active = cues.find((c) => c.id === activeCueId);
+    const active = getActiveDisplayCue();
     if (active) updateBar(active);
     publishSidePanelState();
   }
@@ -1029,7 +1162,8 @@
   }
 
   function isCueStarred(cueOrId) {
-    const id = typeof cueOrId === "object" && cueOrId ? cueOrId.id : String(cueOrId || "");
+    const cue = typeof cueOrId === "object" && cueOrId ? cueOrId : enhancedCues.find(c => c.id === cueOrId);
+    const id = cue?.savedCueId || cue?.id || String(cueOrId || "");
     if (!id) return false;
     return !!savedCues[id];
   }
@@ -1038,19 +1172,15 @@
     let id = "";
     let cueObj = null;
     if (typeof cueOrId === "object" && cueOrId) {
-      id = cueOrId.id;
       cueObj = cueOrId;
     } else {
       id = String(cueOrId || "");
-      cueObj = cues.find((c) => c.id === id) || null;
+      cueObj = cues.find((c) => c.id === id) || enhancedCues.find(c => c.id === id) || null;
     }
-    if (!id) return false;
+    id = cueObj?.savedCueId || cueObj?.id || id;
+    if (!id || (!cueObj && !savedCues[id])) return false;
 
-    if (savedCues[id]) {
-      delete savedCues[id];
-      toast("Đã bỏ lưu câu");
-    } else {
-      savedCues[id] = {
+    const snapshot = cueObj ? {
         id: id,
         source: cueObj?.source || "",
         vi: cueObj?.vi || "",
@@ -1059,11 +1189,14 @@
         end_media_time: Number(cueObj?.end_media_time) || 0,
         videoId: currentVideoId || "",
         savedAt: Date.now(),
-      };
-      toast("Đã lưu câu vào mục Đã lưu ★");
-    }
-    await chrome.storage.local.set({ savedCues: { ...savedCues } });
-    const active = cues.find((c) => c.id === activeCueId);
+        ...(cueObj?.enhanced ? { provenance: cueObj.provenance, enhanced: true } : {}),
+      } : null;
+    const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", id,
+      op: snapshot ? "toggle" : "delete", cue: snapshot });
+    if (!result?.ok) throw new Error(result?.error || "Saved state unavailable");
+    savedCues = result.savedCues;
+    toast(savedCues[id] ? "Đã lưu câu vào mục Đã lưu ★" : "Đã bỏ lưu câu");
+    const active = getActiveDisplayCue();
     if (active) updateBar(active);
     publishSidePanelState();
     return !!savedCues[id];
@@ -1265,46 +1398,103 @@
     }
   }
 
-  async function triggerGeminiTranslationIfNeeded(force = false) {
-    if (translatingWithGemini) return;
-    if (!globalThis.HardsubGeminiTranslate) return;
-    const apiKey = await globalThis.HardsubGeminiTranslate.getStoredApiKey();
-    if (!apiKey) {
-      if (force) toast("Chưa cấu hình Gemini API Key. Hãy nhập key trong mục Cài đặt (⚙) của Side Panel.");
-      return;
-    }
-
-    const needsVi = cues.filter(
-      (c) => c && c.source && (force || !String(c.vi || "").trim()) && !c.mt_locked
-    );
-    if (!needsVi.length) {
-      if (force) toast("Tất cả các câu đều đã có bản dịch.");
-      return;
-    }
-
-    translatingWithGemini = true;
-    toast(`Đang dịch Gemini AI (0/${needsVi.length} câu)…`);
-    try {
-      await globalThis.HardsubGeminiTranslate.translateCues(
-        cues,
-        apiKey,
-        ({ done, total }) => {
-          const active = cues.find((c) => c.id === activeCueId);
-          if (active) updateBar(active);
-          toast(`Đang dịch Gemini AI (${done}/${total} câu)…`);
-          publishSidePanelPartial({ cues, activeCueId });
-        }
-      );
-      toast(`Đã dịch xong ${needsVi.length} câu bằng Gemini AI!`);
-      listDirty = true;
-      renderList(true);
+  let sentencePublishTimer = null, sentencePublishGen = 0;
+  function scheduleTranslationPaint(gen) {
+    sentencePublishGen = gen;
+    listDirty = true;
+    updateBar(getActiveDisplayCue());
+    if (sentencePublishTimer) return;
+    sentencePublishTimer = setTimeout(() => {
+      sentencePublishTimer = null;
+      if (sentencePublishGen !== navigateGen) return;
       publishSidePanelState({ forceList: true });
-      scheduleSaveTranscript();
+      void saveSentenceState();
+    }, 100);
+  }
+
+  async function triggerGeminiTranslationIfNeeded(force = false) {
+    if (!force && settings.sentence_translation_prefetch_enabled === false) return;
+    if (force && translatingWithGemini) return;
+    const translator = globalThis.HardsubGeminiTranslate;
+    if (!translator) return;
+    const gen = navigateGen, vid = currentVideoId, input = cues, trace = sentenceBenchmark, mode = captionMode;
+    const isCurrent = () => gen === navigateGen && vid === currentVideoId && input === cues && mode === captionMode &&
+      (force || settings.sentence_translation_prefetch_enabled !== false);
+    await loadSentenceState();
+    if (!isCurrent()) return;
+    const apiKey = await translator.getStoredApiKey();
+    if (!isCurrent()) return;
+    if (!apiKey) {
+      if (force) toast("Chưa cấu hình Gemini API Key. Mở Cài đặt của Side Panel để nhập key.");
+      return;
+    }
+    const rate = Number(findVideo()?.playbackRate) || 1;
+    const ahead = Math.min(60, Math.max(20, 30 * rate));
+    const inWindow = c => force || (c.end_media_time >= currentMediaTime && c.start_media_time <= currentMediaTime + ahead);
+    if (force) translatingWithGemini = true;
+    try {
+      let report;
+      if (captionMode === "enhanced" && currentSource === "youtube") {
+        refreshSentenceProjection();
+        const projection = sentenceProjection;
+        if (!projection) return;
+        const wanted = new Set(enhancedCues.filter(inWindow).flatMap(c => c.groupIds));
+        const languages = [settings.barShowVi !== false ? "vi" : "", settings.barShowEn !== false ? "en" : ""].filter(Boolean);
+        const jobs = [];
+        for (const group of projection.groups) {
+          if (group.protected || !wanted.has(group.id)) continue;
+          for (const language of languages) {
+            if (!force && sentenceTranslations[group.id]?.revision === group.revision && sentenceTranslations[group.id]?.[language]) continue;
+            if (!force && sentenceTranslations[group.id]?.revision === group.revision &&
+                (sentenceTranslations[group.id]?.retryAt?.[language] || 0) > Date.now()) continue;
+            jobs.push({ id: group.id, revision: group.revision, source: group.text, sourceKey: projection.sourceKey,
+              algorithmVersion: projection.version, context: group.context, language });
+          }
+        }
+        trace?.translationsQueued?.(jobs, force, mode, performance.now());
+        report = await translator.translateGroups(jobs, { apiKey, force, priority: force ? 0 : 10, scope: force ? "manual" : "automatic",
+          onResult: result => {
+            trace?.request(result.request, performance.now());
+            if (!isCurrent() || !sentenceEnhancementEnabled() || result.status === "cancelled") {
+              trace?.translationResult?.(result, false, mode, performance.now());
+              return;
+            }
+            refreshSentenceProjection(true);
+            const current = sentenceProjection?.groups.find(g => g.id === result.id && g.revision === result.revision && !g.protected);
+            if (!current) {
+              trace?.translationResult?.(result, false, mode, performance.now());
+              return;
+            }
+            const previous = sentenceTranslations[current.id]?.revision === current.revision ? sentenceTranslations[current.id] : {};
+            sentenceTranslations[current.id] = { ...previous, revision: current.revision,
+              ...(result.status === "ready" ? { [result.language]: result.text, model: result.model } : {}),
+              states: { ...previous.states, [result.language]: result.status },
+              retryAt: { ...previous.retryAt, [result.language]: result.status === "error" ? Date.now() + 30000 : 0 } };
+            refreshSentenceProjection(true);
+            trace?.translationResult?.(result, true, mode, performance.now());
+            scheduleTranslationPaint(gen);
+          },
+          onProgress: p => { if (force && isCurrent()) toast(`Dịch câu: ${p.done}/${p.total} bản dịch · lỗi ${p.failed}`); },
+        });
+      } else {
+        report = await translator.translateCues(input.filter(inWindow), apiKey, p => {
+          if (!isCurrent()) return;
+          scheduleTranslationPaint(gen);
+          if (force) toast(`Dịch: ${p.done}/${p.total} · lỗi ${p.failed}`);
+        }, { force, priority: force ? 0 : 10, scope: force ? "manual" : "automatic", sourceKey: `${currentSource}:${vid}:ja`, isCurrent,
+          onQueued: jobs => trace?.translationsQueued?.(jobs, force, mode, performance.now()),
+          onResult: (result, accepted) => {
+            trace?.request(result.request, performance.now());
+            trace?.translationResult?.(result, accepted, mode, performance.now());
+          } });
+        if (isCurrent() && report.applied) scheduleSaveTranscript();
+      }
+      for (const result of report.results || []) trace?.request(result.request, performance.now());
+      if (force && isCurrent()) toast(`Đã nhận ${report.completed}/${report.total} bản dịch hợp lệ · lỗi ${report.failed}`);
     } catch (err) {
-      console.warn("[content] Gemini translation error:", err);
-      toast(`Lỗi dịch Gemini AI: ${err.message || err}`);
+      if (isCurrent() && force) toast(`Lỗi dịch: ${err.message || "Không nhận được bản dịch hợp lệ"}`);
     } finally {
-      translatingWithGemini = false;
+      if (force) translatingWithGemini = false;
     }
   }
 
@@ -1315,29 +1505,24 @@
       .trim();
   }
 
+  function cueEndTime(value, start) {
+    const end = typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : NaN;
+    return Number.isFinite(end) && end >= start ? end : start + 2;
+  }
+
   function flattenCached(raw) {
     if (!Array.isArray(raw)) return [];
     const out = [];
     for (const item of raw) {
       if (!item || typeof item !== "object") continue;
       if (Array.isArray(item.segments)) {
-        for (const seg of item.segments) {
-          if (!seg) continue;
-          out.push({
-            start_media_time: Number(seg.start_media_time) || 0,
-            end_media_time: Number(seg.end_media_time) || Number(seg.start_media_time) || 0,
-            source: seg.source || "",
-            en: seg.en || "",
-            vi: seg.vi || "",
-            tokens: seg.tokens || [],
-            translated: !!(seg.translated || (seg.vi && String(seg.vi).trim())),
-          });
-        }
+        for (const cue of flattenCached(item.segments)) out.push(cue);
         continue;
       }
-      out.push({
-        start_media_time: Number(item.start_media_time ?? item.start ?? item.media_time) || 0,
-        end_media_time: Number(item.end_media_time ?? item.end ?? item.start_media_time) || 0,
+      const start = Number(item.start_media_time ?? item.start ?? item.media_time) || 0;
+      const cue = {
+        start_media_time: start,
+        end_media_time: cueEndTime(item.end_media_time ?? item.end, start),
         source: item.source || item.text || "",
         en: item.en || "",
         vi: item.vi || "",
@@ -1347,9 +1532,30 @@
         text_source: item.text_source || "yt",
         mt_locked: !!item.mt_locked,
         translation_source: item.translation_source || "",
-      });
+      };
+      out.push({ ...cue, ...cachedSourceMetadata({ ...cue, rawSource: item.rawSource, normalization: item.normalization }) });
     }
     return out;
+  }
+
+  /** Saved mapping is disposable: retain it only for this exact unedited source. */
+  function cachedSourceMetadata(cue) {
+    const raw = cue.rawSource, mapping = cue.normalization;
+    if (isOwnedCue(cue) || cue.text_source === "import" || typeof raw?.text !== "string" ||
+        !Number.isFinite(raw.start) || !Number.isFinite(raw.end) || raw.start < 0 || raw.end < raw.start ||
+        raw.start !== cue.start_media_time || raw.end !== cue.end_media_time ||
+        !["json3-text", "loader-text"].includes(raw.sourceDomain) || !Number.isInteger(raw.trackIndex) || raw.trackIndex < 0 ||
+        !Array.isArray(raw.segmentAnchors) || !raw.segmentAnchors.every(a => a &&
+          Number.isInteger(a.charStart) && Number.isInteger(a.charEnd) && a.charStart >= 0 &&
+          a.charEnd >= a.charStart && a.charEnd <= raw.text.length && Number.isFinite(a.time) &&
+          a.time >= raw.start && a.time <= raw.end && typeof a.speakerChange === "boolean") ||
+        mapping?.text !== cue.source || mapping.offsetUnit !== "utf16" || mapping.sourceDomain !== raw.sourceDomain ||
+        !Array.isArray(mapping.spans) || typeof Normalize.normalizeTextWithMapping !== "function") return {};
+    const expected = Normalize.normalizeTextWithMapping(raw.text);
+    if (expected.text !== cue.source || expected.spans.length !== mapping.spans.length ||
+        !expected.spans.every((span, i) => ["charStart", "charEnd", "rawStart", "rawEnd"]
+          .every(key => span[key] === mapping.spans[i]?.[key]))) return {};
+    return { rawSource: raw, normalization: mapping };
   }
 
   function cacheCueScore(c) {
@@ -1434,9 +1640,8 @@
 
   async function saveTranscriptMeta() {
     if (!currentVideoId) return;
-    const key = metaStorageKey(currentVideoId);
-    await chrome.storage.local.set({
-      [key]: {
+    const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", op: "save_meta", videoId: currentVideoId,
+      meta: {
         owned: !!transcriptMeta.owned,
         rev: Number(transcriptMeta.rev) || 0,
         deviceId: String(transcriptMeta.deviceId || ""),
@@ -1444,6 +1649,8 @@
         tombstones: Array.from(new Set(transcriptMeta.tombstones || [])),
       },
     });
+    if (!result?.ok) throw new Error(result?.error || "Script metadata save failed");
+    if (result.skipped) toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp");
   }
 
   async function markScriptOwned() {
@@ -1503,6 +1710,22 @@
 
   /** Sole gate every load path goes through (navigate / restore / YT merge). */
   async function loadCachedCues(videoId) {
+    const cached = await loadLegacyCachedCues(videoId);
+    try {
+      const key = sentenceStateStorageKey(videoId);
+      const state = (await chrome.storage.local.get(key))[key];
+      if (state?.version !== 1 || state.sourceKey !== sentenceTrackKey(videoId) || !Array.isArray(state.sourceCues)) return cached;
+      const rawById = new Map(state.sourceCues.filter(c => c && typeof c.id === "string").map(c => [c.id, c]));
+      return cached.map(c => {
+        const raw = rawById.get(c.id);
+        if (!raw || raw.source !== c.source || raw.start_media_time !== c.start_media_time ||
+            raw.end_media_time !== c.end_media_time) return c;
+        return { ...c, ...cachedSourceMetadata({ ...c, rawSource: raw.rawSource, normalization: raw.normalization }) };
+      });
+    } catch (_) { return cached; }
+  }
+
+  async function loadLegacyCachedCues(videoId) {
     if (!videoId) return [];
     const key = `transcript:${tabPrefix()}${videoId}`;
     const mKey = metaStorageKey(videoId);
@@ -1550,9 +1773,18 @@
     return hydrateTokens(videoId, disk.length ? disk : local);
   }
 
+  function originalTokensMatch(source, tokens) {
+    return Array.isArray(tokens) && tokens.length > 0 &&
+      tokens.every(t => t && typeof t === "object" && typeof t.surface === "string") &&
+      tokens.map(t => t.surface).join("") === source;
+  }
+
   /** cues.json / chrome.storage carry no tokens — refill from tokens cache, bridge only on miss. */
   async function hydrateTokens(videoId, list) {
     if (!list.length) return list;
+    for (const c of list) {
+      if (c.tokens !== undefined && !originalTokensMatch(c.source, c.tokens)) c.tokens = [];
+    }
     // Fill only cues still missing tokens (partial in-memory tokens must not skip the rest).
     if (list.every((c) => !String(c.source || "").trim() || c.tokens?.length)) return list;
     const cacheKey = `tokens:${tabPrefix()}${videoId}`;
@@ -1561,7 +1793,7 @@
       for (const c of list) {
         if (c.tokens?.length) continue;
         const t = map[c.id];
-        if (Array.isArray(t) && t.length) c.tokens = t;
+        if (originalTokensMatch(c.source, t)) c.tokens = t;
       }
     };
     try {
@@ -1637,7 +1869,7 @@
     if (!currentVideoId) return;
     // Empty payload is an intentional wipe only when the script is owned (delete-all).
     if (!payload?.length && !transcriptMeta.owned) return;
-    const videoId = currentVideoId;
+    const videoId = currentVideoId, gen = navigateGen;
     try {
       const res = await bridgeFetch("/scripts/save", {
         method: "POST",
@@ -1650,6 +1882,13 @@
           rev: Number(transcriptMeta.rev) || 0,
         },
       });
+      if (!res?.ok) {
+        if (videoId === currentVideoId && gen === navigateGen &&
+            (res?.status === 409 || res?.skipped === "stale_revision")) {
+          toast("Bản lưu mới hơn đã có. Xuất backup JSON trước khi Reload để giữ chỉnh sửa ở tab này.");
+        }
+        return;
+      }
       // Bridge answers with the Lamport rev it just wrote — adopt it, never guess.
       const rev = Number(res?.data?.rev) || 0;
       if (rev && videoId === currentVideoId && rev > (Number(transcriptMeta.rev) || 0)) {
@@ -1667,52 +1906,66 @@
     }
   }
 
+  let transcriptWritePending = Promise.resolve();
+  function withTranscriptWrite(write) {
+    const result = transcriptWritePending.then(write);
+    transcriptWritePending = result.catch(() => {});
+    return result;
+  }
   async function saveTranscript(opts = {}) {
     if (!currentVideoId) return;
-    const force = !!opts.force;
-    const key = `transcript:${tabPrefix()}${currentVideoId}`;
-    // Persist the full cue list — display limits (settings.maxSentences) apply at
-    // render only, never here (a truncated save would drop owned cues on reload).
-    const payload = cues.map((c) => ({
-      id: c.id,
-      start_media_time: c.start_media_time,
-      end_media_time: c.end_media_time,
-      source: c.source,
-      en: c.en,
-      vi: c.vi,
-      tokens: c.tokens || [],
-      translated: !!c.translated,
-      text_source: c.text_source || "yt",
-      mt_locked: !!c.mt_locked,
-      translation_source: c.translation_source || "",
-    }));
-    // Guard: an in-memory list older than what is cached must not roll it back.
-    // force=true for intentional clears / replace so a wipe is never blocked.
-    const rev = Number(transcriptMeta.rev) || 0;
-    try {
-      if (!force) {
-        const mKey = metaStorageKey(currentVideoId);
-        const existingMeta = (await chrome.storage.local.get([mKey]))[mKey];
-        if (rev < (Number(existingMeta?.rev) || 0)) return;
-      }
-    } catch (_) {}
-    // chrome.storage copy stays slim: tokens live in tokens.json (hydrateTokens refills).
-    await chrome.storage.local.set({
-      [key]: payload.map(({ tokens, ...rest }) => rest),
-    });
-    await saveTranscriptMeta();
-    if (!force) {
+    const gen = navigateGen, videoId = currentVideoId, input = cues;
+    const current = () => gen === navigateGen && videoId === currentVideoId && input === cues;
+    return withTranscriptWrite(async () => {
+      if (!current()) return;
+      const force = !!opts.force;
+      // Persist the full cue list — display limits (settings.maxSentences) apply at
+      // render only, never here (a truncated save would drop owned cues on reload).
+      const payload = cues.map((c) => ({
+        id: c.id,
+        start_media_time: c.start_media_time,
+        end_media_time: c.end_media_time,
+        source: c.source,
+        en: c.en,
+        vi: c.vi,
+        tokens: c.tokens || [],
+        translated: !!c.translated,
+        text_source: c.text_source || "yt",
+        mt_locked: !!c.mt_locked,
+        translation_source: c.translation_source || "",
+      }));
+      // Guard: an in-memory list older than what is cached must not roll it back.
+      // force=true for intentional clears / replace so a wipe is never blocked.
+      const rev = Number(transcriptMeta.rev) || 0;
       try {
-        const diskMeta = await loadDiskMeta(currentVideoId);
-        if (rev < (Number(diskMeta?.rev) || 0)) return;
+        if (!force) {
+          const mKey = metaStorageKey(currentVideoId);
+          const existingMeta = (await chrome.storage.local.get([mKey]))[mKey];
+          if (!current()) return;
+          if (rev < (Number(existingMeta?.rev) || 0)) return;
+        }
       } catch (_) {}
-    }
-    // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
-    if (opts.awaitDisk) {
-      await saveTranscriptToDisk(payload);
-    } else {
-      void saveTranscriptToDisk(payload);
-    }
+      if (!current()) return;
+      // Compare revision inside the worker queue so sibling tabs cannot roll back restore.
+      const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", op: "save_script", videoId,
+        meta: { owned: !!transcriptMeta.owned, rev, deviceId: String(transcriptMeta.deviceId || ""),
+          updatedAt: new Date().toISOString(), tombstones: Array.from(new Set(transcriptMeta.tombstones || [])) },
+        cues: payload.map(({ tokens, ...rest }) => rest) });
+      if (!result?.ok) throw new Error(result?.error || "Script save failed");
+      if (result.skipped) { toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp"); return; }
+      if (!current()) return;
+      await saveSentenceState();
+      if (!current()) return;
+      if (!force) {
+        try {
+          const diskMeta = await loadDiskMeta(currentVideoId);
+          if (!current()) return;
+          if (rev < (Number(diskMeta?.rev) || 0)) return;
+        } catch (_) {}
+      }
+      // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
+      if (current()) await saveTranscriptToDisk(payload);
+    });
   }
 
   function cueId(start, source) {
@@ -1723,16 +1976,17 @@
     return `c-new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  function findCachedMatch(cacheList, start, source) {
+  function findCachedMatch(cacheList, start, source, usedIds = new Set()) {
+    // ponytail: linear scan per cue is fine for a video; index time windows if long tracks become costly.
     const compact = compactSource(source);
-    let hit = null;
+    let hit = null, nearest = Infinity;
     for (const prev of cacheList || []) {
       const dt = Math.abs((Number(prev.start_media_time) || 0) - start);
-      if (dt > CACHE_MATCH_TOL) continue;
+      if (dt > CACHE_MATCH_TOL || dt >= nearest || usedIds.has(prev.id)) continue;
       const prevSrc = String(prev.source || "");
       if (prevSrc === source || compactSource(prevSrc) === compact) {
         hit = prev;
-        break;
+        nearest = dt;
       }
     }
     return hit;
@@ -1749,12 +2003,12 @@
       cacheList = [];
     }
     const stones = new Set(meta?.tombstones || []);
-    const owned = !cacheList.length ? false : (!!meta?.owned || cacheList.some(isOwnedCue));
+    const owned = !!meta?.owned || cacheList.some(isOwnedCue);
 
-    if (owned && cacheList.length) {
+    if (owned) {
       // Owned/import timeline is authoritative — keep script start/end exactly.
       // Do not append unmatched YT cues (Reload must not pollute import replace).
-      const out = cuesFromSavedScript(cacheList);
+      const out = cuesFromSavedScript(cacheList, meta);
       for (const raw of ytCues || []) {
         const start = Number(raw.start) || 0;
         const source = String(raw.text || "").trim();
@@ -1774,12 +2028,12 @@
             continue;
           }
           // Fill missing MT from cache hit only if owned cue lacks it.
-          if (!prev.translated) {
+          if (!prev.translated && !prev.mt_locked && !["user", "import"].includes(prev.translation_source)) {
             const hit = findCachedMatch(cacheList, start, source);
-            if (hit && (hit.vi || hit.en)) {
+            if (hit && (hit.vi || hit.en) && compactSource(hit.source) === compactSource(prev.source)) {
               prev.en = hit.en || prev.en || "";
               prev.vi = hit.vi || prev.vi || "";
-              prev.tokens = hit.tokens || prev.tokens || [];
+              if (originalTokensMatch(prev.source, hit.tokens)) prev.tokens = hit.tokens;
               prev.translated = !!(prev.vi || prev.en);
               if (hit.mt_locked) {
                 prev.mt_locked = true;
@@ -1796,30 +2050,36 @@
     }
 
     // Fresh / non-owned: YT timeline + MT from cache; honor tombstones.
+    const usedIds = new Set();
     return (ytCues || [])
-      .map((c) => {
+      .map((c, index) => {
         const start = Number(c.start) || 0;
-        const end = Number(c.end) || start + 2;
+        const end = cueEndTime(c.end, start);
         const source = String(c.text || "").trim();
         const tKey = `${start.toFixed(2)}|${compactSource(source)}`;
         if (stones.has(tKey)) return null;
-        const hit = findCachedMatch(cacheList, start, source);
+        const hit = findCachedMatch(cacheList, start, source, usedIds);
+        let id = (hit && hit.id) || cueId(start, source);
+        while (usedIds.has(id)) id += `:yt:${index}`;
+        usedIds.add(id);
         const hasVi = !!(hit && String(hit.vi || "").trim());
         const hasEn = !!(hit && String(hit.en || "").trim());
         const hasMt = hasVi || hasEn;
         const translated = !!(hit && (hit.translated || hasMt));
         return {
-          id: (hit && hit.id) || cueId(start, source),
+          id,
           start_media_time: hit && isOwnedCue(hit) ? Number(hit.start_media_time) || start : start,
           end_media_time: hit && isOwnedCue(hit) ? Number(hit.end_media_time) || end : end,
           source: hit && isOwnedCue(hit) ? String(hit.source || source) : source,
           en: (hit && hit.en) || "",
           vi: (hit && hit.vi) || "",
-          tokens: (hit && hit.tokens) || [],
+          tokens: originalTokensMatch(source, hit?.tokens) ? hit.tokens : [],
           translated,
           text_source: hit && isOwnedCue(hit) ? hit.text_source : "yt",
           mt_locked: !!(hit && hit.mt_locked),
           translation_source: (hit && hit.translation_source) || "",
+          // Metadata belongs only to this exact fresh source, never to an edited hit.
+          ...(c.rawSource && !(hit && isOwnedCue(hit)) ? { rawSource: c.rawSource, normalization: c.normalization } : {}),
         };
       })
       .filter(Boolean)
@@ -1827,12 +2087,13 @@
   }
 
   /** Build overlay cues entirely from a saved disk/chrome script (no YT timedtext). */
-  function cuesFromSavedScript(cached) {
+  function cuesFromSavedScript(cached, meta = transcriptMeta) {
+    const stones = new Set(meta?.tombstones || []);
     return (cached || [])
+      .filter(c => !stones.has(tombstoneKey(c)))
       .map((c) => {
         const start = Number(c.start_media_time) || 0;
-        const endRaw = Number(c.end_media_time);
-        const end = Number.isFinite(endRaw) && endRaw > start ? endRaw : start + 2;
+        const end = cueEndTime(c.end_media_time, start);
         const source = String(c.source || "");
         const hasMt = !!(String(c.vi || "").trim() || String(c.en || "").trim());
         const translated = !!(c.translated && hasMt);
@@ -1843,11 +2104,12 @@
           source,
           en: hasMt ? c.en || "" : "",
           vi: hasMt ? c.vi || "" : "",
-          tokens: c.tokens || [],
+          tokens: originalTokensMatch(source, c.tokens) ? c.tokens : [],
           translated,
           text_source: c.text_source || "yt",
           mt_locked: !!c.mt_locked,
           translation_source: c.translation_source || "",
+          ...cachedSourceMetadata(c),
         };
       })
       .sort((a, b) => a.start_media_time - b.start_media_time);
@@ -1875,12 +2137,15 @@
     transcriptMeta = meta;
     if (cached.some(isOwnedCue)) transcriptMeta.owned = true;
     let fromScript = cuesFromSavedScript(cached);
-    if (!fromScript.length) return false;
+    if (!fromScript.length && !meta.owned) return false;
     // Keep original authentic timing on restore.
     captionsStatus = "ok";
     captionsInfo = `${reason} · ${fromScript.length} cues`;
     cues = fromScript;
     listDirty = true;
+    // Restore revision-bound Undo/cache before publishing or auto-saving the script.
+    await loadSentenceState();
+    if (gen !== navigateGen || currentVideoId !== vid) return false;
     // T2: enrich alongside playhead-align; first publish carries tokens if warm.
     const enrichP = enrichTokensAfterImport();
     await Promise.race([enrichP, sleep(200)]);
@@ -2851,7 +3116,7 @@
     if (!surface && !lemma) return;
     if (isPunctuationSurface(surface) && !lemma) return;
     dictEl.dataset.dictSource = "bar";
-    const cue = cues.find((c) => c.id === activeCueId);
+    const cue = getActiveDisplayCue();
     const ctx = {
       sentenceVi: cue?.vi || "",
       sentenceEn: cue?.en || "",
@@ -3073,10 +3338,13 @@
       `${sourceLabel()} · cached ${st.cached}/${st.n}${bridgeReady ? "" : " · bridge?"}`;
     const seq = ++spPublishSeq;
     const forceCues = !!extra.forceList || listDirty;
+    if (forceCues) refreshSentenceProjection(true);
     const payload = {
       videoId: currentVideoId,
       status,
       activeCueId,
+      captionMode,
+      enhancementAvailable: sentenceEnhancementEnabled(),
       showOnVideo: !!settings.showOnVideo,
       showFurigana: !!settings.showFurigana,
       bridgeReady: !!bridgeReady,
@@ -3096,6 +3364,7 @@
       _session: spSessionId,
     };
     if (forceCues) {
+      payload.enhancedCues = enhancedCues;
       payload.cues = cues.map((c) => ({
         id: c.id,
         source: c.source,
@@ -3590,6 +3859,7 @@
       fromSw: true,
       enCues: sw?.enCues,
       viCues: sw?.viCues,
+      sourceTrack: sw?.sourceTrack,
     });
     const swLabel = (sw) =>
       swOk(sw)
@@ -3636,6 +3906,7 @@
         ...applyOpts,
         enCues: multi.enCues,
         viCues: multi.viCues,
+        sourceTrack: multi.sourceTrack,
       });
       if (stale()) return;
       return;
@@ -3766,7 +4037,7 @@
         await applyLoadedCues(
           multi.cues,
           `ja page · ${multi.cues.length} cues`,
-          applyOpts
+          { ...applyOpts, sourceTrack: multi.sourceTrack }
         );
         if (stale()) return;
         kickSecondaryFill({
@@ -3796,7 +4067,7 @@
         await applyLoadedCues(
           r.cues,
           `ja${r.asr ? " auto" : ""} · ${r.count || r.cues.length} cues`,
-          applyOpts
+          { ...applyOpts, sourceTrack: r.sourceTrack }
         );
         if (stale()) return;
         kickSecondaryFill(sw);
@@ -3990,7 +4261,7 @@
       updateCaptionStatusLine();
       publishSidePanelState({ forceList: true });
       // Re-render overlay furigana/JLPT immediately after tokenization.
-      updateBar(cues.find((c) => c.id === activeCueId) || cue);
+      updateBar(getActiveDisplayCue() || cue);
     }
     patchCueRow(idx);
   }
@@ -4019,7 +4290,7 @@
     await markScriptOwned();
     scheduleSaveTranscript();
     patchCueRow(idx);
-    updateBar(cues.find((c) => c.id === activeCueId) || cue);
+    updateBar(getActiveDisplayCue() || cue);
   }
 
   async function onViEdit(idx, text) {
@@ -4035,6 +4306,7 @@
       return;
     }
     cue.vi = next;
+    cue._txGen = (cue._txGen || 0) + 1;
     cue.text_source = "edit";
     const hasMt = !!(next || String(cue.en || "").trim());
     cue.translated = hasMt;
@@ -4045,7 +4317,7 @@
     await markScriptOwned();
     scheduleSaveTranscript();
     patchCueRow(idx);
-    updateBar(cues.find((c) => c.id === activeCueId) || cue);
+    updateBar(getActiveDisplayCue() || cue);
   }
 
   async function onTimelineEdit(idx, startRaw, endRaw) {
@@ -4064,7 +4336,7 @@
     await markScriptOwned();
     scheduleSaveTranscript();
     patchCueRow(idx);
-    updateBar(cues.find((c) => c.id === activeCueId) || null);
+    updateBar(getActiveDisplayCue() || null);
   }
 
   async function addCue({ afterId = "", atTime } = {}) {
@@ -4209,6 +4481,7 @@
     return [
       cue.id,
       cue.source || "",
+      JSON.stringify(cue.translationStates || {}),
       en,
       vi,
       tokKey,
@@ -4220,7 +4493,20 @@
     ].join("\0");
   }
 
+  function recordSentencePaint(bar, cue) {
+    const trace = sentenceBenchmark;
+    if (!trace || settings.barShowJa === false || !cue.source || !settings.showOnVideo || document.hidden) return;
+    requestAnimationFrame(() => {
+      if (trace !== sentenceBenchmark || document.hidden || settings.barShowJa === false || !settings.showOnVideo ||
+          !bar.isConnected || getComputedStyle(bar).display === "none") return;
+      if (getComputedStyle(bar).visibility === "hidden" || Number(getComputedStyle(bar).opacity) === 0 || settings.barTextOpacity === 0) return;
+      const rect = bar.getBoundingClientRect();
+      if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= window.innerHeight || rect.left >= window.innerWidth) return;
+      trace.paint(performance.now(), { width: rect.width, height: rect.height, top: rect.top, left: rect.left });
+    });
+  }
   function updateBar(cue) {
+    if (captionMode === "enhanced" && cue && !cue.enhanced) cue = findActiveCue(currentMediaTime);
     ensureUI();
     const bar = document.getElementById("hardsub-ocr-bar");
     if (!bar) return;
@@ -4246,6 +4532,7 @@
       applyBarStyle(bar);
       applyBarPosition();
       applyBarVisibility();
+      recordSentencePaint(bar, cue);
       return;
     }
     lastBarFingerprint = fp;
@@ -4261,6 +4548,8 @@
     const en = stripStubPrefix(cue.en);
     const viHtml = showVi && vi ? Vocab.renderBilingualHtml(vi, "vi", cue.tokens, settings) : "";
     const enHtml = showEn && en ? Vocab.renderBilingualHtml(en, "en", cue.tokens, settings) : "";
+    const translationFailure = cue.enhanced && [showVi && cue.translationStates?.vi === "error" ? "VI" : "",
+      showEn && cue.translationStates?.en === "error" ? "EN" : ""].filter(Boolean).join("/");
 
     bar.innerHTML = `
       <div class="hardsub-bridge-pill ${bridgeReady ? "ready" : "offline"}" title="${bridgeReady ? "Local Bridge: Connected" : "Local Bridge: Offline (Intl.Segmenter fallback)"}"></div>
@@ -4277,6 +4566,7 @@
         </div>
         ${viHtml ? `<div class="bar-vi">${viHtml}</div>` : ""}
         ${enHtml ? `<div class="bar-en">${enHtml}</div>` : ""}
+        ${translationFailure ? `<div role="status">${translationFailure} · Dịch lỗi, sẽ thử lại</div>` : ""}
       </div>
     `;
     const pill = bar.querySelector(".hardsub-bridge-pill");
@@ -4327,7 +4617,7 @@
       starBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        await toggleStarCue(cue.id);
+        await toggleStarCue(cue);
         const nowStarred = isCueStarred(cue.id);
         starBtn.classList.toggle("active", nowStarred);
         starBtn.textContent = nowStarred ? "★" : "☆";
@@ -4346,6 +4636,7 @@
     bindBarTokenDict(bar);
     applyBarPosition();
     applyBarVisibility();
+    recordSentencePaint(bar, cue);
   }
 
   /**
@@ -4354,7 +4645,159 @@
    */
   let sortedCuesCache = null;
   let lastCuesRef = null;
+  function cancelSentencePrefetch() {
+    void globalThis.HardsubGeminiTranslate?.cancelPending?.("automatic")?.catch(() => {});
+  }
+  function sentenceTrackKey(videoId = currentVideoId) {
+    return `${currentSource}:${videoId}:${settings.sourceLang || "ja"}`;
+  }
+  async function sentenceSourceFingerprint(sourceKey, rawCues, track = null) {
+    // Signed URLs and mutable translations are not source identity.
+    const source = rawCues.map(c => [c.start, c.end, c.text, c.rawText ?? null,
+      (c.segmentAnchors || []).map(a => [a.charStart, a.charEnd, a.time, !!a.speakerChange])]);
+    const identity = track ? [track.trackId ?? null, track.language ?? null, track.kind ?? null, track.format ?? null] : null;
+    const bytes = new TextEncoder().encode(JSON.stringify([sourceKey, identity, source]));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+  }
+  function sentenceStateStorageKey(videoId = currentVideoId) {
+    return `sentenceState:v1:${sentenceTrackKey(videoId)}`;
+  }
+  function sentenceCueRevision(cue) {
+    return JSON.stringify([cue.id, cue.source, cue.start_media_time, cue.end_media_time, cue.rawSource || null,
+      cue.text_source || "", !!cue.mt_locked, ["user", "import"].includes(cue.translation_source) ? cue.translation_source : ""]);
+  }
+  async function loadSentenceState() {
+    if (!currentVideoId || currentSource !== "youtube") return;
+    const key = sentenceStateStorageKey(), gen = navigateGen;
+    if (sentenceStateLoadedKey === key && sentenceStateLoadedGen === gen) return sentenceStateLoad;
+    refreshSentenceProjection(true);
+    sentenceStateLoadedKey = key;
+    sentenceStateLoadedGen = gen;
+    sentenceStateLoad = (async () => {
+      try {
+        const state = (await chrome.storage.local.get(key))[key];
+        if (gen !== navigateGen || key !== sentenceStateStorageKey() || state?.version !== 1 ||
+            state.sourceKey !== sentenceTrackKey()) return;
+        sentenceUndoRevisions = state.undoRevisions && typeof state.undoRevisions === "object" ? state.undoRevisions : {};
+        sentenceTranslations = state.translations && typeof state.translations === "object" ? state.translations : {};
+        sentenceTokens = state.tokens && typeof state.tokens === "object" ? state.tokens : {};
+        if (sentenceRawTrack?.sourceKey !== sentenceTrackKey() && state.rawTrack?.sourceKey === sentenceTrackKey()) {
+          sentenceRawTrack = state.rawTrack;
+        }
+        refreshSentenceProjection(true);
+      } catch (_) { /* Disposable cache missing/unavailable; Original stays authoritative. */ }
+    })();
+    return sentenceStateLoad;
+  }
+  function sentenceStateSnapshot() {
+    refreshSentenceProjection(true);
+    // Rollback must preserve loaded sidecars even before any grouping runs.
+    const translations = sentenceEnhancementEnabled() ? {} : sentenceTranslations;
+    for (const group of sentenceProjection?.groups || []) {
+      const value = sentenceTranslations[group.id];
+      if (!group.protected && value?.revision === group.revision) translations[group.id] = value;
+    }
+    return { version: 1, sourceKey: sentenceTrackKey(), offsetUnit: "utf16", algorithmVersion: globalThis.HardsubSentenceGroups?.VERSION ?? null,
+      rawTrack: sentenceRawTrack?.sourceKey === sentenceTrackKey() ? sentenceRawTrack : null,
+      sourceCues: cues.filter(c => c.rawSource && c.normalization).map(c => ({ id: c.id, source: c.source,
+        start_media_time: c.start_media_time, end_media_time: c.end_media_time, rawSource: c.rawSource, normalization: c.normalization })),
+      undoRevisions: sentenceUndoRevisions, translations,
+      tokens: !sentenceEnhancementEnabled() ? sentenceTokens : Object.fromEntries((sentenceProjection?.groups || []).filter(g => !g.protected && sentenceTokens[g.id]?.length)
+        .map(g => [g.id, sentenceTokens[g.id]])) };
+  }
+  function sentenceBackupSnapshot() {
+    return { format: "caption-studio-sentence-backup", version: 1, videoId: currentVideoId,
+      sourceKey: sentenceTrackKey(), exportedAt: new Date().toISOString(),
+      cues: structuredClone(cues), transcriptMeta: structuredClone(transcriptMeta),
+      enhancement: structuredClone(sentenceStateSnapshot()),
+      savedSentences: Object.values(savedCues).filter(c => c.videoId === currentVideoId).map(c => structuredClone(c)) };
+  }
+  function validateSentenceBackup(backup) {
+    const object = value => value && typeof value === "object" && !Array.isArray(value);
+    if (currentSource !== "youtube" || backup?.format !== "caption-studio-sentence-backup" || backup.version !== 1 ||
+        backup.videoId !== currentVideoId || backup.sourceKey !== sentenceTrackKey() ||
+        JSON.stringify(backup).length > 10 * 1024 * 1024) throw new Error("Backup version, video or source does not match");
+    const meta = backup.transcriptMeta, state = backup.enhancement;
+    if (!object(meta) || typeof meta.owned !== "boolean" || !Array.isArray(meta.tombstones) ||
+        !meta.tombstones.every(s => typeof s === "string") || !Number.isFinite(meta.rev) || meta.rev < 0 ||
+        !object(state) || state.version !== 1 || state.sourceKey !== backup.sourceKey || state.offsetUnit !== "utf16" ||
+        ![state.undoRevisions, state.translations, state.tokens].every(object) ||
+        !Array.isArray(backup.savedSentences) || !backup.savedSentences.every(c => object(c) && typeof c.id === "string" &&
+          c.id.length && c.videoId === currentVideoId && typeof c.source === "string")) throw new Error("Invalid backup metadata");
+    if (!Array.isArray(backup.cues) || backup.cues.length > 20000) throw new Error("Invalid backup cues");
+    const ids = new Set();
+    for (const cue of backup.cues) {
+      if (!object(cue) || typeof cue.id !== "string" || !cue.id || ids.has(cue.id) || typeof cue.source !== "string" ||
+          !Number.isFinite(cue.start_media_time) || cue.start_media_time < 0 || !Number.isFinite(cue.end_media_time) ||
+          cue.end_media_time < cue.start_media_time || [cue.en, cue.vi].some(v => v != null && typeof v !== "string") ||
+          (cue.tokens != null && !Array.isArray(cue.tokens))) throw new Error("Invalid or duplicate backup cue");
+      ids.add(cue.id);
+    }
+    if (state.rawTrack && (!object(state.rawTrack) || state.rawTrack.version !== 1 ||
+        state.rawTrack.sourceKey !== backup.sourceKey || !Array.isArray(state.rawTrack.cues))) throw new Error("Invalid raw source track");
+  }
+  async function saveSentenceState() {
+    if (currentSource !== "youtube" || !currentVideoId || sentenceStateLoadedKey !== sentenceStateStorageKey()) return;
+    const key = sentenceStateStorageKey(), gen = navigateGen, meta = structuredClone(transcriptMeta);
+    await sentenceStateLoad;
+    if (gen !== navigateGen || key !== sentenceStateStorageKey()) return;
+    try {
+      const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", op: "save_sentence_state",
+        videoId: currentVideoId, sourceKey: sentenceTrackKey(), meta, state: sentenceStateSnapshot() });
+      if (!result?.ok) throw new Error(result?.error || "Sentence state save failed");
+    } catch (_) { console.warn("[jpcap] Sentence cache unavailable; Original script save continues"); }
+  }
+  function getActiveDisplayCue() {
+    return findActiveCue(currentMediaTime);
+  }
+  function sentenceEnhancementEnabled() {
+    return currentSource === "youtube" && !!globalThis.HardsubSentenceGroups &&
+      settings.enhanced_subtitles_enabled !== false && settings.sentence_grouping_enabled !== false;
+  }
+  function refreshSentenceProjection(force = false) {
+    const key = sentenceTrackKey();
+    if (key !== sentenceSourceKey) {
+      sentenceSourceKey = key;
+      captionMode = "enhanced";
+      sentenceUndoIds = new Set();
+      sentenceUndoRevisions = {};
+      sentenceTranslations = {};
+      sentenceTokens = {};
+      sentenceProjection = null;
+    }
+    const engine = globalThis.HardsubSentenceGroups;
+    if (!sentenceEnhancementEnabled()) {
+      captionMode = "original";
+      enhancedCues = [];
+      // Keep revision-bound metadata for backup; rebuild display when reenabled.
+      sentenceProjectionCues = null;
+      return;
+    }
+    if (!force && sentenceProjection && sentenceProjectionCues === cues && !listDirty) return;
+    sentenceUndoIds = new Set(cues.filter(c => sentenceUndoRevisions[c.id] === sentenceCueRevision(c)).map(c => c.id));
+    try {
+      sentenceProjection = engine.buildSentenceGroups(cues, { sourceKey: key,
+        sourceRevision: sentenceRawTrack?.sourceKey === key ? sentenceRawTrack.fingerprint || "" : "",
+        blockedCueIds: [...sentenceUndoIds] });
+      sentenceTokens = Object.fromEntries(sentenceProjection.groups.filter(g => engine.validGroupTokens(g.text, sentenceTokens[g.id]))
+        .map(g => [g.id, sentenceTokens[g.id]]));
+      enhancedCues = engine.projectDisplayCues(cues, sentenceProjection, sentenceTranslations, sentenceTokens);
+      sentenceProjectionCues = cues;
+      sentenceBenchmark?.groupsPrepared?.(sentenceProjection.groups, performance.now());
+    } catch (err) {
+      captionMode = "original";
+      sentenceProjection = null;
+      enhancedCues = [];
+      console.warn("[jpcap] Sentence projection rejected; keeping Original", err);
+    }
+    // Same-array manual timeline edits must also invalidate sorted playhead lookup.
+    lastCuesRef = null;
+  }
+
   function getSortedCues() {
+    refreshSentenceProjection();
+    if (captionMode === "enhanced") return enhancedCues;
     if (cues === lastCuesRef && sortedCuesCache && sortedCuesCache.length === (cues?.length || 0)) {
       return sortedCuesCache;
     }
@@ -4487,7 +4930,7 @@
       void chrome.storage.local.set({ [`tokens:${tabPrefix()}${currentVideoId}`]: cacheMap }).catch(() => {});
       scheduleSaveTranscript();
       listDirty = true;
-      const active = cues.find((c) => c.id === activeCueId);
+      const active = getActiveDisplayCue();
       updateBar(active || null);
       updateCaptionStatusLine();
       publishSidePanelState({ forceList: true });
@@ -4513,7 +4956,7 @@
     // force + awaitDisk: ownership score must not block wipe; disk must not keep old EN/VI.
     await saveTranscript({ force: true, awaitDisk: true });
     listDirty = true;
-    const active = cues.find((c) => c.id === activeCueId);
+    const active = getActiveDisplayCue();
     updateBar(active || null);
     updateCaptionStatusLine();
     publishSidePanelState();
@@ -4870,7 +5313,7 @@
       }
       await saveTranscript();
       listDirty = true;
-      const active = cues.find((c) => c.id === activeCueId);
+      const active = getActiveDisplayCue();
       updateBar(active || null);
       updateCaptionStatusLine();
       publishSidePanelState();
@@ -4920,40 +5363,71 @@
       lines.push("# ----------------------------------------");
       lines.push("");
     });
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `yt-caption-${currentVideoId || "session"}.txt`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadCaptionFile(lines.join("\n"), `yt-caption-${currentVideoId || "session"}.txt`, "text/plain;charset=utf-8");
     toast("Đã export TXT");
   }
 
-  let prefetchInProgress = false;
-  async function triggerPredictivePrefetch(currentActiveCue) {
-    if (!currentActiveCue || prefetchInProgress || !Array.isArray(cues) || cues.length === 0) return;
-    const curIdx = cues.findIndex((c) => c.id === currentActiveCue.id);
-    if (curIdx === -1) return;
+  function downloadCaptionFile(text, fileName, mimeType) {
+    const blob = new Blob([text], { type: mimeType });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
-    // Predictive pre-fetching: lookahead 3-5 cues ahead of video playback
-    const lookaheadCues = cues.slice(curIdx + 1, curIdx + 6).filter((c) => c && c.source && !c.vi && !c.mt_locked);
-    if (!lookaheadCues.length) return;
+  function triggerPredictivePrefetch(currentActiveCue) {
+    if (currentActiveCue) { void enrichSentenceGroups(); void triggerGeminiTranslationIfNeeded(); }
+  }
 
-    prefetchInProgress = true;
+  async function enrichSentenceGroups() {
+    if (captionMode !== "enhanced" || !sentenceEnhancementEnabled() || !bridgeReady) return;
+    refreshSentenceProjection();
+    const gen = navigateGen, input = cues, engine = globalThis.HardsubSentenceGroups;
+    const tokenJobKey = group => `${gen}:${group.id}`;
+    const ahead = Math.min(60, Math.max(20, 30 * (Number(findVideo()?.playbackRate) || 1)));
+    const wanted = new Set(enhancedCues.filter(c => c.end_media_time >= currentMediaTime &&
+      c.start_media_time <= currentMediaTime + ahead).flatMap(c => c.groupIds));
+    const targets = (sentenceProjection?.groups || []).filter(g => !g.protected && wanted.has(g.id) &&
+      !sentenceTokens[g.id]?.length && !sentenceTokenPending.has(tokenJobKey(g)) &&
+      (sentenceTokenRetryAt.get(tokenJobKey(g)) || 0) <= Date.now()).slice(0, 30);
+    if (!targets.length) return;
+    targets.forEach(g => sentenceTokenPending.add(tokenJobKey(g)));
     try {
-      if (globalThis.HardsubGeminiTranslate) {
-        await globalThis.HardsubGeminiTranslate.translateCues(lookaheadCues);
-        publishSidePanelPartial({ cues });
+      const response = await bridgeFetch("/tokenize_batch", { method: "POST",
+        body: { cues: targets.map((g, i) => ({ id: `sentence-${i}`, text: g.text })) } });
+      if (!response?.ok || !Array.isArray(response.data?.results)) throw new Error("Sentence tokenize unavailable");
+      if (gen !== navigateGen || input !== cues || !sentenceEnhancementEnabled()) return;
+      refreshSentenceProjection(true);
+      const seen = new Set();
+      for (const row of response.data.results) {
+        const i = targets.findIndex((g, i) => row?.id === `sentence-${i}`), snap = targets[i];
+        if (!snap || seen.has(row.id)) continue;
+        seen.add(row.id);
+        const current = sentenceProjection.groups.find(g => g.id === snap.id && g.text === snap.text && !g.protected);
+        if (!current) continue;
+        sentenceTokens[current.id] = engine.tokensFromCodePoints(current.text, row.source, row.tokens);
       }
-    } catch (_) {
-    } finally {
-      prefetchInProgress = false;
+      refreshSentenceProjection(true);
+      scheduleTranslationPaint(gen);
+    } catch (_) { /* Keep unverified tokens neutral; retry later through the same lookahead. */ }
+    finally {
+      for (const group of targets) {
+        sentenceTokenPending.delete(tokenJobKey(group));
+        if (gen === navigateGen && !sentenceTokens[group.id]?.length) sentenceTokenRetryAt.set(tokenJobKey(group), Date.now() + 30000);
+      }
     }
   }
 
   function syncCueAtMediaTime(mediaTime) {
     if (!Number.isFinite(mediaTime)) return;
+    currentMediaTime = mediaTime;
     const active = findActiveCue(mediaTime);
+    const video = findVideo();
+    if (video) sentenceBenchmark?.sample({ time: video.currentTime, rate: video.playbackRate, paused: video.paused, seeking: video.seeking,
+      hidden: document.hidden, mode: captionMode,
+      languages: [settings.barShowVi !== false ? "vi" : "", settings.barShowEn !== false ? "en" : ""].filter(Boolean),
+      units: getSortedCues() }, performance.now());
     const nextId = active?.id || "";
     if (nextId !== activeCueId) {
       activeCueId = nextId;
@@ -5017,7 +5491,10 @@
       }, { passive: true });
 
       v.addEventListener("seeked", () => {
+        sentenceBenchmark?.resetPlayback(performance.now(), "seek");
+        cancelSentencePrefetch();
         syncCueAtMediaTime(v.currentTime);
+        void triggerGeminiTranslationIfNeeded();
       }, { passive: true });
     }
   }
@@ -5037,10 +5514,14 @@
   }
 
   async function onNavigate() {
+    cancelSentencePrefetch();
+    sentenceTokenRetryAt.clear();
     const gen = ++navigateGen;
     const prevVideoId = currentVideoId;
     currentSource = sourceFromHost();
     currentVideoId = videoIdFromUrl();
+    sentenceBenchmark = currentSource === "youtube" ? globalThis.HardsubSentenceBenchmark?.createTrace({
+      traceId: crypto.randomUUID(), openedAt: gen === 1 ? 0 : performance.now() }) || null : null;
     pageWatchKey = `${currentSource}|${location.href}`;
 
     if (!isCurrentPlatformEnabled()) {
@@ -5048,14 +5529,6 @@
       return;
     }
 
-    // Overlay luôn bắt đầu tắt cho mỗi video mới — không nhớ trạng thái DỊCH ON;
-    // người dùng bấm nút DỊCH / Overlay để bật cho video hiện tại.
-    if (currentVideoId && currentVideoId !== lastOverlayResetVideo && settings.showOnVideo) {
-      settings.showOnVideo = false;
-      applyBarVisibility();
-      syncPlayerToggle();
-      void saveSettings();
-    }
     lastOverlayResetVideo = currentVideoId;
     cues = [];
     activeCueId = "";
@@ -5261,9 +5734,20 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     let dirty = false;
+    if (changes.savedCues) {
+      const value = changes.savedCues.newValue;
+      savedCues = value && typeof value === "object"
+        ? Object.fromEntries((Array.isArray(value) ? value : Object.values(value)).filter(c => c?.id).map(c => [c.id, c])) : {};
+      const active = getActiveDisplayCue();
+      if (active) updateBar(active);
+      publishSidePanelState();
+    }
     if (changes.hardsubSettings) {
       const prevPlatEnabled = isCurrentPlatformEnabled();
+      const flagsChanged = ["enhanced_subtitles_enabled", "sentence_grouping_enabled", "sentence_translation_prefetch_enabled"]
+        .some(key => settings[key] !== (changes.hardsubSettings.newValue?.[key] ?? DEFAULTS[key]));
       settings = { ...DEFAULTS, ...changes.hardsubSettings.newValue };
+      if (flagsChanged) cancelSentencePrefetch();
       const nextPlatEnabled = isCurrentPlatformEnabled();
 
       if (prevPlatEnabled && !nextPlatEnabled) {
@@ -5323,7 +5807,7 @@
     }
     if (!dirty) return;
     listDirty = true;
-    const active = cues.find((c) => c.id === activeCueId);
+    const active = getActiveDisplayCue();
     if (active) updateBar(active);
     renderList(true);
     publishSidePanelState();

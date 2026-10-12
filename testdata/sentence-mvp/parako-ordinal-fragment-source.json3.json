@@ -1,0 +1,41 @@
+{
+  "provenance": {
+    "url": "https://www.youtube.com/watch?v=rraWPrKKwRc",
+    "captured": "2026-10-09",
+    "sourceSha256": "3c826055128c4489d707e501e5701e3594534672eb59ee213d592b802f7b55ed",
+    "rangeSeconds": [
+      220.56,
+      224.722
+    ],
+    "groundTruth": "Sampled creator 第一弾 lexical continuity verified; full named source sentence/audio timing NOT VERIFIED"
+  },
+  "events": [
+    {
+      "tStartMs": 220560,
+      "dDurationMs": 2142,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "第",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "1",
+          "tOffsetMs": 280,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 221120,
+      "dDurationMs": 3602,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "弾ではすでにヒカル君、正義君、みさん、可愛い妹の証拠が販売されている。うき、",
+          "acAsrConf": 0
+        }
+      ]
+    }
+  ]
+}

@@ -26,17 +26,18 @@
       });
   }
 
-  function parseJson3Cues(data) {
+  function parseJson3Cues(data, opts = {}) {
     const events = data?.events || [];
     const nodes = [];
     for (const ev of events) {
       if (!ev || ev.tStartMs == null) continue;
       const segs = ev.segs || [];
-      const text = segs
+      const rawText = segs
         .map(function (s) {
           return s && s.utf8 != null ? String(s.utf8) : "";
         })
-        .join("")
+        .join("");
+      const text = rawText
         .replace(/\n+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -45,6 +46,7 @@
         start: Number(ev.tStartMs) / 1000,
         durMs: ev.dDurationMs != null ? Number(ev.dDurationMs) : null,
         text: text,
+        ...(opts.includeSource ? { rawText, segs } : {}),
       });
     }
     const cues = [];
@@ -59,7 +61,26 @@
         end = n.start + 0.2;
       }
       end = Math.round(end * 1000) / 1000;
-      cues.push({ start: n.start, end: end, text: n.text });
+      const cue = { start: n.start, end: end, text: n.text };
+      if (opts.includeSource) {
+        cue.rawText = n.rawText;
+        cue.segmentAnchors = [];
+        let offset = 0;
+        for (let j = 0; j < n.segs.length; j++) {
+          const seg = n.segs[j];
+          const text = String(seg?.utf8 ?? "");
+          const delta = seg?.tOffsetMs == null ? (j === 0 ? 0 : NaN) : Number(seg.tOffsetMs);
+          if (text && Number.isFinite(delta) && delta >= 0) {
+            cue.segmentAnchors.push({
+              charStart: offset, charEnd: offset + text.length,
+              time: Math.round((n.start + delta / 1000) * 1000) / 1000,
+              speakerChange: !!seg?.isSpeakerChange,
+            });
+          }
+          offset += text.length;
+        }
+      }
+      cues.push(cue);
     }
     return cues;
   }
@@ -179,12 +200,12 @@
     return cues;
   }
 
-  function parseTimedtextBody(body) {
+  function parseTimedtextBody(body, opts = {}) {
     const trimmed = String(body || "").trim();
     if (!trimmed) return [];
     if (trimmed[0] === "{") {
       try {
-        return parseJson3Cues(JSON.parse(trimmed));
+        return parseJson3Cues(JSON.parse(trimmed), opts);
       } catch {
         return [];
       }
@@ -193,7 +214,15 @@
     return [];
   }
 
+  function sourceTrackInfo(track, body) {
+    const first = String(body || "").trim()[0];
+    return { trackId: typeof track?.vssId === "string" ? track.vssId : typeof track?.id === "string" ? track.id : null,
+      language: typeof track?.languageCode === "string" ? track.languageCode : null,
+      kind: typeof track?.kind === "string" ? track.kind : null,
+      format: first === "{" ? "json3" : first === "<" ? "xml" : null };
+  }
   return {
+    sourceTrackInfo,
     decodeEntities: decodeEntities,
     parseJson3Cues: parseJson3Cues,
     parseJson3: parseJson3Cues,

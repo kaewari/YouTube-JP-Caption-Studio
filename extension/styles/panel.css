@@ -355,6 +355,14 @@
   font-weight: 500;
 }
 
+.tok-karaoke-active {
+  background: rgba(255, 215, 0, 0.35) !important;
+  color: #fff !important;
+  border-radius: 3px;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  transition: background 0.15s ease, text-shadow 0.15s ease;
+}
+
 .hardsub-bar .lr-text-ja ruby.jlpt-n5 rt,
 .hardsub-bar .lr-text-ja ruby.jlpt-n4 rt,
 .hardsub-bar .lr-text-ja ruby.jlpt-n3 rt,

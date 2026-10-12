@@ -21,12 +21,14 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/perf-ux-audit-2026-08-23.md](topics/perf-ux-audit-2026-08-23.md) | Multi-agent perf sweep + UX benchmark — **open** (2026-08-23) |
 | [topics/overlay-resize-and-dual-subtitles.md](topics/overlay-resize-and-dual-subtitles.md) | Overlay resize + dual subtitles — **done** (2026-09-19) |
 | [topics/studio-caption-fixes-and-ux-optimization.md](topics/studio-caption-fixes-and-ux-optimization.md) | Studio caption fixes, performance & UX optimization — **done** (2026-09-19) |
+| [topics/youtube-sentence-enhancement-mvp.md](topics/youtube-sentence-enhancement-mvp.md) | YouTube sentence MVP — isolated real Chrome restore/Undo/reload/API PASS; main delivered; native activation/Gemini/Drive/full MVP open |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
 
 | Status | Topic | Plan | Review |
 |--------|-------|------|--------|
+| active / legacy TXT deployed; isolated UI Undo reload fixed/main delivered; native activation/Drive/gold/Gemini/KPI open | [YouTube sentence enhancement MVP](topics/youtube-sentence-enhancement-mvp.md) | [latest revised plan](../plan/youtube-sentence-enhancement-mvp-2026-10-10.md), [prior filed plan](../plan/youtube-sentence-enhancement-mvp-2026-10-09.md), [execution decisions](../plan/youtube-sentence-mvp-execution-decisions-2026-10-09.md) | [source audit](../review/youtube-sentence-mvp-source-audit-2026-10-10.md), [queue/NLP/restore](../review/youtube-sentence-mvp-queue-nlp-backup-2026-10-10.md), [broker lifecycle](../review/youtube-sentence-mvp-broker-lifecycle-2026-10-10.md), [native cache identity](../review/youtube-sentence-mvp-native-cache-identity-2026-10-10.md), [source fingerprint](../review/youtube-sentence-mvp-source-fingerprint-2026-10-10.md), [runtime metrics](../review/youtube-sentence-mvp-runtime-metrics-2026-10-10.md), [selected track](../review/youtube-sentence-mvp-selected-track-2026-10-10.md), [script clock precision](../review/youtube-sentence-mvp-script-clock-precision-2026-10-10.md), [annotation candidates](../review/youtube-sentence-mvp-annotation-candidates-2026-10-10.md), [usage/cost](../review/youtube-sentence-mvp-cost-instrumentation-2026-10-10.md), [native metrics activation](../review/youtube-sentence-mvp-native-metrics-activation-2026-10-10.md), [metric clock](../review/youtube-sentence-mvp-metric-clock-2026-10-10.md), [TXT warning](../review/youtube-sentence-mvp-txt-export-warning-2026-10-10.md), [flags/native follow-up](../review/youtube-sentence-mvp-flags-native-followup-2026-10-10.md), [lifecycle](../review/youtube-sentence-mvp-lifecycle-instrumentation-2026-10-10.md), [native lifecycle](../review/youtube-sentence-mvp-native-lifecycle-2026-10-10.md), [bridge regression/runtime](../review/youtube-sentence-mvp-bridge-regression-runtime-2026-10-10.md), [native confirmation/source guard](../review/youtube-sentence-mvp-native-confirmation-source-guard-2026-10-10.md), [partial creator reference](../review/youtube-sentence-mvp-creator-reference-partial-2026-10-10.md), [Backrooms frame readiness/reference](../review/youtube-sentence-mvp-rra-reference-readiness-2026-10-10.md), [ordinal continuation](../review/youtube-sentence-mvp-ordinal-continuation-2026-10-10.md), [bilingual active-cue JLPT](../review/youtube-sentence-mvp-bilingual-active-cue-2026-10-10.md), [native latest reload/cost-clock](../review/youtube-sentence-mvp-native-latest-reload-cost-clock-2026-10-10.md), [semantic/runtime authority follow-up](../review/youtube-sentence-mvp-semantic-runtime-authority-2026-10-10.md), [live tokenizer recheck](../review/youtube-sentence-mvp-semantic-tokenizer-recheck-2026-10-10.md), [native bilingual package follow-up](../review/youtube-sentence-mvp-native-bilingual-package-followup-2026-10-10.md), [Enhanced default](../review/youtube-sentence-mvp-enhanced-default-2026-10-11.md), [delivery/evidence correction](../review/youtube-sentence-mvp-default-delivery-2026-10-11.md), [runtime/import clocks](../review/youtube-sentence-mvp-runtime-and-import-clocks-2026-10-11.md), [renderer independent](../review/youtube-sentence-mvp-renderer-independent-2026-10-11.md), [caller correction](../review/youtube-sentence-mvp-renderer-callers-correction-2026-10-11.md), [cue provenance/exact revision](../review/youtube-sentence-mvp-cue-provenance-2026-10-11.md), [source restore/runtime deployment](../review/youtube-sentence-mvp-source-restore-runtime-2026-10-11.md), [partial native reload and current data delta](../review/youtube-sentence-mvp-native-reload-partial-2026-10-11.md), [stale revision guard](../review/youtube-sentence-mvp-stale-revision-guard-2026-10-11.md), [revision deployment/mirror validation](../review/youtube-sentence-mvp-revision-deploy-mirror-validation-2026-10-11.md), [mirror deployment/revision race](../review/youtube-sentence-mvp-mirror-deploy-revision-race-2026-10-11.md), [equal-revision conflict](../review/youtube-sentence-mvp-equal-revision-conflict-2026-10-11.md), [conflict deployment / legacy TXT](../review/youtube-sentence-mvp-conflict-deploy-legacy-txt-2026-10-11.md), [legacy JSON/TXT candidate](../review/youtube-sentence-mvp-legacy-txt-sync-2026-10-11.md), [authorized legacy TXT deployment](../review/youtube-sentence-mvp-legacy-txt-deployment-2026-10-11.md), [native legacy checkpoint](../review/youtube-sentence-mvp-native-legacy-checkpoint-2026-10-11.md), [Chrome storage restart](../review/youtube-sentence-mvp-chrome-storage-restart-2026-10-11.md), [content Undo reload](../review/youtube-sentence-mvp-content-undo-reload-2026-10-11.md) |
 | partial | Code taste: migration plan and edit hooks | [plan](../plan/migrate-codebase-to-house-style-2026-09-20.md) | [Live client evidence and gaps](../review/code-taste-other-clients-live-2026-09-20.md) |
 | done | Studio Caption Fixes, Performance & UX Optimization | [plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md) | [review/code-review-2026-09-19.md](../review/code-review-2026-09-19.md) |
 
@@ -35,6 +37,10 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 Do not rewrite these from the wiki. Link only.
 
 ### Plans (`plan/`)
+
+- [youtube-sentence-enhancement-mvp-2026-10-10.md](../plan/youtube-sentence-enhancement-mvp-2026-10-10.md) — latest byte-preserved user revision
+- [youtube-sentence-enhancement-mvp-2026-10-09.md](../plan/youtube-sentence-enhancement-mvp-2026-10-09.md)
+- [youtube-sentence-mvp-execution-decisions-2026-10-09.md](../plan/youtube-sentence-mvp-execution-decisions-2026-10-09.md)
 
 - [agent-code-taste-migration-research-2026-09-20.md](../plan/agent-code-taste-migration-research-2026-09-20.md)
 - [migrate-codebase-to-house-style-2026-09-20.md](../plan/migrate-codebase-to-house-style-2026-09-20.md)
@@ -73,7 +79,73 @@ Do not rewrite these from the wiki. Link only.
 - [vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
 - [yt-write-all-subs-2026-08-02.md](../plan/yt-write-all-subs-2026-08-02.md)
 
-### Reviews (`review/`)
+### Reviews
+
+- [Actual content Undo reload](../review/youtube-sentence-mvp-content-undo-reload-2026-10-11.md) — isolated restore/Undo/reload/API and guarded main delivery PASS; native/full MVP open
+- [Real Chrome storage restart](../review/youtube-sentence-mvp-chrome-storage-restart-2026-10-11.md) — isolated MV3 local durability PASS; content restore/Drive/Gemini/fullMVP open
+
+- [Native legacy checkpoint](../review/youtube-sentence-mvp-native-legacy-checkpoint-2026-10-11.md) — actual reload/export and independent bounded artifact PASS; protected/Gemini/fullMVP NOT VERIFIED
+
+- [youtube-sentence-mvp-conflict-deploy-legacy-txt-2026-10-11.md](../review/youtube-sentence-mvp-conflict-deploy-legacy-txt-2026-10-11.md) — authorized2backend+worker delivered;48data preserved; separate legacy JSON/TXT diagnostic contradicted
+
+- [youtube-sentence-mvp-equal-revision-conflict-2026-10-11.md](../review/youtube-sentence-mvp-equal-revision-conflict-2026-10-11.md) — same-revision collision Red/Green; explicit revision/worker candidate independentlyPASS/notdeployed
+
+- [youtube-sentence-mvp-mirror-deploy-revision-race-2026-10-11.md](../review/youtube-sentence-mvp-mirror-deploy-revision-race-2026-10-11.md) — approved one-file mirror deployment/PID8005/48preserved; separate revision/worker candidate PASS/notdeployed, equal-rev boundary open
+
+- [youtube-sentence-mvp-revision-deploy-mirror-validation-2026-10-11.md](../review/youtube-sentence-mvp-revision-deploy-mirror-validation-2026-10-11.md) — approved revision deployment48preserved; mirror validation candidate PASS/notdeployed; partial human references
+
+- [youtube-sentence-mvp-stale-revision-guard-2026-10-11.md](../review/youtube-sentence-mvp-stale-revision-guard-2026-10-11.md)
+
+- [youtube-sentence-mvp-native-reload-partial-2026-10-11.md](../review/youtube-sentence-mvp-native-reload-partial-2026-10-11.md) (`review/`)
+
+- [youtube-sentence-mvp-source-restore-runtime-2026-10-11.md](../review/youtube-sentence-mvp-source-restore-runtime-2026-10-11.md) (`review/`)
+
+- [youtube-sentence-mvp-cue-provenance-2026-10-11.md](../review/youtube-sentence-mvp-cue-provenance-2026-10-11.md)
+- [youtube-sentence-mvp-renderer-independent-2026-10-11.md](../review/youtube-sentence-mvp-renderer-independent-2026-10-11.md)
+- [youtube-sentence-mvp-renderer-callers-correction-2026-10-11.md](../review/youtube-sentence-mvp-renderer-callers-correction-2026-10-11.md)
+
+- [youtube-sentence-mvp-runtime-and-import-clocks-2026-10-11.md](../review/youtube-sentence-mvp-runtime-and-import-clocks-2026-10-11.md)
+
+- [youtube-sentence-mvp-enhanced-default-2026-10-11.md](../review/youtube-sentence-mvp-enhanced-default-2026-10-11.md)
+- [youtube-sentence-mvp-default-delivery-2026-10-11.md](../review/youtube-sentence-mvp-default-delivery-2026-10-11.md)
+
+- [youtube-sentence-mvp-semantic-tokenizer-recheck-2026-10-10.md](../review/youtube-sentence-mvp-semantic-tokenizer-recheck-2026-10-10.md)
+- [youtube-sentence-mvp-native-bilingual-package-followup-2026-10-10.md](../review/youtube-sentence-mvp-native-bilingual-package-followup-2026-10-10.md)
+- [youtube-sentence-mvp-native-latest-reload-cost-clock-2026-10-10.md](../review/youtube-sentence-mvp-native-latest-reload-cost-clock-2026-10-10.md)
+- [youtube-sentence-mvp-bilingual-active-cue-2026-10-10.md](../review/youtube-sentence-mvp-bilingual-active-cue-2026-10-10.md)
+
+- [youtube-sentence-mvp-ordinal-continuation-2026-10-10.md](../review/youtube-sentence-mvp-ordinal-continuation-2026-10-10.md)
+
+- [youtube-sentence-mvp-rra-reference-readiness-2026-10-10.md](../review/youtube-sentence-mvp-rra-reference-readiness-2026-10-10.md)
+
+- [youtube-sentence-mvp-creator-reference-partial-2026-10-10.md](../review/youtube-sentence-mvp-creator-reference-partial-2026-10-10.md)
+
+- [youtube-sentence-mvp-native-confirmation-source-guard-2026-10-10.md](../review/youtube-sentence-mvp-native-confirmation-source-guard-2026-10-10.md)
+
+- [youtube-sentence-mvp-native-lifecycle-2026-10-10.md](../review/youtube-sentence-mvp-native-lifecycle-2026-10-10.md)
+
+- [youtube-sentence-mvp-lifecycle-instrumentation-2026-10-10.md](../review/youtube-sentence-mvp-lifecycle-instrumentation-2026-10-10.md)
+
+- [youtube-sentence-mvp-flags-native-followup-2026-10-10.md](../review/youtube-sentence-mvp-flags-native-followup-2026-10-10.md)
+
+- [youtube-sentence-mvp-txt-export-warning-2026-10-10.md](../review/youtube-sentence-mvp-txt-export-warning-2026-10-10.md)
+
+- [youtube-sentence-mvp-metric-clock-2026-10-10.md](../review/youtube-sentence-mvp-metric-clock-2026-10-10.md)
+
+- [youtube-sentence-mvp-cost-instrumentation-2026-10-10.md](../review/youtube-sentence-mvp-cost-instrumentation-2026-10-10.md)
+- [youtube-sentence-mvp-native-metrics-activation-2026-10-10.md](../review/youtube-sentence-mvp-native-metrics-activation-2026-10-10.md)
+
+- [youtube-sentence-mvp-broker-lifecycle-2026-10-10.md](../review/youtube-sentence-mvp-broker-lifecycle-2026-10-10.md)
+- [youtube-sentence-mvp-native-cache-identity-2026-10-10.md](../review/youtube-sentence-mvp-native-cache-identity-2026-10-10.md)
+
+- [youtube-sentence-mvp-queue-nlp-backup-2026-10-10.md](../review/youtube-sentence-mvp-queue-nlp-backup-2026-10-10.md)
+
+- [youtube-sentence-mvp-source-audit-2026-10-10.md](../review/youtube-sentence-mvp-source-audit-2026-10-10.md)
+- [youtube-sentence-mvp-source-fingerprint-2026-10-10.md](../review/youtube-sentence-mvp-source-fingerprint-2026-10-10.md)
+- [youtube-sentence-mvp-runtime-metrics-2026-10-10.md](../review/youtube-sentence-mvp-runtime-metrics-2026-10-10.md)
+- [youtube-sentence-mvp-selected-track-2026-10-10.md](../review/youtube-sentence-mvp-selected-track-2026-10-10.md)
+- [youtube-sentence-mvp-script-clock-precision-2026-10-10.md](../review/youtube-sentence-mvp-script-clock-precision-2026-10-10.md)
+- [youtube-sentence-mvp-annotation-candidates-2026-10-10.md](../review/youtube-sentence-mvp-annotation-candidates-2026-10-10.md)
 
 - [antigravity-hook-retry-2026-09-20.md](../review/antigravity-hook-retry-2026-09-20.md)
 - [code-taste-other-clients-live-2026-09-20.md](../review/code-taste-other-clients-live-2026-09-20.md)
@@ -104,9 +176,15 @@ Do not rewrite these from the wiki. Link only.
 - [perf-ux-audit-2026-08-23.md](../review/perf-ux-audit-2026-08-23.md)
 - [plans-completion-check-2026-08-07.md](../review/plans-completion-check-2026-08-07.md)
 
+- [youtube-sentence-mvp-bridge-regression-runtime-2026-10-10.md](../review/youtube-sentence-mvp-bridge-regression-runtime-2026-10-10.md)
+
 ## Open gaps
 
 Tracked lightly until ingested into their own topic pages:
 
 - Extension cue-merge (only rev-skip today)
 - iPhone fullscreen pinning drift
+
+- [Legacy JSON/TXT mirror reconciliation — candidate, not deployed](../review/youtube-sentence-mvp-legacy-txt-sync-2026-10-11.md) — 2026-10-11; independent bounded PASS; full MVP open.
+
+- [Authorized legacy JSON/TXT deployment](../review/youtube-sentence-mvp-legacy-txt-deployment-2026-10-11.md) — 2026-10-11; independent one-file deployment PASS; full MVP incomplete.

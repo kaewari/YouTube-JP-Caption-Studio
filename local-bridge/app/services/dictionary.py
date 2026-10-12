@@ -779,19 +779,22 @@ def _greedy_context_combinations(surface: str, context_tokens: list[str]) -> lis
     combos: list[str] = []
     if not context_tokens:
         return combos
-    cleaned_tokens = [_strip_punct(_nfkc(t)) for t in context_tokens if _strip_punct(_nfkc(t))]
+    # Keep boundaries in place; stripping punctuation can invent a new word.
+    cleaned_tokens = [_nfkc(t) for t in context_tokens]
     s_clean = _strip_punct(_nfkc(surface))
     if not s_clean:
         return combos
 
-    try:
+    # Without a token offset, repeated surfaces cannot identify the selected word.
+    if cleaned_tokens.count(s_clean) == 1:
         idx = cleaned_tokens.index(s_clean)
-    except ValueError:
-        idx = -1
-
-    if idx >= 0:
+        limit = idx
+        for token in cleaned_tokens[idx:idx + 6]:
+            if not token or any(ch in _PUNCT_STRIP or ch.isspace() or unicodedata.category(ch).startswith('P') for ch in token):
+                break
+            limit += 1
         # Multi-token combinations starting at surface
-        for end in range(min(len(cleaned_tokens), idx + 6), idx + 1, -1):
+        for end in range(limit, idx + 1, -1):
             phrase = "".join(cleaned_tokens[idx:end])
             if phrase and phrase != s_clean:
                 combos.append(phrase)
@@ -849,14 +852,16 @@ def lookup(
     if not raw:
         return DictResponse(surface=surface, found=False, message="empty")
 
-    ctx_key = ",".join(context_tokens) if context_tokens else ""
+    ctx_key = json.dumps(context_tokens, ensure_ascii=False) if context_tokens else ""
     cache_key = f"{raw}|{_nfkc(lemma or '')}|{ctx_key}"
     cached = dict_cache.get(cache_key)
     if cached:
         return DictResponse(**cached)
 
     candidates = _expand_candidates(raw, lemma or "", context_tokens)
-    candidates.sort(key=lambda s: (0 if s in (raw, lemma) else 1, -len(s), s))
+    context_candidates = {variant for phrase in _greedy_context_combinations(raw, context_tokens or [])
+                          for variant in _script_variants(phrase)}
+    candidates.sort(key=lambda s: (0 if s in context_candidates else 1 if s in (raw, lemma) else 2, -len(s), s))
 
     matched = ""
     senses: list[DictSense] = []
@@ -893,9 +898,10 @@ def lookup(
     if not details and lemma:
         details = _get_mazii_details(lemma)
 
-    hanviet = details.get("hanviet", "") if details else ""
-    if not hanviet:
-        hanviet = _query_hanviet(matched or raw)
+    # Han-Viet follows the matched spelling, never a kana reading alias.
+    hanviet = _query_hanviet(target_key)
+    if not hanviet and details and details.get('expression') == target_key:
+        hanviet = details.get('hanviet', '')
     examples = details.get("examples", []) if details else []
     if not reading and details:
         reading = details.get("reading", "")

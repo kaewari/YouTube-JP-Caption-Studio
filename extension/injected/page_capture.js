@@ -5,7 +5,7 @@
 (function () {
   // Bump when message API changes so content can reinject after extension reload
   // without a full YouTube document reload (SPA keeps old MAIN-world listeners).
-  const API_VER = 6;
+  const API_VER = 7;
   if (window.__HARDSubOCRCapture?.apiVer === API_VER) return;
   // Capability token from the content script's inject URL (?cap=...). Echoed in
   // every reply so the content script can reject forged page-world messages.
@@ -548,7 +548,7 @@
             continue;
           }
           const cues = parseTimedtextBody(body);
-          if (cues.length) return { cues, error: "" };
+          if (cues.length) return { cues, error: "", format: body.trim()[0] === "{" ? "json3" : "xml" };
           lastError = "no_events";
         } catch (err) {
           lastError = String(err);
@@ -685,6 +685,7 @@
       hasVi: !!got.vi || got.viGot.cues.length > 0,
       lang: got.ja?.languageCode || "ja",
       asr: got.ja?.kind === "asr",
+      sourceTrack: { ...globalThis.HardsubTimedtextParse.sourceTrackInfo(got.ja), format: got.jaGot.format || null },
     };
   }
 
@@ -1288,6 +1289,7 @@
 
   function okCaptionResult(cues, trackMeta, extra = {}) {
     state.captions.track = trackMeta;
+    state.captions.sourceTrack = extra.sourceTrack || null;
     state.captions.cues = cues;
     state.captions.status = "ok";
     state.captions.error = "";
@@ -1295,7 +1297,7 @@
       ok: true,
       status: "ok",
       count: cues.length,
-      cues: cues.map((c) => ({ start: c.start, end: c.end, text: c.text })),
+      cues: cues.map((c) => ({ ...c })),
       lang: trackMeta.languageCode || "",
       asr: trackMeta.kind === "asr",
       ...extra,
@@ -1315,14 +1317,8 @@
       state.captions.status === "ok" &&
       state.captions.cues.length
     ) {
-      return {
-        ok: true,
-        status: "ok",
-        count: state.captions.cues.length,
-        cues: state.captions.cues.map((c) => ({ start: c.start, end: c.end, text: c.text })),
-        lang: state.captions.track?.languageCode || "",
-        asr: state.captions.track?.kind === "asr",
-      };
+      return okCaptionResult(state.captions.cues, state.captions.track || {},
+        { sourceTrack: state.captions.sourceTrack || null });
     }
     // force Reload may need another CC trigger for this video.
     if (payload && payload.force && ccTriggerVideoId === videoId) {
@@ -1360,6 +1356,7 @@
             languageCode: ttLang,
             kind: "asr",
             name: { simpleText: "intercept-url" },
+            trackKnown: false,
           });
         }
       }
@@ -1375,7 +1372,7 @@
             languageCode: t.languageCode || "",
             kind: t.kind || "",
             name: t.name?.simpleText || "",
-          });
+          }, { sourceTrack: { ...globalThis.HardsubTimedtextParse.sourceTrackInfo(t.trackKnown === false ? null : t), format: got.format || null } });
         }
         lastFetchError = got.error || lastFetchError;
       }
@@ -1395,7 +1392,7 @@
                 kind: t.kind || "",
                 name: t.name?.simpleText || "innertube",
               },
-              { via: "innertube" }
+              { via: "innertube", sourceTrack: { ...globalThis.HardsubTimedtextParse.sourceTrackInfo(t), format: got.format || null } }
             );
           }
           lastFetchError = got.error || lastFetchError;
@@ -1912,6 +1909,9 @@
   }
 
   function parseJson3(data) {
+    if (globalThis.HardsubTimedtextParse) {
+      return globalThis.HardsubTimedtextParse.parseJson3Cues(data, { includeSource: true });
+    }
     const events = data?.events || [];
     const nodes = [];
     for (const ev of events) {

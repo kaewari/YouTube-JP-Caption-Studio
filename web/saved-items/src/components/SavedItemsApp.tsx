@@ -176,8 +176,12 @@ export function SavedItemsApp() {
   }
 
   async function handleDeleteCue(cueId: string) {
-    setCues((prev) => prev.filter((c) => c.id !== cueId));
-    await deleteSavedCueAsync(cueId);
+    try {
+      await deleteSavedCueAsync(cueId);
+      setCues((prev) => prev.filter((c) => c.id !== cueId));
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Không xóa được câu đã lưu");
+    }
   }
 
   return (

@@ -31,6 +31,11 @@
     const s = String(raw || "").trim().replace(",", ".");
     if (!s) return NaN;
     if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+    const clock = s.match(/^(?:(\d+):)?(\d+):(\d{1,2})(?:\.(\d+))?$/);
+    if (clock) {
+      const whole = BigInt(clock[1] || "0") * 3600n + BigInt(clock[2]) * 60n + BigInt(clock[3]);
+      return Number(`${whole}.${clock[4] || "0"}`);
+    }
     const parts = s.split(":");
     if (parts.length === 3) {
       const hrs = Number(parts[0]);
@@ -39,12 +44,7 @@
       if (isNaN(hrs) || isNaN(mins) || isNaN(secs)) return NaN;
       return hrs * 3600 + mins * 60 + secs;
     }
-    const m = s.match(/^(\d+):(\d{1,2})(?:\.(\d+))?$/);
-    if (!m) return NaN;
-    const mins = Number(m[1]) || 0;
-    const secs = Number(m[2]) || 0;
-    const frac = m[3] ? Number(`0.${m[3]}`) : 0;
-    return mins * 60 + secs + frac;
+    return NaN;
   }
 
   function extractCuesFromJson(parsed) {

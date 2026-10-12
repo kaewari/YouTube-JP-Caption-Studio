@@ -24,6 +24,7 @@
   const toastEl = document.getElementById("sp-toast");
   const overlayBtn = document.getElementById("sp-overlay");
   const followBtn = document.getElementById("sp-follow");
+  const captionModeBtn = document.getElementById("sp-caption-mode");
   const toggleJaBtn = document.getElementById("sp-toggle-ja");
   const toggleViBtn = document.getElementById("sp-toggle-vi");
   const toggleEnBtn = document.getElementById("sp-toggle-en");
@@ -33,6 +34,8 @@
     videoId: "",
     status: "",
     cues: [],
+    enhancedCues: [],
+    captionMode: "original",
     activeCueId: "",
     showOnVideo: false,
     showJa: true,
@@ -48,6 +51,23 @@
     userVocab: {},
     savedCues: [],
   };
+
+  captionModeBtn?.addEventListener("click", async () => {
+    if (isEditingAny()) { toast("Nhấn Enter hoặc Escape để kết thúc sửa câu trước"); return; }
+    await sendCmd("set_caption_mode", { mode: state.captionMode === "enhanced" ? "original" : "enhanced" });
+  });
+
+  async function openOriginalEditor(id) {
+    await sendCmd("set_caption_mode", { mode: "original" });
+    state.captionMode = "original";
+    listDirty = true;
+    renderList(true);
+    const wrap = listEl.querySelector(`.sp-sentence[data-id="${CSS.escape(id)}"] .sp-ja-wrap`);
+    if (!wrap) { toast("Cue nguồn đã thay đổi; hãy tải lại danh sách"); return; }
+    wrap.scrollIntoView({ block: "nearest" });
+    const editor = beginJaEdit(wrap);
+    editor?.focus();
+  }
 
   function applySubVisibility() {
     if (listEl) {
@@ -119,9 +139,19 @@
   }
 
   function isCueStarred(id) {
+    id = state._renderedCues?.find(c => c.id === id)?.savedCueId || id;
     if (!id) return false;
     const list = normalizeSavedCues(state.savedCues);
     return list.some((c) => c && c.id === id);
+  }
+
+  function patchSubtitleStars() {
+    for (const button of listEl.querySelectorAll(".sp-star")) {
+      const starred = isCueStarred(button.dataset.id);
+      button.classList.toggle("active", starred);
+      button.textContent = starred ? "★" : "☆";
+      button.title = starred ? "Bỏ lưu câu" : "Lưu câu";
+    }
   }
 
   /** Fallback mirror of JLPT colors (storage-level settings live in the
@@ -379,6 +409,13 @@
         tabId = active.id;
         return tabId;
       }
+      tabs = await chrome.tabs.query({});
+      let videoTab = tabs?.find((t) => isSupportedVideoUrl(t?.url));
+      if (videoTab?.id != null) {
+        currentActiveTabId = videoTab.id;
+        tabId = videoTab.id;
+        return tabId;
+      }
     } catch (_) {}
     return null;
   }
@@ -465,7 +502,7 @@
   }
 
   async function copyCueById(id, format) {
-    const cue = (state.cues || []).find((c) => c.id === id);
+    const cue = (state._renderedCues || state.cues || []).find((c) => c.id === id);
     if (!cue) {
       toast("Không tìm thấy cue");
       return;
@@ -1313,6 +1350,21 @@
     endEl.addEventListener("blur", onBlur);
   }
 
+  function updateKaraokeHighlight(mediaTime) {
+    if (!Number.isFinite(mediaTime) || !listEl) return;
+    const activeRow = listEl.querySelector(".sp-sentence.active");
+    if (!activeRow) return;
+    const nodes = activeRow.querySelectorAll(".lr-text-ja [data-start]");
+    if (!nodes.length) return;
+    nodes.forEach((node) => {
+      const s = parseFloat(node.dataset.start);
+      const e = parseFloat(node.dataset.end);
+      if (Number.isFinite(s) && Number.isFinite(e)) {
+        node.classList.toggle("tok-karaoke-active", mediaTime >= s && mediaTime < e);
+      }
+    });
+  }
+
   function updateActiveHighlight({ scroll = true } = {}) {
     const activeId = state.activeCueId;
     listEl.querySelectorAll(".sp-sentence").forEach((row) => {
@@ -1322,6 +1374,7 @@
       const label = row.querySelector(".sp-now-playing");
       if (label) label.setAttribute("aria-hidden", on ? "false" : "true");
     });
+    updateKaraokeHighlight(state.currentTime);
     if (scroll && !isEditingAny()) scrollActiveIntoView();
   }
 
@@ -1340,6 +1393,7 @@
       tokFp,
       stripStub(cue.en),
       stripStub(cue.vi),
+      JSON.stringify(cue.translationStates || {}),
       Number(cue.start_media_time) || 0,
       Number(cue.end_media_time) || 0,
       idx,
@@ -1354,6 +1408,14 @@
       return Vocab.renderBilingualHtml(raw, "vi", cue?.tokens, levelSettings);
     }
     return escapeHtml(raw);
+  }
+
+  function translationPlaceholder(cue, lang) {
+    const label = lang.toUpperCase();
+    if (!cue.enhanced || cue[lang]) return label;
+    if (cue.translationStates?.[lang] === "error") return `${label} · Dịch lỗi, sẽ thử lại`;
+    if (cue.translationStates?.[lang] === "protected") return `${label} · Bản gốc đã khóa`;
+    return `${label} · chờ dịch câu`;
   }
 
   function renderBilingualEn(cue) {
@@ -1374,12 +1436,14 @@
         <button type="button" class="sp-play" data-t="${escapeAttr(cue.start_media_time)}" data-time="${escapeAttr(cue.start_media_time)}" title="Phát câu này trên video">▶</button>
         <button type="button" class="sp-star ${starred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${starred ? "Bỏ lưu câu này" : "Lưu câu này vào danh sách đã lưu"}">${starred ? "★" : "☆"}</button>
         <span class="sp-times sp-timing">
-          <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t0)}" aria-label="Start" title="Thời điểm bắt đầu câu" />
+          <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t0)}" aria-label="Start" title="Thời điểm bắt đầu câu" />
           <span class="sp-t-sep">–</span>
-          <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" value="${escapeHtml(t1)}" aria-label="End" title="Thời điểm kết thúc câu" />
+          <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t1)}" aria-label="End" title="Thời điểm kết thúc câu" />
         </span>
-        <button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm câu phụ đề mới ngay sau câu này">+</button>
-        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>
+        ${cue.enhanced ? `<button type="button" class="sp-original-edit" data-id="${escapeAttr(cue.sourceCueId)}" title="Mở cue gốc tại cửa sổ thời gian này để sửa">Sửa gốc</button>
+        <button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Trả các cue nguồn của câu này về cách ghép gốc">Undo</button>` :
+        `<button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm câu phụ đề mới ngay sau câu này">+</button>
+        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>`}
         <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}" title="Sao chép toàn bộ nội dung câu (JA + VI/EN)">Copy</button>
         <details class="sp-copy-menu">
           <summary title="Tùy chọn sao chép nâng cao">⋮</summary>
@@ -1397,8 +1461,8 @@
           cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)
         }</div>
       </div>
-      <div class="sp-vi" contenteditable="true" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="VI">${renderBilingualVi(cue)}</div>
-      <div class="sp-en" contenteditable="true" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="EN">${renderBilingualEn(cue)}</div>
+      <div class="sp-vi" contenteditable="${!cue.enhanced}" spellcheck="false" lang="vi" data-idx="${idx}" data-placeholder="${translationPlaceholder(cue, "vi")}">${renderBilingualVi(cue)}</div>
+      <div class="sp-en" contenteditable="${!cue.enhanced}" spellcheck="false" lang="en" data-idx="${idx}" data-placeholder="${translationPlaceholder(cue, "en")}">${renderBilingualEn(cue)}</div>
     `;
   }
 
@@ -1422,9 +1486,9 @@
       bindJaDictHandlers(view);
     }
     const vi = row.querySelector(".sp-vi");
-    if (vi) vi.innerHTML = renderBilingualVi(cue);
+    if (vi) { vi.innerHTML = renderBilingualVi(cue); vi.dataset.placeholder = translationPlaceholder(cue, "vi"); }
     const en = row.querySelector(".sp-en");
-    if (en) en.innerHTML = renderBilingualEn(cue);
+    if (en) { en.innerHTML = renderBilingualEn(cue); en.dataset.placeholder = translationPlaceholder(cue, "en"); }
     const t0 = row.querySelector(".sp-t-start");
     if (t0) t0.value = Timing.formatTimeInput(cue.start_media_time);
     const t1 = row.querySelector(".sp-t-end");
@@ -1432,6 +1496,7 @@
   }
 
   function bindRowHandlers(row) {
+    if (row.dataset.enhanced === "true") return;
     const wrap = row.querySelector(".sp-ja-wrap");
     if (wrap) bindJaEditHandlers(wrap);
     const view = row.querySelector(".sp-ja-view");
@@ -1454,9 +1519,11 @@
         if (!followTimeline) setFollowTimeline(true, { scroll: false });
       }
       const btn = e.target.closest(
-        ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del"
+        ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del, .sp-original-edit, .sp-undo-sentence"
       );
       if (!btn || !listEl.contains(btn)) return;
+      if (btn.classList.contains("sp-original-edit")) { void openOriginalEditor(btn.dataset.id); return; }
+      if (btn.classList.contains("sp-undo-sentence")) { void sendCmd("undo_sentence", { id: btn.dataset.id }); return; }
       if (btn.classList.contains("sp-play")) {
         setFollowTimeline(true);
         sendCmd("play", { mediaTime: Number(btn.dataset.t || btn.dataset.time) });
@@ -1466,10 +1533,7 @@
         void (async () => {
           const r = await sendCmd("toggle_star_cue", { id });
           if (r?.savedCues) state.savedCues = normalizeSavedCues(r.savedCues);
-          const starred = isCueStarred(id);
-          btn.classList.toggle("active", starred);
-          btn.textContent = starred ? "★" : "☆";
-          btn.title = starred ? "Bỏ lưu câu" : "Lưu câu";
+          patchSubtitleStars();
         })();
       } else if (btn.classList.contains("sp-copy")) {
         copyCueById(btn.dataset.id, "full");
@@ -1496,72 +1560,6 @@
     });
   }
 
-  function stitchMultiCueSentences(rawCues) {
-    if (!Array.isArray(rawCues) || rawCues.length < 2) return rawCues || [];
-    const stitched = [];
-    let cur = null;
-
-    function isSentenceBoundary(c, next) {
-      const txt = String(c.text || c.source || "").trim();
-      if (!txt) return true;
-      if (/[。！？!?\n][」』）\)]*$/u.test(txt)) return true;
-      if (next && typeof c.end === "number" && typeof next.start === "number") {
-        if (next.start - c.end > 0.6) return true;
-      }
-      if (/(です|ます|でした|ました|ません|ませんでした|だろ[うお]|だね|だよ|よね|ですね|ますね|ください)$/u.test(txt)) {
-        if (!next || (typeof c.end === "number" && typeof next.start === "number" && next.start - c.end > 0.25)) {
-          return true;
-        }
-      }
-      const vi = String(c.vi || "").trim();
-      const en = String(c.en || "").trim();
-      if ((vi && /[.!?]$/.test(vi)) || (en && /[.!?]$/.test(en))) {
-        return true;
-      }
-      return false;
-    }
-
-    for (let i = 0; i < rawCues.length; i++) {
-      const c = rawCues[i];
-      const next = i + 1 < rawCues.length ? rawCues[i + 1] : null;
-
-      if (!cur) {
-        cur = {
-          ...c,
-          cueIds: [c.id],
-          tokens: Array.isArray(c.tokens) ? [...c.tokens] : [],
-        };
-      } else {
-        cur.end = Math.max(cur.end || 0, c.end || 0);
-        cur.end_media_time = Math.max(cur.end_media_time || 0, c.end_media_time || c.end || 0);
-        cur.cueIds.push(c.id);
-
-        const sep = (/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]$/u.test(cur.text || "") && /^[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]/u.test(c.text || "")) ? "" : " ";
-        cur.text = ((cur.text || "") + sep + (c.text || "")).trim();
-        cur.source = cur.text;
-
-        if (c.vi) {
-          cur.vi = cur.vi ? `${cur.vi} ${c.vi}`.trim() : c.vi;
-        }
-        if (c.en) {
-          cur.en = cur.en ? `${cur.en} ${c.en}`.trim() : c.en;
-        }
-        if (Array.isArray(c.tokens)) {
-          cur.tokens.push(...c.tokens);
-        }
-      }
-
-      if (!next || isSentenceBoundary(c, next)) {
-        if (Vocab?.fuseCompoundTokens && cur.tokens.length > 1) {
-          cur.tokens = Vocab.fuseCompoundTokens(cur.tokens);
-        }
-        stitched.push(cur);
-        cur = null;
-      }
-    }
-    return stitched;
-  }
-
   function renderList(force = false) {
     if (isEditingAny()) {
       pendingListRender = true;
@@ -1570,8 +1568,7 @@
     if (!force && !listDirty) return;
     listDirty = false;
     pendingListRender = false;
-    const rawCues = state.cues || [];
-    const cues = stitchMultiCueSentences(rawCues);
+    const cues = state.captionMode === "enhanced" ? state.enhancedCues || [] : state.cues || [];
     state._renderedCues = cues;
     syncListVisibility();
     if (!cues.length) {
@@ -1605,6 +1602,7 @@
       const el = document.createElement("div");
       el.className = "sp-sentence" + (isActive ? " active" : "");
       el.dataset.id = cue.id;
+      el.dataset.enhanced = String(!!cue.enhanced);
       el.dataset.cueIds = cueIds.join(" ");
       el.dataset.idx = String(idx);
       el.dataset.sig = sig;
@@ -1651,10 +1649,19 @@
       !Array.isArray(incoming.cues)
     ) {
       incoming.cues = [];
+      incoming.enhancedCues = [];
+      incoming.captionMode = "original";
     }
 
     const prevActive = state.activeCueId;
     state = { ...state, ...incoming };
+    if (incoming.savedCues) patchSubtitleStars();
+    if (captionModeBtn) {
+      const enhanced = state.captionMode === "enhanced";
+      captionModeBtn.textContent = enhanced ? "Enhanced · thử nghiệm" : "Original";
+      captionModeBtn.setAttribute("aria-pressed", String(enhanced));
+      captionModeBtn.disabled = !state.enhancementAvailable;
+    }
 
     if (typeof incoming.status === "string") setStatus(incoming.status);
     if (incoming.scriptSource) setScriptSource(incoming.scriptSource);
@@ -1679,6 +1686,8 @@
         updateActiveHighlight({ scroll: !isEditingAny() });
       } else if (incoming.activeCueId != null) {
         updateActiveHighlight({ scroll: false });
+      } else if (incoming.currentTime != null) {
+        updateKaraokeHighlight(Number(incoming.currentTime));
       }
     }
 
@@ -2031,8 +2040,8 @@
     const jaEl = el.closest(".sp-ja-wrap, .sp-ja");
     const idx = Number(jaEl?.dataset.idx ?? el.dataset.idx ?? el.closest("[data-idx]")?.dataset.idx);
     const cue =
-      (Number.isFinite(idx) && state.cues?.[idx]) ||
-      (state.cues || []).find((c) => c.id === el.closest(".sp-sentence")?.dataset.id);
+      (Number.isFinite(idx) && state._renderedCues?.[idx]) ||
+      (state._renderedCues || []).find((c) => c.id === el.closest(".sp-sentence")?.dataset.id);
     sendCmd("SHOW_PAGE_DICT", {
       surface: surface || lemma,
       lemma: lemma || surface,
@@ -2201,6 +2210,54 @@
   document.getElementById("sp-export").addEventListener("click", async () => {
     await sendCmd("export");
   });
+  document.getElementById("sp-export-json").addEventListener("click", async () => {
+    const result = await sendCmd("export_json");
+    if (!result?.ok) toast(result?.error || "Không thể sao lưu");
+  });
+  document.getElementById("sp-export-benchmark").addEventListener("click", async () => {
+    const result = await sendCmd("export_benchmark");
+    toast(result?.ok ? "Đã xuất số đo JSON" : result?.error || "Chưa xuất được số đo");
+  });
+
+  let pendingSentenceBackup = null;
+  const backupPanel = document.getElementById("sp-backup-panel");
+  const backupFile = document.getElementById("sp-backup-file");
+  const backupApply = document.getElementById("sp-backup-apply");
+  document.getElementById("sp-restore-json").addEventListener("click", () => backupFile.click());
+  document.getElementById("sp-backup-cancel").addEventListener("click", () => {
+    pendingSentenceBackup = null; backupPanel.hidden = true; backupFile.value = "";
+  });
+  backupFile.addEventListener("change", async () => {
+    const file = backupFile.files?.[0];
+    pendingSentenceBackup = null;
+    backupPanel.hidden = true;
+    if (!file) return;
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error("File lớn hơn 10 MB");
+      const backup = JSON.parse(await file.text());
+      if (backup?.format !== "caption-studio-sentence-backup" || backup.version !== 1 || !Array.isArray(backup.cues)) {
+        throw new Error("Chọn file từ Sao lưu JSON; file dịch thông thường dùng Import");
+      }
+      pendingSentenceBackup = backup;
+      document.getElementById("sp-backup-summary").textContent = `${file.name} · Video ${backup.videoId} · ${backup.cues.length} cue · ${backup.savedSentences?.length || 0} câu đã lưu`;
+      backupPanel.hidden = false;
+    } catch (err) { toast(String(err.message || err)); }
+    backupFile.value = "";
+  });
+  backupApply.addEventListener("click", async () => {
+    if (!pendingSentenceBackup) return;
+    backupApply.disabled = true;
+    try {
+      const result = await sendCmd("restore_sentence_backup", { backup: pendingSentenceBackup });
+      if (!result?.ok) { toast(result?.error || "Không thể khôi phục"); return; }
+      pendingSentenceBackup = null; backupPanel.hidden = true;
+      toast(`Đã khôi phục ${result.count} cue; có thể quay lại bản trước`, 3500);
+    } finally { backupApply.disabled = false; }
+  });
+  document.getElementById("sp-recover-json").addEventListener("click", async () => {
+    const result = await sendCmd("restore_previous_backup");
+    toast(result?.ok ? `Đã quay lại ${result.count} cue` : result?.error || "Chưa có bản trước khôi phục");
+  });
 
   const importPanel = document.getElementById("sp-import-panel");
   const importFileInput = document.getElementById("sp-import-file");
@@ -2266,7 +2323,13 @@
       const name = file.name || "";
       if (/\.json$/i.test(name) || text.trimStart().startsWith("{") || text.trimStart().startsWith("[")) {
         try {
-          rows = extractCuesFromJson(JSON.parse(text));
+          const parsed = JSON.parse(text);
+          if (parsed?.format === "caption-studio-sentence-backup") {
+            toast("File backup: dùng Khôi phục JSON để giữ khóa và dữ liệu Enhanced");
+            closeImportPanel();
+            return;
+          }
+          rows = extractCuesFromJson(parsed);
         } catch (_) {
           rows = null;
         }

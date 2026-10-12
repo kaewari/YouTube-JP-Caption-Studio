@@ -1,4 +1,5 @@
 importScripts("../shared/timedtext_parse.js");
+importScripts("../shared/gemini_translate.js");
 
 const BRIDGE = "http://127.0.0.1:8765";
 /** Optional Native Messaging fallback only — primary IME path is bridge POST /ime/switch. */
@@ -7,6 +8,71 @@ const IME_NATIVE_HOST = "com.ytcaption.ime_switch";
 const POLL_BRIDGE_ALARM = "poll_bridge_state";
 const DRIVE_UPLOAD_ALARM = "drive_upload_retry";
 const DRIVE_PENDING_MIRROR_KEY = "drivePendingMirror";
+
+let savedStateWritePending = Promise.resolve();
+function withSavedStateWrite(write) {
+  const result = savedStateWritePending.then(write);
+  savedStateWritePending = result.catch(() => {});
+  return result;
+}
+async function handleSavedCueMutation(msg, sender) {
+  const ownPage = String(sender?.url || "").startsWith(chrome.runtime.getURL(""));
+  if (sender?.id !== chrome.runtime.id || (!ownPage && !isSupportedUrl(sender.url || sender.tab?.url)) ||
+      JSON.stringify(msg).length > 10 * 1024 * 1024) throw new Error("Saved mutation rejected");
+  return withSavedStateWrite(async () => {
+    if (["save_script", "save_meta", "save_sentence_state"].includes(msg.op)) {
+      const { videoId, meta } = msg;
+      if (typeof videoId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(videoId) || !meta ||
+          !Number.isFinite(meta.rev) || meta.rev < 0 || typeof meta.owned !== "boolean" || !Array.isArray(meta.tombstones)) {
+        throw new Error("Invalid script commit");
+      }
+      const key = `transcriptMeta:${videoId}`;
+      const current = (await chrome.storage.local.get(key))[key];
+      if (meta.rev < (Number(current?.rev) || 0)) return { ok: true, skipped: "stale_revision" };
+      const patch = {};
+      if (msg.op === "save_sentence_state") {
+        if (typeof msg.sourceKey !== "string" || !msg.sourceKey.startsWith(`youtube:${videoId}:`) ||
+            msg.state?.version !== 1 || msg.state.sourceKey !== msg.sourceKey) throw new Error("Invalid sentence state commit");
+        patch[`sentenceState:v1:${msg.sourceKey}`] = msg.state;
+      } else patch[key] = meta;
+      if (msg.op === "save_script") {
+        if (!Array.isArray(msg.cues)) throw new Error("Invalid script cues");
+        patch[`transcript:${videoId}`] = msg.cues;
+      }
+      await chrome.storage.local.set(patch);
+      return { ok: true };
+    }
+    const raw = (await chrome.storage.local.get("savedCues")).savedCues;
+    let saved = Object.fromEntries((Array.isArray(raw) ? raw : Object.values(raw || {})).filter(c => c?.id).map(c => [c.id, c]));
+    if (msg.op === "restore_video") {
+      const { videoId, sourceKey, entries, patch } = msg;
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(videoId) || typeof sourceKey !== "string" ||
+          !sourceKey.startsWith(`youtube:${videoId}:`) || !Array.isArray(entries) || !patch || typeof patch !== "object") {
+        throw new Error("Invalid saved restore");
+      }
+      const keys = [`transcript:${videoId}`, `transcriptMeta:${videoId}`, `tokens:${videoId}`,
+        `sentenceState:v1:${sourceKey}`, `sentenceRecovery:v1:${sourceKey}`];
+      if (Object.keys(patch).length !== keys.length || !keys.every(k => Object.hasOwn(patch, k))) throw new Error("Invalid restore keys");
+      if (entries.some(c => !c || typeof c.id !== "string" || !c.id || c.videoId !== videoId || typeof c.source !== "string" ||
+          (Object.hasOwn(saved, c.id) && saved[c.id].videoId !== videoId))) throw new Error("Invalid or conflicting saved sentence");
+      const recovery = patch[`sentenceRecovery:v1:${sourceKey}`];
+      if (!recovery || typeof recovery !== "object") throw new Error("Missing restore recovery");
+      recovery.savedSentences = Object.values(saved).filter(c => c.videoId === videoId);
+      for (const [id, cue] of Object.entries(saved)) if (cue.videoId === videoId) delete saved[id];
+      saved = { ...saved, ...Object.fromEntries(entries.map(c => [c.id, c])) };
+      await chrome.storage.local.set({ ...patch, savedCues: saved });
+    } else {
+      const id = msg.id;
+      if (typeof id !== "string" || !id || id.length > 200000) throw new Error("Invalid saved ID");
+      if (msg.op === "delete" || (msg.op === "toggle" && Object.hasOwn(saved, id))) delete saved[id];
+      else if (msg.op === "toggle" && msg.cue?.id === id && typeof msg.cue.source === "string" && typeof msg.cue.videoId === "string") {
+        saved = { ...saved, [id]: msg.cue };
+      } else throw new Error("Invalid saved operation");
+      await chrome.storage.local.set({ savedCues: saved });
+    }
+    return { ok: true, savedCues: saved };
+  });
+}
 
 async function ensureBridgePollAlarm() {
   try {
@@ -158,8 +224,25 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "SAVED_CUES_MUTATE") {
+    handleSavedCueMutation(msg, sender).then(sendResponse).catch(err => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
+  if (["GEMINI_TRANSLATE_GROUPS", "GEMINI_TRANSLATE_CANCEL", "GEMINI_KEY_CHECK"].includes(msg?.type)) {
+    HardsubGeminiTranslate.handleTranslationMessage(msg, sender,
+      !!sender.tab && isSupportedUrl(sender.url || sender.tab.url)).then(sendResponse).catch(() =>
+      sendResponse({ ok: false, error: "Translation message rejected or worker failed" })
+    );
+    return true;
+  }
   if (msg?.type === "BRIDGE_FETCH") {
-    handleBridgeFetch(msg, sender).then(sendResponse).catch((err) =>
+    const request = msg.path === "/scripts/save" && msg.method === "POST" ? withSavedStateWrite(async () => {
+      const key = `transcriptMeta:${msg.body?.video_id}`;
+      const meta = (await chrome.storage.local.get(key))[key];
+      if ((Number(msg.body?.rev) || 0) < (Number(meta?.rev) || 0)) return { ok: false, skipped: "stale_revision" };
+      return handleBridgeFetch(msg, sender);
+    }) : handleBridgeFetch(msg, sender);
+    request.then(sendResponse).catch((err) =>
       sendResponse({ ok: false, error: String(err) })
     );
     return true;
@@ -462,7 +545,7 @@ async function pullExtensionStateFromBridge() {
     }
     _applyingBridgeState = true;
     try {
-      await chrome.storage.local.set(patch);
+      await withSavedStateWrite(() => chrome.storage.local.set(patch));
       _lastPushedJson = JSON.stringify({
         ...patch,
         source: "extension",
@@ -584,6 +667,8 @@ async function handleBridgeFetch(msg, sender) {
   }
   const url = `${BRIDGE}${path}`;
   const opts = { method };
+  // Script writes share the saved-state queue; a stalled bridge must release it.
+  if (path === "/scripts/save" && method === "POST") opts.signal = AbortSignal.timeout(20000);
   if (isForm && body) {
     const blob = dataUrlToBlob(body.imageBase64);
     const fd = new FormData();
@@ -718,7 +803,7 @@ async function handleYtLoadCaptions(msg) {
   const seen = new Set();
   const lastError = { reason: "" };
 
-  const pushUrl = (url, lang, asr, via) => {
+  const pushUrl = (url, lang, asr, via, track = null) => {
     const key = normalizeTimedtextUrl(url);
     if (!key || !key.includes("/api/timedtext")) return;
     if (seen.has(key)) return;
@@ -728,6 +813,7 @@ async function handleYtLoadCaptions(msg) {
       lang: lang || "",
       asr: !!asr,
       via,
+      track,
     });
   };
 
@@ -740,13 +826,13 @@ async function handleYtLoadCaptions(msg) {
   // Prefer ANDROID timedtext URLs first — WEB watch HTML baseUrls often 200+empty.
   const androidTracks = await fetchAndroidCaptionTracks(videoId).catch(() => []);
   for (const t of sortTracks(androidTracks, preferLang)) {
-    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android");
+    pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "android", t);
   }
   const androidHasJa = androidTracks.some((t) => matchLangFamily(t.languageCode, "ja"));
   if (!androidHasJa) {
     const webTracks = await fetchWebCaptionTracks(videoId, cookieHeader).catch(() => []);
     for (const t of sortTracks(webTracks, preferLang)) {
-      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html");
+      pushUrl(t.baseUrl, t.languageCode || "", t.kind === "asr", "watch_html", t);
     }
   }
   // Legacy unsigned URLs last resort — still served anonymously even when
@@ -803,6 +889,7 @@ async function handleYtLoadCaptions(msg) {
       lang: jaPack.lang || "ja",
       asr: jaPack.asr,
       via: jaPack.via,
+      sourceTrack: jaPack.sourceTrack,
       hasEn,
       hasVi,
       ...secondary,
@@ -1004,7 +1091,8 @@ async function fetchBestLangPack(candidates, prefix, lastError = null) {
     if (!body) continue;
     const cues = parseTimedtextBody(body);
     if (cues.length) {
-      return { cues, lang: x.lang || prefix, asr: !!x.asr, via: x.via || "track" };
+      return { cues, lang: x.lang || prefix, asr: !!x.asr, via: x.via || "track",
+        sourceTrack: HardsubTimedtextParse.sourceTrackInfo(x.track, body) };
     }
   }
   return null;
@@ -1061,9 +1149,9 @@ async function fetchTimedtextBody(baseUrl, lastError = null) {
 }
 
 const decodeEntities = (s) => HardsubTimedtextParse.decodeEntities(s);
-const parseJson3 = (data) => HardsubTimedtextParse.parseJson3Cues(data);
+const parseJson3 = (data) => HardsubTimedtextParse.parseJson3Cues(data, { includeSource: true });
 const parseTimedtextXml = (xml) => HardsubTimedtextParse.parseTimedtextXml(xml);
-const parseTimedtextBody = (body) => HardsubTimedtextParse.parseTimedtextBody(body);
+const parseTimedtextBody = (body) => HardsubTimedtextParse.parseTimedtextBody(body, { includeSource: true });
 
 function dataUrlToBlob(dataUrl) {
   const parts = dataUrl.split(",");
@@ -1442,7 +1530,10 @@ async function mirrorFromDrive(videoIds, opts = {}) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ files }),
     });
-    if (!res.ok) continue;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`bridge POST ${res.status}: ${errText.slice(0, 120)}`);
+    }
     // Disk now equals Drive — do not bounce the same bytes straight back up.
     lastMirroredRev[folder.name] = remoteRev;
     pulled.push(folder.name);

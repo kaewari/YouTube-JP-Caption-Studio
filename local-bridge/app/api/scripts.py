@@ -15,6 +15,7 @@ from app.schemas.models import (
     ScriptSaveResponse,
 )
 from app.services.script_store import (
+    ScriptRevisionConflict,
     delete_script,
     list_scripts,
     load_meta,
@@ -43,6 +44,11 @@ def scripts_save(body: ScriptSaveRequest) -> ScriptSaveResponse:
             rev=body.rev,
         )
         return ScriptSaveResponse(**result)
+    except ScriptRevisionConflict as exc:
+        append_errors_log("WARNING", f"scripts/save rejected stale revision: {exc}")
+        raise HTTPException(status_code=409, detail={
+            "error": "stale_revision", "current_rev": exc.current_rev,
+        }) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -114,6 +120,11 @@ def scripts_files_post(video_id: str, body: ScriptFilesRequest) -> dict[str, Any
     """Drive → disk, straight file write (no lossy snapshot path)."""
     try:
         return write_files(video_id, body.files or {})
+    except ScriptRevisionConflict as exc:
+        append_errors_log("WARNING", f"scripts/files POST rejected stale revision: {exc}")
+        raise HTTPException(status_code=409, detail={
+            "error": "stale_revision", "current_rev": exc.current_rev,
+        }) from exc
     except ValueError as exc:
         append_errors_log("WARNING", f"scripts/files POST bad request: {exc}")
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -16,6 +16,27 @@ assert.strictEqual(parseTimeToken("1:02.5"), 62.5);
 assert.strictEqual(parseTimeToken("1:12:05"), 4325);
 assert.strictEqual(parseTimeToken("01:00:00.5"), 3600.5);
 
+for (const [text, expected] of [
+  ["0:01.0131", 1.0131],
+  ["0:01.0353", 1.0353],
+  ["0:00:01.0131", 1.0131],
+  ["1:02.0353", 62.0353],
+  ["1:00:01.0353", 3601.0353],
+  ["1:99.5", 159.5],
+  ["0:-1:2", -58],
+  ["0:00." + "0".repeat(323) + "5", Number.MIN_VALUE],
+  [(10n ** 300n / 60n) + ":" + (10n ** 300n % 60n), 1e300],
+]) assert.strictEqual(parseTimeToken(text), expected, text);
+
+const precise = parseExportTxt(`[001] 0:01.0131 → 0:04.0353
+JA: 時刻を確認する。
+VI: Kiểm tra thời gian.
+`);
+assert.strictEqual(precise[0].start_media_time, 1.0131);
+assert.strictEqual(precise[0].end_media_time, 4.0353);
+assert.strictEqual(precise[0].source, "時刻を確認する。");
+assert.strictEqual(precise[0].vi, "Kiểm tra thời gian.");
+
 const hyphen = parseExportTxt(`[001] 0:00 - 0:02
 JA: こんにちは
 EN: Hello

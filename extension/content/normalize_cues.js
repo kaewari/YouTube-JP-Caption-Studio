@@ -73,24 +73,72 @@
       .trim();
   }
 
+  /** Decoded loader text → cleaned text; spans are half-open UTF-16 offsets. */
+  function normalizeTextWithMapping(text) {
+    const raw = String(text || "");
+    const removed = new Uint8Array(raw.length);
+    for (const re of [SFX_INLINE_RE, MUSIC_SYM_RE]) {
+      for (const match of raw.matchAll(re)) {
+        removed.fill(1, match.index, match.index + match[0].length);
+      }
+    }
+    const spans = [];
+    let clean = "";
+    let offset = 0;
+    for (const char of raw) {
+      const rawStart = offset;
+      offset += char.length;
+      if (removed[rawStart]) continue;
+      const space = /\s/u.test(char);
+      if (space && (!clean || clean.endsWith(" "))) {
+        const last = spans[spans.length - 1];
+        // A deleted label is not part of the whitespace's source span.
+        if (last && last.rawEnd === rawStart) last.rawEnd = offset;
+        continue;
+      }
+      const value = space ? " " : char;
+      spans.push({ charStart: clean.length, charEnd: clean.length + value.length, rawStart, rawEnd: offset });
+      clean += value;
+    }
+    if (clean.endsWith(" ")) {
+      clean = clean.slice(0, -1);
+      spans.pop();
+    }
+    return { text: clean, offsetUnit: "utf16", sourceDomain: "loader-text", spans };
+  }
+
   /**
    * Drop pure SFX cues; strip SFX tokens from mixed cues (drop if empty).
    * Keeps each cue's YouTube start/end unchanged.
    * Input/output: { start, end, text }[]
    */
-  function dropAndStripSfx(cues) {
+  function dropAndStripSfx(cues, opts = {}) {
     const out = [];
+    let trackIndex = -1;
     for (const c of cues || []) {
+      trackIndex++;
       const raw = String(c.text || "").trim();
       if (!raw) continue;
       if (isSfxLabelOnly(raw)) continue;
       const cleaned = stripSfxTokens(raw);
       if (!cleaned || isSfxLabelOnly(cleaned)) continue;
-      out.push({
+      const normalized = {
         start: Number(c.start) || 0,
         end: Number(c.end) || 0,
         text: cleaned,
-      });
+      };
+      if (opts.includeSource) {
+        const rawText = String(c.rawText ?? c.text ?? "");
+        normalized.rawSource = {
+          text: rawText, start: normalized.start, end: normalized.end,
+          sourceDomain: c.rawText != null ? "json3-text" : "loader-text",
+          trackIndex,
+          segmentAnchors: (c.segmentAnchors || []).map(a => ({ ...a })),
+        };
+        normalized.normalization = normalizeTextWithMapping(rawText);
+        normalized.normalization.sourceDomain = normalized.rawSource.sourceDomain;
+      }
+      out.push(normalized);
     }
     return out;
   }
@@ -142,8 +190,8 @@
   }
 
   /** Normalize text only; timeline stays YouTube timedtext boundaries. */
-  function normalizeCues(cues) {
-    return dropAndStripSfx(cues);
+  function normalizeCues(cues, opts) {
+    return dropAndStripSfx(cues, opts);
   }
 
   return {
@@ -152,6 +200,7 @@
     isRollingAsrUpdate,
     dropAndStripSfx,
     stripSfxTokens,
+    normalizeTextWithMapping,
     isSfxLabelOnly,
     isMusicOnly,
     charLen,

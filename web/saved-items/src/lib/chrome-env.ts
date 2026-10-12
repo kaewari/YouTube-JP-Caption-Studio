@@ -23,7 +23,7 @@ type ChromeLike = {
       ) => void;
     };
   };
-  runtime?: { id?: string };
+  runtime?: { id?: string; sendMessage?: (message: Record<string, unknown>) => Promise<{ ok?: boolean; error?: string }> };
 };
 
 function chromeApi(): ChromeLike | undefined {
@@ -40,6 +40,10 @@ export function hasChromeStorage(): boolean {
 
 export function getChromeStorage(): ChromeStorageArea | null {
   return chromeApi()?.storage?.local ?? null;
+}
+
+export function getChromeRuntime() {
+  return chromeApi()?.runtime ?? null;
 }
 
 export function getChromeStorageOnChanged() {

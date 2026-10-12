@@ -80,3 +80,30 @@ def test_cache_behavior():
     assert res2.hanviet == res1.hanviet
     assert res2.reading == res1.reading
     assert res2.glosses_vi == res1.glosses_vi
+
+
+@pytest.mark.parametrize('context', [
+    ['水', '。', '色'], ['水。', '色'], ['水', '。色'],
+    ['水', '・', '色'], ['水', '!', '色'], ['水', '色。'],
+])
+def test_context_lookup_keeps_punctuation_boundaries(context):
+    result = lookup('水', context_tokens=context)
+    assert result.found and result.matched == '水'
+
+
+def test_context_lookup_requires_unambiguous_target():
+    result = lookup('気', context_tokens=['気', 'に', 'なる', '気', 'に', 'する'])
+    assert result.found and result.matched == '気'
+
+
+def test_exact_spelling_keeps_rare_mazii_hanviet():
+    result = lookup('剕')
+    assert result.found and result.matched == '剕'
+    assert result.hanviet == 'PHÍ'
+
+
+def test_context_cache_keeps_token_boundaries():
+    joined = lookup('水', context_tokens=['水', '色'])
+    assert joined.matched == '水色'
+    separated = lookup('水', context_tokens=['水,色'])
+    assert separated.matched == '水'

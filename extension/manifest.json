@@ -63,7 +63,7 @@
         "https://www.netflix.com/*",
         "https://netflix.com/*"
       ],
-      "js": ["injected/page_capture.js"],
+      "js": ["shared/timedtext_parse.js", "injected/page_capture.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -83,6 +83,8 @@
         "shared/romaji_kana.js",
         "shared/gemini_translate.js",
         "content/normalize_cues.js",
+        "shared/sentence_groups.js",
+        "shared/sentence_benchmark.js",
         "content/cue_timing.js",
         "content/fill_yt_secondary.js",
         "content/settings_modal.js",
@@ -94,7 +96,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["injected/page_capture.js"],
+      "resources": ["shared/timedtext_parse.js", "injected/page_capture.js"],
       "matches": [
         "https://www.youtube.com/*",
         "https://youtube.com/*",

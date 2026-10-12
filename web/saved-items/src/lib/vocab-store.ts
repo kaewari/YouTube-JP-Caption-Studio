@@ -1,6 +1,7 @@
 import {
   BRIDGE_BASE,
   getChromeStorage,
+  getChromeRuntime,
   getChromeStorageOnChanged,
   hasChromeStorage,
   type ChromeStorageChange,
@@ -423,23 +424,10 @@ export async function loadSavedCuesAsync(): Promise<{ cues: SavedCue[]; source: 
 export async function deleteSavedCueAsync(cueId: string): Promise<void> {
   if (typeof window === "undefined") return;
   if (hasChromeStorage()) {
-    try {
-      const store = getChromeStorage()!;
-      const data = await store.get(CHROME_SAVED_CUES_KEY);
-      const raw = data[CHROME_SAVED_CUES_KEY];
-      if (Array.isArray(raw)) {
-        const next = (raw as Record<string, unknown>[]).filter(
-          (c) => c && c.id !== cueId,
-        );
-        await store.set({ [CHROME_SAVED_CUES_KEY]: next });
-      } else if (raw && typeof raw === "object") {
-        const next: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
-        delete next[cueId];
-        await store.set({ [CHROME_SAVED_CUES_KEY]: next });
-      }
-    } catch {
-      /* ignore */
-    }
+    const runtime = getChromeRuntime();
+    if (!runtime?.sendMessage) throw new Error("Saved state worker unavailable");
+    const result = await runtime.sendMessage({ type: "SAVED_CUES_MUTATE", op: "delete", id: cueId });
+    if (!result?.ok) throw new Error(result?.error || "Saved state update failed");
   }
 
   // Also update localStorage

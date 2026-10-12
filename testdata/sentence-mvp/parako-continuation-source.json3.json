@@ -1,0 +1,423 @@
+{
+  "provenance": {
+    "url": "https://www.youtube.com/watch?v=ylnxFdPhLCo",
+    "captured": "2026-10-09",
+    "httpStatus": 200,
+    "sourceSha256": "85bf9432d35c64b81a8deab541648ccb24a8a33b01c55e600ab85c5185ebdd63",
+    "rangeSeconds": [
+      60,
+      84
+    ],
+    "groundTruth": "NOT VERIFIED; raw source excerpt, no ASR word corrections"
+  },
+  "events": [
+    {
+      "tStartMs": 60590,
+      "dDurationMs": 4450,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 60600,
+      "dDurationMs": 9000,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "初めて",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "助手",
+          "tOffsetMs": 479,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "席",
+          "tOffsetMs": 759,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "に",
+          "tOffsetMs": 959,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "乗っ",
+          "tOffsetMs": 1160,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 1320,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "くれる",
+          "tOffsetMs": 1400,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "の",
+          "tOffsetMs": 1720,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "が",
+          "tOffsetMs": 1880,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ヒカル",
+          "tOffsetMs": 2919,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "君",
+          "tOffsetMs": 3200,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 65030,
+      "dDurationMs": 4570,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 65040,
+      "dDurationMs": 8240,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "だ",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "なんて",
+          "tOffsetMs": 159,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "言い",
+          "tOffsetMs": 960,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "方",
+          "tOffsetMs": 1280,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "きし家族",
+          "tOffsetMs": 1640,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "と",
+          "tOffsetMs": 3040,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "か",
+          "tOffsetMs": 3160,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "友達",
+          "tOffsetMs": 3280,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "は",
+          "tOffsetMs": 3719,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "乗せ",
+          "tOffsetMs": 4160,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 4439,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 69590,
+      "dDurationMs": 3690,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 69600,
+      "dDurationMs": 5920,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "ない",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ん",
+          "tOffsetMs": 159,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "です",
+          "tOffsetMs": 240,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "か",
+          "tOffsetMs": 400,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "?",
+          "tOffsetMs": 519,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ああ",
+          "tOffsetMs": 1559,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 73270,
+      "dDurationMs": 2250,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 73280,
+      "dDurationMs": 4800,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "、",
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 75510,
+      "dDurationMs": 2570,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 75520,
+      "dDurationMs": 7200,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "さあ",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "出発",
+          "tOffsetMs": 200,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "する",
+          "tOffsetMs": 599,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "よ",
+          "tOffsetMs": 800,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "。",
+          "tOffsetMs": 959,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "なん",
+          "tOffsetMs": 1360,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "か",
+          "tOffsetMs": 1440,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "すい",
+          "tOffsetMs": 1599,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ませ",
+          "tOffsetMs": 1840,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ん",
+          "tOffsetMs": 2000,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "。",
+          "tOffsetMs": 2080,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "どこ",
+          "tOffsetMs": 2320,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 78070,
+      "dDurationMs": 4650,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 78080,
+      "dDurationMs": 6240,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "行く",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ん",
+          "tOffsetMs": 200,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "です",
+          "tOffsetMs": 280,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "か",
+          "tOffsetMs": 440,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "?",
+          "tOffsetMs": 520,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "目的",
+          "tOffsetMs": 1000,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "地",
+          "tOffsetMs": 1520,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "は",
+          "tOffsetMs": 1760,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ない",
+          "tOffsetMs": 2600,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "。",
+          "tOffsetMs": 2840,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "当て",
+          "tOffsetMs": 3600,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "も",
+          "tOffsetMs": 3840,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "なく",
+          "tOffsetMs": 4120,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 82710,
+      "dDurationMs": 1610,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 82720,
+      "dDurationMs": 3759,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "だ",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "よ",
+          "tOffsetMs": 160,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "。",
+          "tOffsetMs": 280,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "[笑い]",
+          "tOffsetMs": 465
+        }
+      ]
+    }
+  ]
+}

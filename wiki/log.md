@@ -288,3 +288,211 @@ Execution pending; no source functionality changed.
 
 - Filed review/antigravity-hook-retry-2026-09-20.md: IDE post-edit dispatch and SYSTEM_SDK context observed in native logs.
 - Desktop app remains unverified; CLI probe reports NOT OBSERVED despite hook-file loading and requires first-run consent for interactive inspection.
+
+## [2026-10-09] ingest | YouTube sentence enhancement MVP
+
+Filed supplied revised plan and execution decisions. [Topic](topics/youtube-sentence-enhancement-mvp.md): Phase 0 active; five source transcript snapshots collected, one real HTTP200 JSON3 captured. Existing sidepanel stitch defect reproduced and Original rows restored; full MVP and independent runtime remain NOT VERIFIED. Contradictions retained: old no-Gemini docs, sidepanel heuristic absent from plan overview, analysis-only gate is not release approval.
+
+## [2026-10-10] ingest | YouTube sentence MVP source audit
+
+Read the filed source/pure-slice review from disk. Five HTTP 200 JSON3 sources and independent bounded pure PASS recorded; installed integration, storage, gold/KPI and readiness remain NOT VERIFIED. Historical completion claims do not close these new gates.
+
+## [2026-10-10] ingest | Sentence MVP queue, NLP and backup/restore
+
+Read the new raw review from disk; updated topic/index. Worktree integration supersedes
+the earlier module-not-loaded snapshot. Bounded independent slice PASS; installed Chrome,
+actual script-store/Drive, gold and readiness remain NOT VERIFIED. Raw reviews preserved.
+
+## [2026-10-10] ingest | Broker lifecycle and native cache identity
+
+Read both new raw reviews fully from disk. Cache bounds/migration/date cooldown and
+epoch cancellation have independent bounded PASS. Native first duplicate-ID failure
+was reproduced and fixed with owned/deleted/token regressions; later native toggle/export
+verified102 unique IDs and source/time preservation. Four automatic MT rows changed;
+protected native round trips, anchors, gold, metrics and full release remain open.
+Historical raw reviews retained; topic/index/product preview docs updated.
+
+## [2026-10-10] ingest | Source fingerprint and native parser follow-up
+
+Read the raw review fully from disk. Source-content digest/cache identity and async
+navigation guards have independent bounded PASS in the worktree. Native worker
+follow-up delivered a hashed backup; zero anchors can reflect XML and do not prove
+JSON3 parser failure. Native selected track/fingerprint, gold/KPI and full release
+remain open. Current Gemini context reports unavailable key, not deleted storage.
+
+## [2026-10-10] ingest | Runtime metrics bounded review
+
+Read the raw review fully from disk. Independent VM/helpers and localhost HTTP
+PASS after Red/Green seeking and hidden-RAF fixes; bounded events/receipt dedup
+verified. Sampled readiness does not observe intervening clear/restore and does
+not certify release. Native metrics/download, independent DOM and KPI remain open.
+
+## [2026-10-10] ingest | Selected track identity and script clock precision
+
+Read both new raw reviews fully from disk. Selected metadata/fresh-cached MAIN
+helpers and real HTTP have independent bounded PASS; nine extension files copied
+with guarded hashes, native Reload interrupted. Script-store real HTTP/disk
+precision loss fixed with independent edge/import/manual TXT preservation checks.
+Backend stays worktree-only; full pytest baseline still9failed/25passed. Native
+activation, gold/KPI/protected storage/Drive and full release remain open.
+
+## [2026-10-10] ingest | Fifty annotation candidates
+
+Read raw review fully from disk. Prepared50 ignored source windows,30tune/20holdout;
+independent integrity matches150 source records and all five snapshot hashes.
+All references/review labels remain null, source clocks overlap naturally. Gold,
+category coverage, alignment and quality/KPIs remain NOT VERIFIED.
+
+## [2026-10-10] lint | Annotation holdout evidence boundary
+
+Independent final confirms source integrity but cannot certify historical holdout
+isolation. Topic retains that qualification; raw preparation statement records the
+parent assignment decision, not proof of unseen development data. Overlapping
+windows cannot be counted as independent statistical samples.
+
+## [2026-10-10] ingest | Sentence usage and dated cost estimate
+
+Read immutable cost-instrumentation review in full. Independent bounded PASS actual localhost HTTP usage/rejection/privacy/thinking/cache/fallback/expiry; billing null. Two modules copied to main with old-hash guards/backups/modes; native activation still open. Full release remains NOT VERIFIED.
+
+## [2026-10-10] ingest | Native metrics and selected-track activation
+
+Read immutable native-metrics-activation review in full. Actual Chrome Reload/new document exported970408B backup/32214B metrics; independent byte/source/clock/target/production fingerprint/normalization PASS. Supersedes earlier pending activation state, retains prior raw reviews. XML no anchors; Original JA10onsets only/request0, TTFV13.2772s includes enabling overlay; no translation/Enhanced/release KPI claim.
+
+## [2026-10-10] ingest | Metric player clock consistency
+
+Read immutable metric-clock review fully. Production one-line sampler fix independently Red/Green PASS: interleaved frame/player timestamps1discontinuity/2onsets→0/1, renderer/cue/sidepanel inputs unchanged, real exclusion guards retained. Main hash-guarded copy verified; new native activation pending. Native tenanchors distinct, all237discontinuity causes unknown without raw samples. Earlier artifact integrity PASS does not certify release metrics.
+
+## [2026-10-10] ingest | TXT export metadata warning
+
+Filed/read raw warning review; bounded reviewer-authored/root-executed UI and independent exporter/audit PASS. Main HTML/CSS copied with guarded receipts. Native activation/speech/download NOT VERIFIED; three named rollback flags retained as explicit open gap.
+
+## [2026-10-10] ingest | Rollback flags and native cost-clock follow-up
+
+Read immutable follow-up review fully. Independent bounded flags/settings/late MT+NLP/save+restore PASS after initial-disabled sidecar serializer Red/Green fix. Native Chrome Reload/fresh TJ2zrbH0BB4 document confirms readable TXT warning and cost schema; independent artifact/screenshot audit verifies6 distinct OriginalJAonsets/0discontinuity/request0/costnull. Different session/no raw samples prevents causal or full KPI claim. Flags copied after native window, activation remains open. Earlier absent-flags/pending cost-clock-warning states explicitly superseded; gold/live/protected storage/Drive/full goal remain open.
+
+## [2026-10-10] ingest | Lifecycle and mid-flight receipts
+
+Read immutable lifecycle review fully. Independent runtime privacy/bounds/submission/accepted-stale-cache-error and retired-session checks PASS. Actual16-job two-batch Red15ready/request0→Green1midflight/2final reproduced independently; final contentSHA5f5335d supersedes initial5181c301. Three main files guarded copied after review, native flags/lifecycle activation still open. Parent five-source structural coverage/counts remain separate from gold/semantic KPI; full goal active.
+
+## [2026-10-10] ingest | Native preparation lifecycle activation
+
+Fresh Katou/main extension Reload and native export Done; independent artifact/schema/arithmetic PASS for206063B/996preparation revisions/5OriginalJAonsets/measuredpaint. Translation events/HTTP0, costnull, individual flags/quality/protected storage still NOT VERIFIED. Supersedes basic lifecycle pending activation, preserves earlier raw boundaries. [Raw review](../review/youtube-sentence-mvp-native-lifecycle-2026-10-10.md).
+
+## [2026-10-10] ingest | Bridge regression, fresh-process persistence and runtime identity
+
+Read immutable backend review fully. Independent current43tests/pipcheck/actualHTTP/NLP/fresh-process restart PASS; builder/punctuation/rare-HV/cache Reds fixed at shared helpers. Guarded main4file sourcecopy backup/modes/bytes independently verified; no active runtime/data changes. Actual8765belongs to older Antigravity checkout; six overlapping state paths differ, authority transition pending human preference. Main source staging is not native activation. Fullgoal/gold/Gemini/Drive/nativeprotected/fullKPI remain active/unverified.
+
+## [2026-10-10] query | Runtime transition data preservation
+
+Separate main/active state backup receipts prepared with source/destination SHA checks and0700parent; original data/PID unchanged. Authority choice pending; no migration performed. Backend raw remains immutable.
+
+## [2026-10-10] ingest | Native confirmation and benchmark source guard
+
+Read new immutable raw review fully. Independent artifact arithmetic/screenshot PASS confirms native TXT note and cost schema; no live request/billing or clock-causality proof. Stale fingerprint after navigation independently Red→Green fixed by existing sourceKey guard; main staged with backup/hash/mode, native latestguard activation remains open. Historical raw evidence retained. Fullgoal and data-authority choice remain active/pending.
+
+
+## [2026-10-10] ingest | Partial creator reference and real-data semantic Red
+
+Read immutable raw partial-reference review. Independent29JPEG/current-byte/receipt/uncertainty artifact PASS; actual JSON3 production grouping crosses source17 offsets4/9 and checker exit1, while mandatoryどこquestion boundedPASS. Preservation6cues/70UTF16exactonce does not certify semantics. Fifty source candidates SHA unchanged/null reference values; partial58186B observations separate, no audio timing/gold/KPI promotion. Earlier no-creator-reference state superseded, raw historical reviews preserved. Fullgoalactive; native/bridge/data-authority gaps remain.
+
+## [2026-10-10] ingest | Backrooms partial reference and presented-frame readiness
+
+Read new immutable [raw review](../review/youtube-sentence-mvp-rra-reference-readiness-2026-10-10.md). Independent39accepted/3rejected visuals, byte/receipt/source integrity PASS; three stale/loading pictures excluded/preserved.29readiness4 receipts plus10qualified earlier captures, no audio alignment. Rows08–10 promotional/outro expose representativity gap. Real JSON3 lexical join probe exit1 with6cues/125UTF16 preservationPASS; な/んで and 第1/弾 remain separate. Source speaker hint/gap4.719s means no guard removal or source retiming to force Green. Prior29/source50 unchanged; separate153059B artifact retains original pendingreview fields with later verdict in raw. Fullgoal active, gold/native/Gemini/bridgeauthority gates NOT VERIFIED.
+
+## [2026-10-10] ingest | Bounded ordinal continuation, version metadata and delivery
+
+Read finalized immutable [raw review](../review/youtube-sentence-mvp-ordinal-continuation-2026-10-10.md). Independent shared-helper/version/safety Red→Green PASS after reviewer-found verb false positive narrowed; root actual DOM Undo/Original text/clocks/pixel delta0 and independent screenshot/receipt audit PASS. Main two-file exact guarded copy/backup/mode0644 independently verified; native activation NOT VERIFIED. Only prior rra08 lexical FAIL superseded; rra05/source17 and gold/live Gemini/full KPI/bridge authority remain open, previous raw reviews unchanged. Fullgoal active, Original default.
+
+## [2026-10-10] ingest | Bilingual active-cue JLPT renderer
+
+Read finalized [raw review](../review/youtube-sentence-mvp-bilingual-active-cue-2026-10-10.md) from disk. Local Node renderer unit and isolated Chromium ten-case DOM receipt checker PASS: active-cue N-level colors, 単純 N3, neutral missing/unrelated text, exact whitespace, token immutability, and N4→N2 text/bounds invariants. No independent reviewer or native extension activation for this slice, so status remains NOT VERIFIED; Gemini/video, gold, KPI and full release gates stay open.
+
+
+## [2026-10-10] ingest | Revised plan copy and latest native reload/cost-clock check
+
+Filed the Downloads revision as a new dated raw plan with its body byte-identical to the source; older 2026-10-09 raw plan remains unchanged. Read the new native follow-up from disk before ingest. Chrome reload and exact eight-file hash comparison confirm the current package path; TXT loss warning and measurement export are visible. The 78,624-byte trace has 3,978 ms track-load, 12 ready Original-JA onset samples, no JP paint/TTFV, one seek discontinuity, 0 Gemini requests, and cost NOT VERIFIED; 340 preparation records are not independent sentences. Independent reviewer unavailable. This does not close source17/rra05, five-video audio gold, live translation, persistence/Drive, readiness KPI, or release gates; full goal remains active.
+
+
+## [2026-10-10] ingest | Semantic recheck and bridge authority
+
+Read the immutable semantic/runtime checkpoint from disk before ingest. Current JSON3 semantic checks remain source17 FAIL and rra05 FAIL; rra08 ordinal join PASS. Five real snapshot structural projection is512 cues/766 groups/7 merges/538 display units, exact source coverage only. User selected the current Antigravity runtime/data as authority; listener/cwd confirm PID74619 there. Synthetic read-only `/health` and `/tokenize_batch` return parsed HTTP200. No production code, script, DB, process, or bridge state changed. This supersedes the pending data-authority choice without authorizing migration. Full gold/Gemini/Drive/KPI/release remain open; original default and full goal active.
+
+## [2026-10-10] ingest | Native bilingual package follow-up
+
+Read the finalized [raw follow-up review](../review/youtube-sentence-mvp-native-bilingual-package-followup-2026-10-10.md) from disk; its two review links resolve and it has no trailing whitespace. Full extension-tree comparison found the active-cue renderer differed from the previously inspected Chrome source. A guarded two-file copy preserved old bytes/modes and now verifies equal source/main hashes; main Node unit and syntax checks pass. This is filesystem evidence only: a post-copy native Chrome reload is pending. Source17/rra05, gold, live translation, Drive, KPI and release remain open; bridge authority remains Antigravity by user choice.
+
+## [2026-10-10] ingest | Semantic boundary tokenizer recheck
+
+Read the immutable raw review from disk. Five real `/tokenize_batch` inputs return HTTP200 and exact source; Sudachi leaves `きし` as a noun, so POS does not establish source17's visual intra-cue offsets. rra05 `な`/`んで` POS distinction does not override `speakerChange:true` and the 4.719s source-window gap. No heuristic/source/runtime data change; the live probe increments an in-memory latency metric only. Semantic boundaries and full50 audio gold remain NOT VERIFIED/FAIL; full goal active.
+
+
+## [2026-10-11] ingest | Enhanced default, independent review and delivery correction
+
+Read finalized immutable [implementation review](../review/youtube-sentence-mvp-enhanced-default-2026-10-11.md) and [delivery companion](../review/youtube-sentence-mvp-default-delivery-2026-10-11.md) from disk. Content Red→Green and actual localhost HTTP scheduler independent PASS; parent isolated production sidepanel default/toggle/Undo PASS with separate independent artifact audit. Exact one-file main copy/backup/mode0644 and main syntax/diff-check verified. Supersedes historical Original-default statements. Companion withdraws unsupported scroll cause: first top delta−60.5px, other dimensions0 and later deltas0; cause NOT VERIFIED. Native reload, source17/rra05, audio gold, live Gemini, protected storage/Drive and full release remain open. Antigravity runtime/data retained; full goal active.
+
+
+## [2026-10-11] ingest | Authorized Antigravity restart and TXT clock preservation
+
+Read the finalized immutable [runtime/import review](../review/youtube-sentence-mvp-runtime-and-import-clocks-2026-10-11.md) from disk. User authorized only two clock helpers plus same-runtime restart, keeping Antigravity data. Independent backend/parser/deployment PASS; currentPID42809/samecwd/venv/8765 and livehealth200/readytrue verified. All44 live data files/set/hash/size/modes and44 backups unchanged. Deployed-source isolated actualHTTP save/disk/newprocess/load preserves precise clocks and protected fixture fields;422 leaves temp disk unchanged. Main TXT parser delivery independently verified after Red→Green and150013 Python→JS cases. Supersedes old candidate-pending/PID74619/process-unchanged status without authorizing migration or reconstructing earlier rounded clocks. Native latest reload/import, live8765 script round-trip, renderer independent review, gold/Gemini/Drive/KPI/full release remain open; full goal active.
+
+
+## [2026-10-11] ingest | Independent bilingual renderer, alias fixes and delivery
+
+Read finalized immutable [renderer follow-up](../review/youtube-sentence-mvp-renderer-independent-2026-10-11.md) and [caller correction](../review/youtube-sentence-mvp-renderer-callers-correction-2026-10-11.md) from disk. Three independent real-module Reds closed by minimal shared alias/collision fix; existing assertions retained plus regressions. Independent module/main checks and byte/mode/backups PASS. Parent actual five-case/15line DOM N4→N2 color/text/input/bounds PASS with independent artifact audit; no reviewer browser run, screenshot viewport only. Supersedes bounded renderer independent-review-unavailable status and current main hash, not native/gold/Gemini/storage/Drive proof. Correct actual caller names updateBar/renderBilingualVi/renderBilingualEn; raw historical labels preserved with correction. Antigravity runtime/data retained and all44 preservation still verified; full goal active.
+
+## [2026-10-11] ingest | Cue provenance and exact TXT revision candidate
+
+Read finalized immutable [raw review](../review/youtube-sentence-mvp-cue-provenance-2026-10-11.md) from disk. Independent provenance and exact-clock revision Reds closed in worktree plus selected-runtime two-helper candidate8adeebf…; realHTTP/tempdisk/newprocess/productionNode composition and44pytest PASS. Candidate other30 Python files unchanged; sidecar maps are fixtures and native/Drive NOT VERIFIED. Historical normalization caveats superseded only for candidate. Current Antigravity remains source5551989…/PID42809, parent all44 preservation/health PASS; additional deployment pending scope approval, no script writes/migration. Full goal active.
+
+## [2026-10-11] ingest | Source mapping restore and authorized provenance deployment
+
+Read finalized immutable [companion review](../review/youtube-sentence-mvp-source-restore-runtime-2026-10-11.md) from disk. New explicit authorization applied reviewed two-helper Antigravity provenance/revision update: PID42809→60231/source8ade…, same cwd/venv/8765, independent health200 and all44data+44backups hashes/bytes/modes preserved. Selected-source isolated actualHTTP/disk/newPID/productionNode composition PASS; no live scripts writes/migration. New shared extension metadata/clock converter and legacy lock fixes independently PASS after original/extra/full-loader Reds;36 actual save-worker-freshVM checks,512captured mappings/group equality and guarded main4file delivery verified. Supersedes candidate-pending/metadata-drop history in bounded scope; native actual sidecar/Drive/oldclient/audioGold/Gemini/KPI/fullrelease still open, fullgoalactive.
+
+
+## [2026-10-11] ingest | Partial native reload and current runtime delta
+
+Read finalized [raw review](../review/youtube-sentence-mvp-native-reload-partial-2026-10-11.md) from disk. Parent Katou mainpath/0.11.2/Reloaded observed; fresh Parako backup unavailable after window change. Independent verifier1 supersedes current equality inference: baseline44/current48,added4/changed4/removed0;44backups exact. Independent512orderedIDs/texts/targets/starts/flags retained,12ends about0.05s different; cause/cache/timing intent NOT VERIFIED. Prior deployment point-in-time PASS remains historical. Runtime/source/main verified; no new code, production-data rollback/reconcile or fullMVP claim.
+
+
+## [2026-10-11] ingest | Stale-save guard, load/save race and main client delivery
+
+Read finalized [raw review](../review/youtube-sentence-mvp-stale-revision-guard-2026-10-11.md) from disk. Three actual Reds closed: explicit stalePOST wipescue, heldTXTload rolls7→6, failedclient409 schedulesDrive. Independent boundedPASS current45pytest/12standalone/HTTP/newprocess/clientlateconflict; selectedsourcecandidate twofilesonly/other29exact NOTDEPLOYED. Main3df134/clientcheck delivery independentlyPASS bytes0644/oldbackup/protocol/36restore; nativeactivation NOTVER. Loglater512cuePOST200 plusactualoldformatter12/12compatibility narrowtiminghypothesis; causalityNOTVER/norollback. LegacyNone/rawmirror/delete/external/multiworker/fullSTORE-02 andgold/Gemini/KPI/source17rra05 remainopen; goalactive.
+
+## [2026-10-11] ingest | Authorized revision deployment and mirror validation
+
+Read new finalized raw review; Antigravity exact2file revision guard deployed PID95355/all48current+backups exact; separate3function mirror candidate independentlyPASS/notdeployed. Human confirms source17boundary and rejects rra05stray; partial references only. Fullgoal/native/Drive/audio50/Gemini/KPI remainopen.
+
+## [2026-10-11] ingest | Approved mirror deployment and separate revision race
+
+Read finalized [raw review](../review/youtube-sentence-mvp-mirror-deploy-revision-race-2026-10-11.md). Live PID8005/store3396 onefile deployment independentlyPASS/all48current+backups exact; supersedes prior mirror candidate pending. Separate incominglowerrevision/worker honest failure candidate PASS/notdeployed, equal-revision/legacy/native/Drive/gold/Gemini/KPI gates open; full goal active.
+
+## [2026-10-11] ingest | Equal-revision mirror conflict
+
+Read finalized [raw review](../review/youtube-sentence-mvp-equal-revision-conflict-2026-10-11.md). Actualsame6collision changed3files Red→409/all4exact Green; productionworker local6→7remote7 and6→8remote7 verified. Candidatea2e8store/2bdAPI/862worker independentlyPASS/notdeployed; livePID8005base retained, expandedruntimeapproval separate. Legacy/native/Drive/gold/Gemini/KPI/fullgoal open.
+
+## [2026-10-11] ingest | Conflict guard deployment and legacy TXT regression
+
+Filed/read [raw review](../review/youtube-sentence-mvp-conflict-deploy-legacy-txt-2026-10-11.md); updated active/index/topic. Exact approved deployment independently verified at48-file checkpoint; native activation remains unverified; new disposable JSON-only compatibility failure retained as required next work.
+
+## [2026-10-11] ingest | Legacy JSON/TXT candidate and quota checkpoint
+
+Read finalized [raw review](../review/youtube-sentence-mvp-legacy-txt-sync-2026-10-11.md) from disk. Actual JSON-only regression and reviewer clock-alias Red closed in final57cef one-file candidate; independent HTTP/worktree/selected source and46pytest boundedPASS. Not deployed; previous runtime/data checkpoint remains historical; actual Drive/native/audio50/Gemini/KPI/fullgoal open. Updated topic/index, retained immutable prior failure/deployment reviews.
+
+## [2026-10-11] ingest | Authorized legacy JSON/TXT deployment
+
+Read finalized [raw companion](../review/youtube-sentence-mvp-legacy-txt-deployment-2026-10-11.md) from disk. Explicit onefile/restart/preservedata approval executed; PID18180/source57cef verified independently,31app exactonechange/30same and48current+48backups inventory/hash/bytes/modes exact at fresh audit. Supersedes pending candidate without editing previous raw. No live scripts writes/native actions; actual Drive/native/audio50/Gemini/KPI/fullgoal open.
+
+
+## [2026-10-11] ingest | Native legacy checkpoint and bounded artifact audit
+
+Read finalized [raw review](../review/youtube-sentence-mvp-native-legacy-checkpoint-2026-10-11.md). Actual Katou Reloaded/Enhanced/backup/benchmark,102 ordered cue fields match current/deployment; raw109/source101/backup102 separate; zero protected/Undo/translations. Independent artifact audit exit0; JA cold2/warm38 only, no provider requests/nullcost. Current48 paths4changed/rev9→15 with cue fields/tokens unchanged supersede perpetual data-equality inference, historical deploy audit retained. UI key missing/currentcontext, Drive menuhint/nofreshOAuth; native restore/audio50/Gemini/KPI/fullgoal open.
+
+
+## [2026-10-11] ingest | Real Chrome MV3 local storage restart
+
+Read finalized [raw review](../review/youtube-sentence-mvp-chrome-storage-restart-2026-10-11.md). New actual fresh-Chromium storage regression closes interim save assertions after reviewer finding; parent+independent final exit0, lockedblank/owned/tombstones/nonempty targets/tokens/Undo/savedother/restart/stale script+state verified. Onlycopied worker/manifest bridge URL adapters,80others exact; no production/native UI mutations. Content restore/valid recovery/Drive/audioGold/Gemini/KPI/fullgoal still open.
+
+
+## [2026-10-11] ingest | Actual content restore and Undo across reload
+
+Read finalized [raw review](../review/youtube-sentence-mvp-content-undo-reload-2026-10-11.md) from disk. Parent actual direct-row Red closed by three-line shared loader await+generation guard; final parent and independent Chromium UI/API Green, protected blank/precise clocks/export/Undo/recovery bounded synthetic matrix. Actual DOM rectangles, Undo/reload IDs/text exact; independent0px deltas only those snapshots. Main delivery86files exactly1changed/85same/source6999d4ac/originalbackup3df134/mode0644 independently verified. No bridge/data/user-profile mutation, native activation and fullSTORE-02/sourcechange/Drive/audio50/Gemini/KPI/fullgoal open. Prior raw history retained, new quiet availability question pending.
