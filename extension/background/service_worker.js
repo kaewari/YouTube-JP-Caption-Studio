@@ -223,6 +223,58 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   } catch (_) {}
 });
 
+async function ensureOffscreenDocument() {
+  if (!chrome.offscreen?.createDocument) return;
+  const offscreenUrl = chrome.runtime.getURL("offscreen/audio_capture.html");
+  if (chrome.runtime.getContexts) {
+    const existing = (await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"],
+      documentUrls: [offscreenUrl],
+    })) || [];
+    if (existing.length > 0) return;
+  }
+  try {
+    await chrome.offscreen.createDocument({
+      url: "offscreen/audio_capture.html",
+      reasons: ["USER_MEDIA"],
+      justification: "Capture tab audio for local speech recognition",
+    });
+  } catch (err) {
+    if (!String(err).includes("already exists")) {
+      throw err;
+    }
+  }
+}
+
+async function handleAudioStartCapture(msg, sender) {
+  const tabId = msg.tabId || sender?.tab?.id;
+  if (!tabId) throw new Error("No target tab for audio capture");
+  await ensureOffscreenDocument();
+  if (!chrome.tabCapture?.getMediaStreamId) {
+    throw new Error("chrome.tabCapture.getMediaStreamId not available");
+  }
+  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+  await chrome.runtime.sendMessage({
+    target: "offscreen",
+    type: "START_CAPTURE",
+    streamId,
+    tabId,
+    videoId: msg.videoId,
+    playhead: msg.playhead || 0,
+  });
+  return { ok: true };
+}
+
+async function handleAudioStopCapture() {
+  try {
+    await chrome.runtime.sendMessage({
+      target: "offscreen",
+      type: "STOP_CAPTURE",
+    });
+  } catch (_) {}
+  return { ok: true };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "SAVED_CUES_MUTATE") {
     handleSavedCueMutation(msg, sender).then(sendResponse).catch(err => sendResponse({ ok: false, error: String(err.message || err) }));
@@ -272,6 +324,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
+  }
+  if (msg?.type === "AUDIO_START_CAPTURE") {
+    handleAudioStartCapture(msg, sender)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+  if (msg?.type === "AUDIO_STOP_CAPTURE") {
+    handleAudioStopCapture(msg, sender)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+  if (msg?.type === "ASR_CANDIDATE_RECEIVED") {
+    if (msg.tabId) {
+      chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
+    }
+    return false;
   }
   if (msg?.type === "CONTENT_GET_TAB_ID") {
     sendResponse({ tabId: sender?.tab?.id ?? null });

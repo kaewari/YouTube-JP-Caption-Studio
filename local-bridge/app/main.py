@@ -7,6 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.asr import router as asr_router
 from app.api.captions import router as captions_router
 from app.api.dict import router as dict_router
 from app.api.health import router as health_router
@@ -40,6 +41,7 @@ app.include_router(dict_router)
 app.include_router(scripts_router)
 app.include_router(ime_router)
 app.include_router(state_router)
+app.include_router(asr_router)
 
 
 @app.on_event("startup")

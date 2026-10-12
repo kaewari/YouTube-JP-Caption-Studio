@@ -25,6 +25,7 @@
   const overlayBtn = document.getElementById("sp-overlay");
   const followBtn = document.getElementById("sp-follow");
   const captionModeBtn = document.getElementById("sp-caption-mode");
+  const audioModeBtn = document.getElementById("sp-audio-mode");
   const toggleJaBtn = document.getElementById("sp-toggle-ja");
   const toggleViBtn = document.getElementById("sp-toggle-vi");
   const toggleEnBtn = document.getElementById("sp-toggle-en");
@@ -36,6 +37,7 @@
     cues: [],
     enhancedCues: [],
     captionMode: "original",
+    audioListeningActive: false,
     activeCueId: "",
     showOnVideo: false,
     showJa: true,
@@ -55,6 +57,10 @@
   captionModeBtn?.addEventListener("click", async () => {
     if (isEditingAny()) { toast("Nhấn Enter hoặc Escape để kết thúc sửa câu trước"); return; }
     await sendCmd("set_caption_mode", { mode: state.captionMode === "enhanced" ? "original" : "enhanced" });
+  });
+
+  audioModeBtn?.addEventListener("click", async () => {
+    await sendCmd("toggle_audio_listening");
   });
 
   async function openOriginalEditor(id) {
@@ -1399,6 +1405,8 @@
       idx,
       starred,
       biJlpt,
+      cue.candidate?.text || "",
+      cue.hasUndo ? "1" : "0",
     ].join("|");
   }
 
@@ -1443,7 +1451,8 @@
         ${cue.enhanced ? `<button type="button" class="sp-original-edit" data-id="${escapeAttr(cue.sourceCueId)}" title="Mở cue gốc tại cửa sổ thời gian này để sửa">Sửa gốc</button>
         <button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Trả các cue nguồn của câu này về cách ghép gốc">Undo</button>` :
         `<button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm câu phụ đề mới ngay sau câu này">+</button>
-        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>`}
+        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>
+        ${cue.hasUndo ? `<button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Hoàn tác câu này về bản trước">Undo</button>` : ""}`}
         <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}" title="Sao chép toàn bộ nội dung câu (JA + VI/EN)">Copy</button>
         <details class="sp-copy-menu">
           <summary title="Tùy chọn sao chép nâng cao">⋮</summary>
@@ -1456,6 +1465,17 @@
         </details>
       </div>
       <div class="sp-now-playing" aria-hidden="${isActive ? "false" : "true"}">ĐANG PHÁT</div>
+      ${cue.candidate ? `
+      <div class="sp-candidate-box" data-id="${escapeAttr(cue.id)}">
+        <div class="sp-candidate-header">
+          <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
+        </div>
+        <div class="sp-candidate-text">${escapeHtml(cue.candidate.text)}</div>
+        <div class="sp-candidate-actions">
+          <button type="button" class="sp-candidate-accept" data-id="${escapeAttr(cue.id)}" title="Áp dụng gợi ý này vào phụ đề">Áp dụng</button>
+          <button type="button" class="sp-candidate-revert" data-id="${escapeAttr(cue.id)}" title="Bỏ qua gợi ý này">Bỏ qua</button>
+        </div>
+      </div>` : ""}
       <div class="sp-ja-wrap" data-idx="${idx}" tabindex="0">
         <div class="sp-ja-view">${
           cue.tokens?.length ? rubyHtml(cue) : escapeHtml(cue.source)
@@ -1493,6 +1513,46 @@
     if (t0) t0.value = Timing.formatTimeInput(cue.start_media_time);
     const t1 = row.querySelector(".sp-t-end");
     if (t1) t1.value = Timing.formatTimeInput(cue.end_media_time);
+
+    const existingCand = row.querySelector(".sp-candidate-box");
+    if (cue.candidate && !existingCand) {
+      const jaWrap = row.querySelector(".sp-ja-wrap");
+      if (jaWrap) {
+        const candEl = document.createElement("div");
+        candEl.className = "sp-candidate-box";
+        candEl.dataset.id = cue.id;
+        candEl.innerHTML = `
+          <div class="sp-candidate-header">
+            <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
+          </div>
+          <div class="sp-candidate-text">${escapeHtml(cue.candidate.text)}</div>
+          <div class="sp-candidate-actions">
+            <button type="button" class="sp-candidate-accept" data-id="${escapeAttr(cue.id)}" title="Áp dụng gợi ý này vào phụ đề">Áp dụng</button>
+            <button type="button" class="sp-candidate-revert" data-id="${escapeAttr(cue.id)}" title="Bỏ qua gợi ý này">Bỏ qua</button>
+          </div>
+        `;
+        jaWrap.before(candEl);
+      }
+    } else if (!cue.candidate && existingCand) {
+      existingCand.remove();
+    } else if (cue.candidate && existingCand) {
+      const txt = existingCand.querySelector(".sp-candidate-text");
+      if (txt) txt.textContent = cue.candidate.text;
+    }
+
+    let undoBtn = row.querySelector(".sp-undo-sentence");
+    if (cue.hasUndo && !undoBtn && !cue.enhanced) {
+      undoBtn = document.createElement("button");
+      undoBtn.type = "button";
+      undoBtn.className = "sp-undo-sentence";
+      undoBtn.dataset.id = cue.id;
+      undoBtn.title = "Hoàn tác câu này về bản trước";
+      undoBtn.textContent = "Undo";
+      const copyBtn = row.querySelector(".sp-copy");
+      if (copyBtn) copyBtn.before(undoBtn);
+    } else if (!cue.hasUndo && !cue.enhanced && undoBtn) {
+      undoBtn.remove();
+    }
   }
 
   function bindRowHandlers(row) {
@@ -1519,9 +1579,11 @@
         if (!followTimeline) setFollowTimeline(true, { scroll: false });
       }
       const btn = e.target.closest(
-        ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del, .sp-original-edit, .sp-undo-sentence"
+        ".sp-play, .sp-star, .sp-copy, .sp-copy-menu button, .sp-add-after, .sp-del, .sp-original-edit, .sp-undo-sentence, .sp-candidate-accept, .sp-candidate-revert"
       );
       if (!btn || !listEl.contains(btn)) return;
+      if (btn.classList.contains("sp-candidate-accept")) { void sendCmd("accept_asr_candidate", { id: btn.dataset.id }); return; }
+      if (btn.classList.contains("sp-candidate-revert")) { void sendCmd("revert_asr_candidate", { id: btn.dataset.id }); return; }
       if (btn.classList.contains("sp-original-edit")) { void openOriginalEditor(btn.dataset.id); return; }
       if (btn.classList.contains("sp-undo-sentence")) { void sendCmd("undo_sentence", { id: btn.dataset.id }); return; }
       if (btn.classList.contains("sp-play")) {
@@ -1661,6 +1723,15 @@
       captionModeBtn.textContent = enhanced ? "Enhanced · thử nghiệm" : "Original";
       captionModeBtn.setAttribute("aria-pressed", String(enhanced));
       captionModeBtn.disabled = !state.enhancementAvailable;
+    }
+    if (typeof incoming.audioListeningActive === "boolean") {
+      state.audioListeningActive = incoming.audioListeningActive;
+    }
+    if (audioModeBtn) {
+      const active = !!state.audioListeningActive;
+      audioModeBtn.classList.toggle("active", active);
+      audioModeBtn.setAttribute("aria-pressed", String(active));
+      audioModeBtn.textContent = active ? "Đang nghe audio…" : "Nghe audio (thử nghiệm)";
     }
 
     if (typeof incoming.status === "string") setStatus(incoming.status);

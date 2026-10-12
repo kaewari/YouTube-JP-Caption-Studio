@@ -114,6 +114,8 @@
   let sentenceTokens = {};
   let sentenceUndoIds = new Set();
   let sentenceUndoRevisions = {};
+  let sentenceCandidates = {};
+  let audioListeningActive = false;
   let sentenceStateLoadedKey = "", sentenceStateLoadedGen = -1, sentenceStateLoad = null;
   let sentenceRawTrack = null;
   let sentenceBenchmark = null;
@@ -715,6 +717,11 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg?.type === "ASR_CANDIDATE_RECEIVED") {
+      void handleAsrCandidateReceived(msg);
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg?.type !== "SP_CMD") return;
     handleSidePanelCmd(msg)
       .then((r) => sendResponse(r || { ok: true }))
@@ -744,15 +751,104 @@
       void triggerGeminiTranslationIfNeeded();
       return { ok: true, captionMode };
     }
+    if (cmd === "toggle_audio_listening") {
+      audioListeningActive = !audioListeningActive;
+      const tabId = await getContentTabId();
+      if (audioListeningActive) {
+        toast("Đang bật nghe audio (Whisper trên Apple Silicon)...");
+        try {
+          const res = await chrome.runtime.sendMessage({
+            type: "AUDIO_START_CAPTURE",
+            tabId,
+            videoId: currentVideoId,
+            playhead: currentMediaTime,
+          });
+          if (!res?.ok) {
+            audioListeningActive = false;
+            toast("Không thể bật nghe audio: " + (res?.error || "Lỗi capture"));
+          }
+        } catch (e) {
+          audioListeningActive = false;
+          toast("Lỗi bật nghe audio: " + e.message);
+        }
+      } else {
+        toast("Đã tắt nghe audio");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "AUDIO_STOP_CAPTURE",
+            tabId,
+          });
+        } catch (_) {}
+      }
+      publishSidePanelState({ forceList: true });
+      return { ok: true, audioListeningActive };
+    }
+    if (cmd === "accept_asr_candidate") {
+      const cue = cues.find(c => c.id === msg.id);
+      const cand = sentenceCandidates[msg.id];
+      if (!cue || !cand) return { ok: false, error: "Candidate not found" };
+
+      if (!canReceiveAsrCandidate(cue)) {
+        delete sentenceCandidates[msg.id];
+        await saveSentenceState();
+        publishSidePanelState({ forceList: true });
+        return { ok: false, error: "Cue is locked or user-edited" };
+      }
+
+      sentenceUndoRevisions[cue.id] = sentenceCueRevision(cue);
+      sentenceUndoIds.add(cue.id);
+      cue.source = cand.text;
+      cue.text_source = "asr:whisper-large-v3-turbo";
+      cue.normalization = null;
+      delete sentenceCandidates[cue.id];
+      delete sentenceTokens[cue.id];
+      delete sentenceTranslations[cue.id];
+      listDirty = true;
+      await saveSentenceState();
+      await syncToPlayhead();
+      publishSidePanelState({ forceList: true });
+      toast("Đã áp dụng gợi ý audio (có thể Undo)");
+      return { ok: true };
+    }
+    if (cmd === "revert_asr_candidate") {
+      if (sentenceCandidates[msg.id]) {
+        delete sentenceCandidates[msg.id];
+        await saveSentenceState();
+        publishSidePanelState({ forceList: true });
+        toast("Đã bỏ qua gợi ý");
+      }
+      return { ok: true };
+    }
     if (cmd === "undo_sentence") {
       cancelSentencePrefetch();
       refreshSentenceProjection();
+      const original = cues.find(c => c.id === msg.id);
+      if (original && sentenceUndoRevisions[original.id]) {
+        try {
+          const parsed = JSON.parse(sentenceUndoRevisions[original.id]);
+          original.source = parsed[1];
+          original.start_media_time = parsed[2];
+          original.end_media_time = parsed[3];
+          original.rawSource = parsed[4];
+          original.text_source = parsed[5];
+          delete sentenceUndoRevisions[original.id];
+          sentenceUndoIds.delete(original.id);
+          delete sentenceTokens[original.id];
+          delete sentenceTranslations[original.id];
+          listDirty = true;
+          await saveSentenceState();
+          await syncToPlayhead();
+          publishSidePanelState({ forceList: true });
+          toast("Đã hoàn tác");
+          return { ok: true };
+        } catch (_) {}
+      }
       const unit = enhancedCues.find(c => c.id === msg.id);
       if (!unit) return { ok: false, error: "Sentence changed; refresh before undo" };
       for (const ref of unit.sourceRefs) sentenceUndoIds.add(ref.cueId);
       for (const ref of unit.sourceRefs) {
-        const original = cues.find(c => c.id === ref.cueId);
-        if (original) sentenceUndoRevisions[original.id] = sentenceCueRevision(original);
+        const orig = cues.find(c => c.id === ref.cueId);
+        if (orig) sentenceUndoRevisions[orig.id] = sentenceCueRevision(orig);
       }
       refreshSentenceProjection(true);
       await saveSentenceState();
@@ -3345,6 +3441,7 @@
       activeCueId,
       captionMode,
       enhancementAvailable: sentenceEnhancementEnabled(),
+      audioListeningActive: !!audioListeningActive,
       showOnVideo: !!settings.showOnVideo,
       showFurigana: !!settings.showFurigana,
       bridgeReady: !!bridgeReady,
@@ -3364,7 +3461,11 @@
       _session: spSessionId,
     };
     if (forceCues) {
-      payload.enhancedCues = enhancedCues;
+      payload.enhancedCues = (enhancedCues || []).map((c) => ({
+        ...c,
+        candidate: sentenceCandidates[c.id] || null,
+        hasUndo: !!sentenceUndoRevisions[c.id],
+      }));
       payload.cues = cues.map((c) => ({
         id: c.id,
         source: c.source,
@@ -3376,6 +3477,8 @@
         end_media_time: c.end_media_time,
         mt_locked: !!c.mt_locked,
         translation_source: c.translation_source || "",
+        candidate: sentenceCandidates[c.id] || null,
+        hasUndo: !!sentenceUndoRevisions[c.id],
       }));
       listDirty = false;
     }
@@ -4682,6 +4785,7 @@
         sentenceUndoRevisions = state.undoRevisions && typeof state.undoRevisions === "object" ? state.undoRevisions : {};
         sentenceTranslations = state.translations && typeof state.translations === "object" ? state.translations : {};
         sentenceTokens = state.tokens && typeof state.tokens === "object" ? state.tokens : {};
+        sentenceCandidates = state.candidates && typeof state.candidates === "object" ? state.candidates : {};
         if (sentenceRawTrack?.sourceKey !== sentenceTrackKey() && state.rawTrack?.sourceKey === sentenceTrackKey()) {
           sentenceRawTrack = state.rawTrack;
         }
@@ -4703,6 +4807,7 @@
       sourceCues: cues.filter(c => c.rawSource && c.normalization).map(c => ({ id: c.id, source: c.source,
         start_media_time: c.start_media_time, end_media_time: c.end_media_time, rawSource: c.rawSource, normalization: c.normalization })),
       undoRevisions: sentenceUndoRevisions, translations,
+      candidates: sentenceCandidates,
       tokens: !sentenceEnhancementEnabled() ? sentenceTokens : Object.fromEntries((sentenceProjection?.groups || []).filter(g => !g.protected && sentenceTokens[g.id]?.length)
         .map(g => [g.id, sentenceTokens[g.id]])) };
   }

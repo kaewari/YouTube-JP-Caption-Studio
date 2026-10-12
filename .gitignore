@@ -41,6 +41,8 @@ local-bridge/.saved-items.log
 local-bridge/.env
 
 # Python / venv
+local-bridge/.venv
+**/.venv/
 .venv/
 __pycache__/
 *.pyc

@@ -471,6 +471,80 @@ body {
   box-shadow: 0 1px 4px rgba(123, 92, 255, 0.35);
 }
 
+#sp-audio-mode.active {
+  background: #00b4d8;
+  color: #ffffff;
+  border-color: #48cae4;
+  box-shadow: 0 1px 4px rgba(0, 180, 216, 0.4);
+}
+
+.sp-candidate-box {
+  margin: 6px 0 4px;
+  padding: 6px 8px;
+  background: rgba(0, 180, 216, 0.08);
+  border: 1px dashed rgba(0, 180, 216, 0.4);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.sp-candidate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.sp-candidate-badge {
+  color: #00b4d8;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-candidate-text {
+  color: #e0f2fe;
+  font-weight: 500;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.sp-candidate-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sp-candidate-accept {
+  background: #00b4d8;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sp-candidate-accept:hover {
+  background: #0096c7;
+}
+
+.sp-candidate-revert {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sp-candidate-revert:hover {
+  background: #2a2a3a;
+  color: #fff;
+}
+
 /* Visibility rules on #sp-list */
 #sp-list.hide-ja .sp-ja-wrap {
   display: none !important;
