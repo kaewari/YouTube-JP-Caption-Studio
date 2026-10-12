@@ -483,3 +483,30 @@ Nhật ký ngắn (không phải transcript). Runtime bridge: `local-bridge/erro
    - **Zero Delay**: Mở video là phụ đề YouTube Sentence Groups và bản dịch tiếng Việt hiển thị ngay lập tức không cần đợi.
    - **Hot-Swap mịn màng**: Khi Local Bridge hoàn tất bóc băng và align âm thanh, phụ đề tự động nâng cấp sang bản ASR chuẩn mà không làm ngắt quãng video.
    - **Karaoke Word Highlight (`.tok-karaoke-active`)**: Hiển thị trọn vẹn cả câu để nắm bắt ngữ cảnh, đồng thời tô sáng dần từng từ khi âm thanh phát tới; bảo toàn 100% khả năng click tra từ điển Mazii/Furigana và màu sắc cấp độ JLPT N5–N1.
+
+### 2026-10-12 — Tối ưu Responsive Toàn diện Sidepanel Toolbar & Cue Cards (Multi-Tier Breakpoints & Semantic Clustering)
+
+1. **Khắc phục lỗi nút ba chấm `[⋮]` rớt dòng & Hàng nút Header tràn viền ở độ rộng hẹp (~300px – 340px)**
+   - **Hiện tượng lỗi**:
+     - Khi Sidepanel co hẹp về kích thước tiêu chuẩn của Chrome (~300px – 340px), hàng nút Header thứ 2 `[Original] [Đang nghe audio...] [JA] [VI] [EN] [Furi]` bị chen chúc, đẩy nút `[Furi]` sát mép thanh cuộn do nhãn `Đang nghe audio…` dài 17 ký tự (~120px).
+     - Trên mỗi card phụ đề, hàng `.sp-meta` (`[▶] [☆] 0:13.5 – 0:16.5 [+] [×] [Copy] [⋮]`) bị rớt riêng nút ba chấm `[⋮]` xuống dòng thứ 2 ở góc phải dưới do `margin-left: auto` trên `.sp-copy-menu`, khiến chiều cao header card bị phình từ 24px lên ~55px.
+   - **Giải pháp Kiến trúc Responsive Đa tầng**:
+     - **Gom cụm ngữ nghĩa `.sp-meta-lead` & `.sp-meta-actions`**:
+       - `.sp-meta-lead`: Chứa `[▶]`, `[☆]`, và ô thời gian `.sp-times`.
+       - `.sp-meta-actions`: Chứa toàn bộ các nút thao tác `[+]`, `[×]`, `[Copy]`, `[⋮]` (hoặc `[Sửa]`, `[Undo]`, `[Copy]`, `[⋮]` ở chế độ Enhanced).
+       - `.sp-meta` sử dụng `justify-content: space-between; gap: 4px;`. Bỏ `margin-left: auto` riêng rẽ trên `.sp-copy-menu`. Nhờ đó, cả cụm hành động luôn đi liền với nhau, không bao giờ để rớt một nút đơn lẻ `[⋮]` xuống dòng.
+     - **Hệ thống Breakpoint Đa tầng kết hợp Container Query & Media Query**:
+       - `<= 440px`: Ẩn badge phụ `(thử nghiệm)` / `· thử nghiệm`.
+       - `<= 380px`: Kích hoạt nhãn rút gọn `.sp-btn-txt-compact` (`Orig`/`Enh`, `Đang nghe…`, `Sửa`, `↶`, `📋`), thu nhỏ ô nhập thời gian xuống `44px` (vừa vặn hiển thị `mm:ss.s`), giảm padding nút bấm xuống `2px 4px`.
+       - `<= 310px`: Chuyển nút audio sang biểu tượng mini `.sp-btn-txt-mini` (`🎧 Nghe` / `🎧`), cỡ chữ 9.5px, ô thời gian 42px.
+       - `<= 295px`: Xuống dòng nguyên khối mượt mà cho `.sp-meta-actions` mà không vỡ layout.
+
+2. **Kiểm thử Thực tế trên Trình duyệt Chrome Thật & Tự Động Hoá (100% Terminal & Visual Proof)**
+   - **Đo đạc DOM và Chụp ảnh Trực tiếp**:
+     - Chụp ảnh Chrome Sidepanel ở độ rộng ~320px (`live_chrome_sidepanel_320px_recheck_v2.png` & `live_chrome_sidepanel_320px_cards_proof.png`).
+     - Hàng Header Toolbar 2 hiển thị thẳng hàng: `[Orig] [🎧] [JA] [VI] [EN] [Furi]` thoáng đãng, cách xa mép phải.
+     - Toàn bộ cue cards (cả Original và Enhanced) hiển thị `[▶] [☆] mm:ss – mm:ss` cùng `[+] [×] [📋] [⋮]` trên đúng 1 dòng duy nhất, không còn bất kỳ nút nào bị rớt dòng.
+   - **Unit Tests & Regression**:
+     - `extension/shared/sentence_candidates_test.js`: PASS.
+     - `extension/shared/sentence_groups_test.js`: PASS.
+     - `local-bridge/tests/test_asr_api.py` + `tests/`: 44/44 pytest PASS (exit code 0).
