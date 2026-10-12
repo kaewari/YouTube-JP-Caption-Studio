@@ -1441,28 +1441,32 @@
     const t1 = Timing.formatTimeInput(cue.end_media_time);
     return `
       <div class="sp-meta">
-        <button type="button" class="sp-play" data-t="${escapeAttr(cue.start_media_time)}" data-time="${escapeAttr(cue.start_media_time)}" title="Phát câu này trên video">▶</button>
-        <button type="button" class="sp-star ${starred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${starred ? "Bỏ lưu câu này" : "Lưu câu này vào danh sách đã lưu"}">${starred ? "★" : "☆"}</button>
-        <span class="sp-times sp-timing">
-          <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t0)}" aria-label="Start" title="Thời điểm bắt đầu câu" />
-          <span class="sp-t-sep">–</span>
-          <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t1)}" aria-label="End" title="Thời điểm kết thúc câu" />
-        </span>
-        ${cue.enhanced ? `<button type="button" class="sp-original-edit" data-id="${escapeAttr(cue.sourceCueId)}" title="Mở cue gốc tại cửa sổ thời gian này để sửa">Sửa gốc</button>
-        <button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Trả các cue nguồn của câu này về cách ghép gốc">Undo</button>` :
-        `<button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm câu phụ đề mới ngay sau câu này">+</button>
-        <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>
-        ${cue.hasUndo ? `<button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Hoàn tác câu này về bản trước">Undo</button>` : ""}`}
-        <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}" title="Sao chép toàn bộ nội dung câu (JA + VI/EN)">Copy</button>
-        <details class="sp-copy-menu">
-          <summary title="Tùy chọn sao chép nâng cao">⋮</summary>
-          <div>
-            <button type="button" data-copy="ja" data-id="${escapeAttr(cue.id)}" title="Chỉ sao chép tiếng Nhật">Chỉ JA</button>
-            <button type="button" data-copy="vi" data-id="${escapeAttr(cue.id)}" title="Chỉ sao chép tiếng Việt">Chỉ VI</button>
-            <button type="button" data-copy="ja_vi" data-id="${escapeAttr(cue.id)}" title="Sao chép tiếng Nhật + tiếng Việt">JA+VI</button>
-            <button type="button" data-copy="full" data-id="${escapeAttr(cue.id)}" title="Sao chép đầy đủ timeline + JA + VI + EN">Full</button>
-          </div>
-        </details>
+        <div class="sp-meta-lead">
+          <button type="button" class="sp-play" data-t="${escapeAttr(cue.start_media_time)}" data-time="${escapeAttr(cue.start_media_time)}" title="Phát câu này trên video">▶</button>
+          <button type="button" class="sp-star ${starred ? "active" : ""}" data-id="${escapeAttr(cue.id)}" title="${starred ? "Bỏ lưu câu này" : "Lưu câu này vào danh sách đã lưu"}">${starred ? "★" : "☆"}</button>
+          <span class="sp-times sp-timing">
+            <input class="sp-t-start" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t0)}" aria-label="Start" title="Thời điểm bắt đầu câu" />
+            <span class="sp-t-sep">–</span>
+            <input class="sp-t-end" type="text" inputmode="decimal" spellcheck="false" ${cue.enhanced ? "readonly" : ""} value="${escapeHtml(t1)}" aria-label="End" title="Thời điểm kết thúc câu" />
+          </span>
+        </div>
+        <div class="sp-meta-actions">
+          ${cue.enhanced ? `<button type="button" class="sp-original-edit" data-id="${escapeAttr(cue.sourceCueId)}" title="Mở cue gốc tại cửa sổ thời gian này để sửa"><span class="sp-btn-txt-full">Sửa gốc</span><span class="sp-btn-txt-compact">Sửa</span></button>
+          <button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Trả các cue nguồn của câu này về cách ghép gốc"><span class="sp-btn-txt-full">Undo</span><span class="sp-btn-txt-compact">↶</span></button>` :
+          `<button type="button" class="sp-add-after" data-id="${escapeAttr(cue.id)}" title="Thêm câu phụ đề mới ngay sau câu này">+</button>
+          <button type="button" class="sp-del" data-id="${escapeAttr(cue.id)}" title="Xóa câu phụ đề này khỏi script">×</button>
+          ${cue.hasUndo ? `<button type="button" class="sp-undo-sentence" data-id="${escapeAttr(cue.id)}" title="Hoàn tác câu này về bản trước"><span class="sp-btn-txt-full">Undo</span><span class="sp-btn-txt-compact">↶</span></button>` : ""}`}
+          <button type="button" class="sp-copy" data-id="${escapeAttr(cue.id)}" title="Sao chép toàn bộ nội dung câu (JA + VI/EN)"><span class="sp-btn-txt-full">Copy</span><span class="sp-btn-txt-compact">📋</span></button>
+          <details class="sp-copy-menu">
+            <summary title="Tùy chọn sao chép nâng cao">⋮</summary>
+            <div>
+              <button type="button" data-copy="ja" data-id="${escapeAttr(cue.id)}" title="Chỉ sao chép tiếng Nhật">Chỉ JA</button>
+              <button type="button" data-copy="vi" data-id="${escapeAttr(cue.id)}" title="Chỉ sao chép tiếng Việt">Chỉ VI</button>
+              <button type="button" data-copy="ja_vi" data-id="${escapeAttr(cue.id)}" title="Sao chép tiếng Nhật + tiếng Việt">JA+VI</button>
+              <button type="button" data-copy="full" data-id="${escapeAttr(cue.id)}" title="Sao chép đầy đủ timeline + JA + VI + EN">Full</button>
+            </div>
+          </details>
+        </div>
       </div>
       <div class="sp-now-playing" aria-hidden="${isActive ? "false" : "true"}">ĐANG PHÁT</div>
       ${cue.candidate ? `
@@ -1721,8 +1725,8 @@
     if (captionModeBtn) {
       const enhanced = state.captionMode === "enhanced";
       captionModeBtn.innerHTML = enhanced
-        ? '<span class="sp-btn-text">Enhanced</span><span class="sp-badge-beta"> · thử nghiệm</span>'
-        : '<span class="sp-btn-text">Original</span>';
+        ? '<span class="sp-btn-text"><span class="sp-btn-txt-full">Enhanced</span><span class="sp-btn-txt-compact">Enh</span></span><span class="sp-badge-beta"> · thử nghiệm</span>'
+        : '<span class="sp-btn-text"><span class="sp-btn-txt-full">Original</span><span class="sp-btn-txt-compact">Orig</span></span>';
       captionModeBtn.setAttribute("aria-pressed", String(enhanced));
       captionModeBtn.disabled = !state.enhancementAvailable;
     }
@@ -1734,8 +1738,8 @@
       audioModeBtn.classList.toggle("active", active);
       audioModeBtn.setAttribute("aria-pressed", String(active));
       audioModeBtn.innerHTML = active
-        ? '<span class="sp-btn-text">Đang nghe audio…</span>'
-        : '<span class="sp-btn-text">Nghe audio</span><span class="sp-badge-beta"> (thử nghiệm)</span>';
+        ? '<span class="sp-btn-text"><span class="sp-btn-txt-full">Đang nghe audio…</span><span class="sp-btn-txt-compact">Đang nghe…</span><span class="sp-btn-txt-mini">🎧 Nghe</span></span>'
+        : '<span class="sp-btn-text"><span class="sp-btn-txt-full">Nghe audio</span><span class="sp-btn-txt-compact">Audio</span><span class="sp-btn-txt-mini">🎧</span></span><span class="sp-badge-beta"> (thử nghiệm)</span>';
     }
 
     if (typeof incoming.status === "string") setStatus(incoming.status);

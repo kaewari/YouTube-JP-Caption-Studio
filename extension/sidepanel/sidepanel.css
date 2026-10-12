@@ -486,8 +486,28 @@ body {
   box-shadow: 0 1px 4px rgba(0, 180, 216, 0.4);
 }
 
-/* Responsive behavior for Header subtitle toolbar */
-@container (max-width: 440px), (max-width: 440px) {
+.sp-btn-txt-full {
+  display: inline;
+}
+.sp-btn-txt-compact,
+.sp-btn-txt-mini {
+  display: none;
+}
+
+/* Responsive behavior for Header subtitle toolbar & cue cards */
+@container (max-width: 440px) {
+  .sp-badge-beta {
+    display: none;
+  }
+  .sp-sub-visibility {
+    gap: 4px 5px;
+  }
+  .sp-sub-btn {
+    padding: 3px 6px;
+    font-size: 10.5px;
+  }
+}
+@media (max-width: 440px) {
   .sp-badge-beta {
     display: none;
   }
@@ -500,7 +520,13 @@ body {
   }
 }
 
-@container (max-width: 360px), (max-width: 360px) {
+@container (max-width: 380px) {
+  .sp-btn-txt-full {
+    display: none !important;
+  }
+  .sp-btn-txt-compact {
+    display: inline !important;
+  }
   .sp-sub-visibility {
     gap: 4px 4px;
   }
@@ -511,13 +537,158 @@ body {
   .sp-sub-toggles {
     gap: 3px;
   }
+  .sp-t-start,
+  .sp-t-end {
+    width: 44px;
+    min-width: 44px;
+    padding: 1px 2px;
+    font-size: 10px;
+  }
+  .sp-meta {
+    gap: 3px;
+  }
+  .sp-meta-lead,
+  .sp-meta-actions {
+    gap: 3px;
+  }
+  .sp-add-after,
+  .sp-del,
+  .sp-original-edit,
+  .sp-undo-sentence,
+  .sp-copy,
+  .sp-copy-menu summary {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
+}
+@media (max-width: 380px) {
+  .sp-btn-txt-full {
+    display: none !important;
+  }
+  .sp-btn-txt-compact {
+    display: inline !important;
+  }
+  .sp-sub-visibility {
+    gap: 4px 4px;
+  }
+  .sp-sub-btn {
+    padding: 2.5px 5px;
+    font-size: 10px;
+  }
+  .sp-sub-toggles {
+    gap: 3px;
+  }
+  .sp-t-start,
+  .sp-t-end {
+    width: 44px;
+    min-width: 44px;
+    padding: 1px 2px;
+    font-size: 10px;
+  }
+  .sp-meta {
+    gap: 3px;
+  }
+  .sp-meta-lead,
+  .sp-meta-actions {
+    gap: 3px;
+  }
+  .sp-add-after,
+  .sp-del,
+  .sp-original-edit,
+  .sp-undo-sentence,
+  .sp-copy,
+  .sp-copy-menu summary {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
 }
 
-@container (max-width: 310px), (max-width: 310px) {
+@container (max-width: 310px) {
+  #sp-audio-mode .sp-btn-txt-compact {
+    display: none !important;
+  }
+  #sp-audio-mode .sp-btn-txt-mini {
+    display: inline !important;
+  }
+  .sp-sub-btn {
+    padding: 2px 4px;
+    font-size: 9.5px;
+  }
+  .sp-sub-toggles {
+    gap: 2px;
+  }
+  .sp-t-start,
+  .sp-t-end {
+    width: 42px;
+    min-width: 42px;
+    font-size: 9.5px;
+  }
+  .sp-meta-actions {
+    gap: 2px;
+  }
+  .sp-list {
+    padding: 8px 10px 24px;
+  }
+  .sp-sentence {
+    padding: 8px 10px 10px;
+  }
+}
+@media (max-width: 310px) {
+  #sp-audio-mode .sp-btn-txt-compact {
+    display: none !important;
+  }
+  #sp-audio-mode .sp-btn-txt-mini {
+    display: inline !important;
+  }
+  .sp-sub-btn {
+    padding: 2px 4px;
+    font-size: 9.5px;
+  }
+  .sp-sub-toggles {
+    gap: 2px;
+  }
+  .sp-t-start,
+  .sp-t-end {
+    width: 42px;
+    min-width: 42px;
+    font-size: 9.5px;
+  }
+  .sp-meta-actions {
+    gap: 2px;
+  }
+  .sp-list {
+    padding: 8px 10px 24px;
+  }
+  .sp-sentence {
+    padding: 8px 10px 10px;
+  }
+}
+
+@container (max-width: 295px) {
   .sp-sub-toggles {
     margin-left: 0;
     width: 100%;
     justify-content: flex-start;
+    padding-top: 2px;
+  }
+  .sp-meta-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+}
+@media (max-width: 295px) {
+  .sp-sub-toggles {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+    padding-top: 2px;
+  }
+  .sp-meta-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
     padding-top: 2px;
   }
 }
@@ -633,9 +804,26 @@ body {
 .sp-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 4px;
   margin-bottom: 6px;
   flex-wrap: wrap;
+}
+
+.sp-meta-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.sp-meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Always reserve height — toggling caused list flash on cue advance (iPad CueEditorRow). */
@@ -738,7 +926,6 @@ body {
 }
 
 .sp-copy-menu {
-  margin-left: auto;
   position: relative;
 }
 
