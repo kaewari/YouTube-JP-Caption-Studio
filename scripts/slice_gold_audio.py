@@ -14,6 +14,8 @@ import argparse
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -98,10 +100,33 @@ def load_audio(file_path: str | Path, target_sr: int = TARGET_SAMPLE_RATE) -> Tu
     if not path.is_file():
         raise FileNotFoundError(f"Audio file not found: {path}")
 
-    data, orig_sr = sf.read(str(path), dtype="float32")
-    mono = to_mono(data)
-    resampled = resample_audio(mono, orig_sr, target_sr)
-    return resampled, target_sr
+    try:
+        data, orig_sr = sf.read(str(path), dtype="float32")
+        mono = to_mono(data)
+        resampled = resample_audio(mono, orig_sr, target_sr)
+        return resampled, target_sr
+    except Exception as sf_err:
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if ffmpeg_bin:
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i",
+                str(path),
+                "-f",
+                "f32le",
+                "-ar",
+                str(target_sr),
+                "-ac",
+                "1",
+                "pipe:1",
+            ]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            resampled = np.frombuffer(proc.stdout, dtype=np.float32)
+            if resampled.size == 0:
+                raise ValueError("Decoded audio contains no samples")
+            return resampled, target_sr
+        raise ValueError(f"Unable to read audio file with soundfile or ffmpeg: {sf_err}") from sf_err
 
 
 def save_audio(audio: np.ndarray, sr: int, output_path: str | Path) -> None:

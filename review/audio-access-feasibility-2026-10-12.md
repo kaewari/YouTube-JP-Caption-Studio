@@ -3,10 +3,10 @@
 
 # Audio Access Feasibility Spike (Milestone M0 Review)
 
-**Worktree**: `/Users/hoangson/.gemini/antigravity/worktrees/YouTube JP Caption Studio/audio_model`  
-**Branch**: `feat/audio-listening-model`  
-**Base commit**: `456568178`  
-**Date**: 2026-10-12  
+**Worktree**: `/Users/hoangson/.gemini/antigravity/worktrees/YouTube JP Caption Studio/audio_model`<br>
+**Branch**: `feat/audio-listening-model`<br>
+**Base commit**: `456568178`<br>
+**Date**: 2026-10-12<br>
 **Status**: **GO** (Both `chrome.tabCapture` and local audio benchmarking paths verified feasible)
 
 ---

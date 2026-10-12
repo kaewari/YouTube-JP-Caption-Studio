@@ -133,9 +133,25 @@ def decode_audio_bytes(data: bytes) -> np.ndarray:
             if audio_arr.size == 0:
                 raise ValueError("Decoded audio contains no samples")
             return audio_arr
-        except Exception as e:
-            logger.error("ffmpeg decoding error: %s", e)
-            raise ValueError(f"Unable to decode audio payload: {e}") from e
+        except Exception as ffmpeg_err:
+            # 3. Direct raw PCM fallback (headerless float32 or int16 16kHz mono)
+            if len(data) % 4 == 0:
+                try:
+                    raw_float = np.frombuffer(data, dtype=np.float32)
+                    if raw_float.size > 0 and np.all(np.isfinite(raw_float)) and np.max(np.abs(raw_float)) <= 1.5:
+                        return np.ascontiguousarray(raw_float, dtype=np.float32)
+                except Exception:
+                    pass
+            if len(data) % 2 == 0:
+                try:
+                    raw_i16 = np.frombuffer(data, dtype=np.int16)
+                    if raw_i16.size > 0:
+                        raw_float = raw_i16.astype(np.float32) / 32768.0
+                        return np.ascontiguousarray(raw_float, dtype=np.float32)
+                except Exception:
+                    pass
+            logger.error("ffmpeg decoding error: %s", ffmpeg_err)
+            raise ValueError(f"Unable to decode audio payload: {ffmpeg_err}") from ffmpeg_err
 
     raise ValueError(f"Unable to decode audio format: {sf_error}")
 

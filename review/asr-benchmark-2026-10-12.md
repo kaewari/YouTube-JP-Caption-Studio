@@ -3,10 +3,10 @@
 
 # ASR Model Benchmark & Ground Truth Dataset Review (Milestone M1 & M2)
 
-**Worktree**: `/Users/hoangson/.gemini/antigravity/worktrees/YouTube JP Caption Studio/audio_model`  
-**Branch**: `feat/audio-listening-model`  
-**Base commit**: `456568178`  
-**Date**: 2026-10-12  
+**Worktree**: `/Users/hoangson/.gemini/antigravity/worktrees/YouTube JP Caption Studio/audio_model`<br>
+**Branch**: `feat/audio-listening-model`<br>
+**Base commit**: `456568178`<br>
+**Date**: 2026-10-12<br>
 **Status**: **GATE M2: GO** (Candidate model beats YouTube ASR CER within compute and memory budget)
 
 ---

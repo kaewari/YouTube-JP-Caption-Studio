@@ -819,6 +819,90 @@
       }
       return { ok: true };
     }
+
+  async function getContentTabId() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "CONTENT_GET_TAB_ID" });
+      return res?.tabId || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function canReceiveAsrCandidate(cue) {
+    if (!cue) return false;
+    if (cue.mt_locked) return false;
+    if (isOwnedCue(cue)) return false;
+    if (cue.user_owned) return false;
+    if (["user", "import"].includes(cue.translation_source)) return false;
+    if (["edit", "import", "manual", "script"].includes(cue.text_source)) return false;
+    if (cue.deleted) return false;
+    return true;
+  }
+
+  function matchCuesForSegment(cuesList, segStart, segEnd) {
+    return (cuesList || []).filter((c) => {
+      const cStart = Number(c.start_media_time) || 0;
+      const cEnd = Number(c.end_media_time) || (cStart + 1);
+      return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
+    });
+  }
+
+  async function handleAsrCandidateReceived(msg) {
+    if (!msg || !msg.result) return;
+    if (msg.videoId && currentVideoId && msg.videoId !== currentVideoId) return;
+
+    let updated = false;
+    const segments = Array.isArray(msg.result.segments) && msg.result.segments.length > 0
+      ? msg.result.segments
+      : null;
+
+    if (segments) {
+      for (const seg of segments) {
+        const segText = String(seg?.text || "").trim();
+        if (!segText) continue;
+        const segStart = (Number(msg.startSec) || 0) + (Number(seg.start) || 0);
+        const segEnd = (Number(msg.startSec) || 0) + (Number(seg.end) || (Number(seg.start) || 0) + 1);
+        const matched = matchCuesForSegment(cues, segStart, segEnd);
+        if (matched.length === 1) {
+          const cue = matched[0];
+          if (canReceiveAsrCandidate(cue)) {
+            sentenceCandidates[cue.id] = {
+              text: segText,
+              provenance: "asr:whisper-large-v3-turbo",
+              start: segStart,
+              end: segEnd,
+              createdAt: Date.now(),
+            };
+            updated = true;
+          }
+        }
+      }
+    } else if (msg.result.text) {
+      const text = String(msg.result.text).trim();
+      if (text) {
+        const matched = matchCuesForSegment(cues, Number(msg.startSec) || 0, Number(msg.endSec) || 0);
+        if (matched.length === 1) {
+          const cue = matched[0];
+          if (canReceiveAsrCandidate(cue)) {
+            sentenceCandidates[cue.id] = {
+              text,
+              provenance: "asr:whisper-large-v3-turbo",
+              start: Number(msg.startSec) || 0,
+              end: Number(msg.endSec) || 0,
+              createdAt: Date.now(),
+            };
+            updated = true;
+          }
+        }
+      }
+    }
+
+    if (updated) {
+      await saveSentenceState();
+      publishSidePanelState({ forceList: true });
+    }
+  }
     if (cmd === "undo_sentence") {
       cancelSentencePrefetch();
       refreshSentenceProjection();
