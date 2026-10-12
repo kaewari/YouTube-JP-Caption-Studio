@@ -1720,7 +1720,9 @@
     if (incoming.savedCues) patchSubtitleStars();
     if (captionModeBtn) {
       const enhanced = state.captionMode === "enhanced";
-      captionModeBtn.textContent = enhanced ? "Enhanced · thử nghiệm" : "Original";
+      captionModeBtn.innerHTML = enhanced
+        ? '<span class="sp-btn-text">Enhanced</span><span class="sp-badge-beta"> · thử nghiệm</span>'
+        : '<span class="sp-btn-text">Original</span>';
       captionModeBtn.setAttribute("aria-pressed", String(enhanced));
       captionModeBtn.disabled = !state.enhancementAvailable;
     }
@@ -1731,7 +1733,9 @@
       const active = !!state.audioListeningActive;
       audioModeBtn.classList.toggle("active", active);
       audioModeBtn.setAttribute("aria-pressed", String(active));
-      audioModeBtn.textContent = active ? "Đang nghe audio…" : "Nghe audio (thử nghiệm)";
+      audioModeBtn.innerHTML = active
+        ? '<span class="sp-btn-text">Đang nghe audio…</span>'
+        : '<span class="sp-btn-text">Nghe audio</span><span class="sp-badge-beta"> (thử nghiệm)</span>';
     }
 
     if (typeof incoming.status === "string") setStatus(incoming.status);
