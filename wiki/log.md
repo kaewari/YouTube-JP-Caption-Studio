@@ -496,3 +496,12 @@ Read finalized [raw review](../review/youtube-sentence-mvp-chrome-storage-restar
 ## [2026-10-11] ingest | Actual content restore and Undo across reload
 
 Read finalized [raw review](../review/youtube-sentence-mvp-content-undo-reload-2026-10-11.md) from disk. Parent actual direct-row Red closed by three-line shared loader await+generation guard; final parent and independent Chromium UI/API Green, protected blank/precise clocks/export/Undo/recovery bounded synthetic matrix. Actual DOM rectangles, Undo/reload IDs/text exact; independent0px deltas only those snapshots. Main delivery86files exactly1changed/85same/source6999d4ac/originalbackup3df134/mode0644 independently verified. No bridge/data/user-profile mutation, native activation and fullSTORE-02/sourcechange/Drive/audio50/Gemini/KPI/fullgoal open. Prior raw history retained, new quiet availability question pending.
+
+## [2026-10-12] ingest | Audio listening model gated plan, benchmarks, and candidate integration
+
+Read finalized raw plan `plan/audio-listening-model-2026-10-12.md` and review reports `review/audio-access-feasibility-2026-10-12.md` and `review/asr-benchmark-2026-10-12.md`.
+- Milestone M0 (Feasibility): GATE GO, documented tabCapture delayed mode (2.5s–5.5s) and user-gesture requirement.
+- Milestone M1 (Gold Dataset): 20 candidate windows in `testdata/audio-gold/manifest.json`, 16 kHz polyphase resampler script `scripts/slice_gold_audio.py` with ffmpeg fallback.
+- Milestone M2 (Metal Benchmark): `scripts/asr_benchmark.py` verified Levenshtein CER and normalized CER preserving `々` (\u3005) and `ー`. `mlx-community/whisper-large-v3-turbo` on Apple Silicon Metal measured RTF = 0.0505, RAM RSS = 1.728 GB, Cue 19 aligned CER = 0.00% (corrected `勘無料` -> `感無量`).
+- Milestone M3 (Candidate Integration): Backend route `POST /asr/transcribe` in `local-bridge/app/api/asr.py` and `app/services/asr.py`. Offscreen audio capture via WebM Opus in `extension/offscreen/audio_capture.js`. Strict data protection invariant `canReceiveAsrCandidate(cue)` protecting locked/edited/owned cues. Sidepanel candidate UI with Accept / Revert and Undo revision creation.
+- Audited entire branch diff: verified 100% test pass on candidate lifecycle, sentence groups, ASR API (14/14), root benchmark tests (30/30), and clean `git diff --check` with exit code 0.
