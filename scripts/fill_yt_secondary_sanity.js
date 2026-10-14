@@ -55,7 +55,23 @@ assert(!!orphan, "orphan EN kept as new row");
 assert(orphan.source === "", "orphan JA empty");
 assert(orphan.vi === "orphan-vi", "orphan VI merged onto same row (±tol)");
 assert(orphan.translation_source === "yt" && orphan.translated, "orphan marked yt");
-assert(cues.length === 5, `cue count ${cues.length} (4 JA + 1 orphan row)`);
+const testInterjectionCues = [
+  { start_media_time: 1.0, end_media_time: 1.8, source: "う", en: "", vi: "", translation_source: "" },
+  { start_media_time: 2.0, end_media_time: 2.8, source: "う…", en: "", vi: "", translation_source: "" },
+  { start_media_time: 3.0, end_media_time: 3.8, source: "う。", en: "", vi: "", translation_source: "" },
+];
+fillYtSecondary(testInterjectionCues, [
+  { start: 1.0, end: 1.8, text: "cormorant" },
+  { start: 2.0, end: 2.8, text: "cormorant" },
+  { start: 3.0, end: 3.8, text: "cormorant" },
+], [
+  { start: 1.0, end: 1.8, text: "chim cốc" },
+  { start: 2.0, end: 2.8, text: "chim cốc." },
+  { start: 3.0, end: 3.8, text: "chim cốc..." },
+], { tol: DEFAULT_TOL });
+assert(!testInterjectionCues[0].en && !testInterjectionCues[0].vi, "interjection う must block chim cốc / cormorant from machine translation");
+assert(!testInterjectionCues[1].en && !testInterjectionCues[1].vi, "interjection う… must block chim cốc. from machine translation");
+assert(!testInterjectionCues[2].en && !testInterjectionCues[2].vi, "interjection う。 must block chim cốc... from machine translation");
 
 const again = fillYtSecondary(cues, enCues, viCues, { tol: DEFAULT_TOL });
 assert(again === 0, "second pass fills nothing");

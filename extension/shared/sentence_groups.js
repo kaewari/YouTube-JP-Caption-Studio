@@ -238,9 +238,9 @@
         sourceRefs[0].cueId === original.id && sourceRefs[0].charStart === 0 &&
         sourceRefs[0].charEnd === original.source.length && unit.text === original.source;
       const translated = selected.map(g => translations[g.id]?.revision === g.revision ? translations[g.id] : null);
-      const languageText = lang => isProtected(original) ? original[lang] || "" :
-        unchanged && String(original[lang] || "").trim() ? original[lang] :
-        translated.every(t => String(t?.[lang] || "").trim()) ? translated.map(t => t[lang].trim()).join(" ") : "";
+      const languageText = lang => (unchanged && isProtected(original)) ? original[lang] || "" :
+        translated.every(t => String(t?.[lang] || "").trim()) ? translated.map(t => t[lang].trim()).join(" ") :
+        unchanged && String(original[lang] || "").trim() ? original[lang] : "";
       let tokenOffset = 0;
       const tokens = selected.every(g => validGroupTokens(g.text, groupTokens[g.id])) ? selected.flatMap(g => {
           const result = groupTokens[g.id].map(t => {

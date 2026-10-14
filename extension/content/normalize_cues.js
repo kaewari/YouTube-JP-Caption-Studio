@@ -189,6 +189,12 @@
     return out;
   }
 
+  function isBogusInterjectionTranslation(source, text) {
+    const s = String(source || "").trim().replace(/[、。・…〜～!?！？\s「」『』"“”'・]/gu, "");
+    const t = String(text || "").trim().replace(/^["'“”「」『』\s]+|["'“”「」『』\s.!?…~～]+$/gu, "");
+    return /^[ぁ-んー]{1,2}$/.test(s) && /^(?:chim cốc|con cốc|cormorant)$/i.test(t);
+  }
+
   /** Normalize text only; timeline stays YouTube timedtext boundaries. */
   function normalizeCues(cues, opts) {
     return dropAndStripSfx(cues, opts);
@@ -198,6 +204,7 @@
     normalizeCues,
     mergeRollingAsrCues,
     isRollingAsrUpdate,
+    isBogusInterjectionTranslation,
     dropAndStripSfx,
     stripSfxTokens,
     normalizeTextWithMapping,

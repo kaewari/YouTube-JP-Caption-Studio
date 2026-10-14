@@ -48,7 +48,7 @@
     barTextOpacity: 1,
     barShowJa: true,
     barShowEn: true,
-    barShowVi: true,
+    barShowVi: false,
     /** Dict popup: show cue sentence (VI/EN) under the gloss. */
     dictShowSentence: true,
     enabledPlatforms: {
@@ -116,6 +116,8 @@
   let sentenceUndoRevisions = {};
   let sentenceCandidates = {};
   let audioListeningActive = false;
+  let sentenceTrackKind = "asr";
+  let audioListeningAutoStarted = false;
   let sentenceStateLoadedKey = "", sentenceStateLoadedGen = -1, sentenceStateLoad = null;
   let sentenceRawTrack = null;
   let sentenceBenchmark = null;
@@ -402,6 +404,7 @@
       const sourceKey = sentenceTrackKey();
       const sourceTrack = opts.sourceTrack ? Object.fromEntries(["trackId", "language", "kind", "format"]
         .map(key => [key, typeof opts.sourceTrack[key] === "string" ? opts.sourceTrack[key] : null])) : null;
+      sentenceTrackKind = (opts.sourceTrack?.kind === "asr" || opts.asr) ? "asr" : (opts.sourceTrack ? "manual" : "asr");
       const fingerprint = await sentenceSourceFingerprint(sourceKey, rawCues, sourceTrack);
       if (gen !== navigateGen || vid !== currentVideoId || sourceKey !== sentenceTrackKey()) return;
       sentenceRawTrack = { version: 1, sourceKey, fingerprint, sourceTrack, cues: structuredClone(rawCues) };
@@ -752,161 +755,56 @@
       return { ok: true, captionMode };
     }
     if (cmd === "toggle_audio_listening") {
-      audioListeningActive = !audioListeningActive;
-      const tabId = await getContentTabId();
-      if (audioListeningActive) {
-        toast("Đang bật nghe audio (Whisper trên Apple Silicon)...");
-        try {
-          const res = await chrome.runtime.sendMessage({
-            type: "AUDIO_START_CAPTURE",
-            tabId,
-            videoId: currentVideoId,
-            playhead: currentMediaTime,
-          });
-          if (!res?.ok) {
-            audioListeningActive = false;
-            toast("Không thể bật nghe audio: " + (res?.error || "Lỗi capture"));
-          }
-        } catch (e) {
-          audioListeningActive = false;
-          toast("Lỗi bật nghe audio: " + e.message);
-        }
-      } else {
-        toast("Đã tắt nghe audio");
-        try {
-          await chrome.runtime.sendMessage({
-            type: "AUDIO_STOP_CAPTURE",
-            tabId,
-          });
-        } catch (_) {}
-      }
-      publishSidePanelState({ forceList: true });
-      return { ok: true, audioListeningActive };
+      return toggleAudioListening(msg.active != null ? msg.active : !audioListeningActive, { auto: false });
     }
     if (cmd === "accept_asr_candidate") {
-      const cue = cues.find(c => c.id === msg.id);
-      const cand = sentenceCandidates[msg.id];
+      const cue = resolveSourceCue(msg.id);
+      const cand = (cue && sentenceCandidates[cue.id]) || sentenceCandidates[msg.id];
       if (!cue || !cand) return { ok: false, error: "Candidate not found" };
 
       if (!canReceiveAsrCandidate(cue)) {
+        if (cue) delete sentenceCandidates[cue.id];
         delete sentenceCandidates[msg.id];
         await saveSentenceState();
         publishSidePanelState({ forceList: true });
         return { ok: false, error: "Cue is locked or user-edited" };
       }
 
-      sentenceUndoRevisions[cue.id] = sentenceCueRevision(cue);
-      sentenceUndoIds.add(cue.id);
+      const rev = sentenceCueRevision(cue);
       cue.source = cand.text;
       cue.text_source = "asr:whisper-large-v3-turbo";
       cue.normalization = null;
-      delete sentenceCandidates[cue.id];
+      sentenceUndoRevisions[cue.id] = rev;
+      sentenceUndoIds.add(cue.id);
+      if (cue) delete sentenceCandidates[cue.id];
+      delete sentenceCandidates[msg.id];
       delete sentenceTokens[cue.id];
       delete sentenceTranslations[cue.id];
       listDirty = true;
+      refreshSentenceProjection(true);
       await saveSentenceState();
       await syncToPlayhead();
       publishSidePanelState({ forceList: true });
       toast("Đã áp dụng gợi ý audio (có thể Undo)");
       return { ok: true };
     }
-    if (cmd === "revert_asr_candidate") {
+    if (cmd === "revert_asr_candidate" || cmd === "dismiss_asr_candidate") {
+      const cue = resolveSourceCue(msg.id);
+      if (cue && sentenceCandidates[cue.id]) {
+        delete sentenceCandidates[cue.id];
+      }
       if (sentenceCandidates[msg.id]) {
         delete sentenceCandidates[msg.id];
-        await saveSentenceState();
-        publishSidePanelState({ forceList: true });
-        toast("Đã bỏ qua gợi ý");
       }
-      return { ok: true };
-    }
-
-  async function getContentTabId() {
-    try {
-      const res = await chrome.runtime.sendMessage({ type: "CONTENT_GET_TAB_ID" });
-      return res?.tabId || null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function canReceiveAsrCandidate(cue) {
-    if (!cue) return false;
-    if (cue.mt_locked) return false;
-    if (isOwnedCue(cue)) return false;
-    if (cue.user_owned) return false;
-    if (["user", "import"].includes(cue.translation_source)) return false;
-    if (["edit", "import", "manual", "script"].includes(cue.text_source)) return false;
-    if (cue.deleted) return false;
-    return true;
-  }
-
-  function matchCuesForSegment(cuesList, segStart, segEnd) {
-    return (cuesList || []).filter((c) => {
-      const cStart = Number(c.start_media_time) || 0;
-      const cEnd = Number(c.end_media_time) || (cStart + 1);
-      return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
-    });
-  }
-
-  async function handleAsrCandidateReceived(msg) {
-    if (!msg || !msg.result) return;
-    if (msg.videoId && currentVideoId && msg.videoId !== currentVideoId) return;
-
-    let updated = false;
-    const segments = Array.isArray(msg.result.segments) && msg.result.segments.length > 0
-      ? msg.result.segments
-      : null;
-
-    if (segments) {
-      for (const seg of segments) {
-        const segText = String(seg?.text || "").trim();
-        if (!segText) continue;
-        const segStart = (Number(msg.startSec) || 0) + (Number(seg.start) || 0);
-        const segEnd = (Number(msg.startSec) || 0) + (Number(seg.end) || (Number(seg.start) || 0) + 1);
-        const matched = matchCuesForSegment(cues, segStart, segEnd);
-        if (matched.length === 1) {
-          const cue = matched[0];
-          if (canReceiveAsrCandidate(cue)) {
-            sentenceCandidates[cue.id] = {
-              text: segText,
-              provenance: "asr:whisper-large-v3-turbo",
-              start: segStart,
-              end: segEnd,
-              createdAt: Date.now(),
-            };
-            updated = true;
-          }
-        }
-      }
-    } else if (msg.result.text) {
-      const text = String(msg.result.text).trim();
-      if (text) {
-        const matched = matchCuesForSegment(cues, Number(msg.startSec) || 0, Number(msg.endSec) || 0);
-        if (matched.length === 1) {
-          const cue = matched[0];
-          if (canReceiveAsrCandidate(cue)) {
-            sentenceCandidates[cue.id] = {
-              text,
-              provenance: "asr:whisper-large-v3-turbo",
-              start: Number(msg.startSec) || 0,
-              end: Number(msg.endSec) || 0,
-              createdAt: Date.now(),
-            };
-            updated = true;
-          }
-        }
-      }
-    }
-
-    if (updated) {
       await saveSentenceState();
       publishSidePanelState({ forceList: true });
+      toast("Đã bỏ qua gợi ý");
+      return { ok: true };
     }
-  }
     if (cmd === "undo_sentence") {
       cancelSentencePrefetch();
       refreshSentenceProjection();
-      const original = cues.find(c => c.id === msg.id);
+      const original = cues.find(c => c.id === msg.id) || resolveSourceCue(msg.id);
       if (original && sentenceUndoRevisions[original.id]) {
         try {
           const parsed = JSON.parse(sentenceUndoRevisions[original.id]);
@@ -920,6 +818,7 @@
           delete sentenceTokens[original.id];
           delete sentenceTranslations[original.id];
           listDirty = true;
+          refreshSentenceProjection(true);
           await saveSentenceState();
           await syncToPlayhead();
           publishSidePanelState({ forceList: true });
@@ -1133,6 +1032,154 @@
     }
     return { ok: false, reason: "unknown_cmd" };
   }
+
+  function resolveSourceCue(id) {
+    if (!id) return null;
+    let cue = cues.find(c => c.id === id);
+    if (cue) return cue;
+    const unit = (enhancedCues || []).find(c => c.id === id);
+    if (unit) {
+      if (Array.isArray(unit.sourceRefs)) {
+        for (const ref of unit.sourceRefs) {
+          if (sentenceCandidates[ref.cueId] || sentenceUndoRevisions[ref.cueId]) {
+            cue = cues.find(c => c.id === ref.cueId);
+            if (cue) return cue;
+          }
+        }
+      }
+      if (unit.sourceCueId) {
+        cue = cues.find(c => c.id === unit.sourceCueId);
+        if (cue) return cue;
+      }
+      if (Array.isArray(unit.sourceRefs)) {
+        for (const ref of unit.sourceRefs) {
+          cue = cues.find(c => c.id === ref.cueId);
+          if (cue) return cue;
+        }
+      }
+    }
+    return null;
+  }
+
+  async function toggleAudioListening(forceActive, opts = {}) {
+    const nextState = forceActive != null ? !!forceActive : !audioListeningActive;
+    if (audioListeningActive === nextState) return { ok: true, audioListeningActive };
+    audioListeningActive = nextState;
+    const tabId = await getContentTabId();
+    if (audioListeningActive) {
+      if (!opts.auto) toast("Đang bật nghe audio (Whisper trên Apple Silicon)...");
+      try {
+        const res = await chrome.runtime.sendMessage({
+          type: "AUDIO_START_CAPTURE",
+          tabId,
+          videoId: currentVideoId,
+          playhead: currentMediaTime,
+        });
+        if (!res?.ok) {
+          audioListeningActive = false;
+          if (!opts.auto) toast("Không thể bật nghe audio: " + (res?.error || "Lỗi capture"));
+        }
+      } catch (e) {
+        audioListeningActive = false;
+        if (!opts.auto) toast("Lỗi bật nghe audio: " + e.message);
+      }
+    } else {
+      if (!opts.auto) toast("Đã tắt nghe audio");
+      try {
+        await chrome.runtime.sendMessage({
+          type: "AUDIO_STOP_CAPTURE",
+          tabId,
+        });
+      } catch (_) {}
+    }
+    publishSidePanelState({ forceList: true });
+    return { ok: true, audioListeningActive };
+  }
+
+  async function getContentTabId() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "CONTENT_GET_TAB_ID" });
+      return res?.tabId || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function canReceiveAsrCandidate(cue) {
+    if (!cue) return false;
+    if (cue.mt_locked) return false;
+    if (isOwnedCue(cue)) return false;
+    if (cue.user_owned) return false;
+    if (["user", "import"].includes(cue.translation_source)) return false;
+    if (["edit", "import", "manual", "script"].includes(cue.text_source)) return false;
+    if (cue.deleted) return false;
+    return true;
+  }
+
+  function matchCuesForSegment(cuesList, segStart, segEnd) {
+    return (cuesList || []).filter((c) => {
+      const cStart = Number(c.start_media_time) || 0;
+      const cEnd = Number(c.end_media_time) || (cStart + 1);
+      return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
+    });
+  }
+
+  async function handleAsrCandidateReceived(msg) {
+    if (!msg || !msg.result) return;
+    if (msg.videoId && currentVideoId && msg.videoId !== currentVideoId) return;
+
+    let updated = false;
+    const segments = Array.isArray(msg.result.segments) && msg.result.segments.length > 0
+      ? msg.result.segments
+      : null;
+
+    if (segments) {
+      for (const seg of segments) {
+        const segText = String(seg?.text || "").trim();
+        if (!segText) continue;
+        const segStart = (Number(msg.startSec) || 0) + (Number(seg.start) || 0);
+        const segEnd = (Number(msg.startSec) || 0) + (Number(seg.end) || (Number(seg.start) || 0) + 1);
+        const matched = matchCuesForSegment(cues, segStart, segEnd);
+        if (matched.length === 1) {
+          const cue = matched[0];
+          if (canReceiveAsrCandidate(cue)) {
+            sentenceCandidates[cue.id] = {
+              text: segText,
+              provenance: "asr:whisper-large-v3-turbo",
+              start: segStart,
+              end: segEnd,
+              createdAt: Date.now(),
+            };
+            updated = true;
+          }
+        }
+      }
+    } else if (msg.result.text) {
+      const text = String(msg.result.text).trim();
+      if (text) {
+        const matched = matchCuesForSegment(cues, Number(msg.startSec) || 0, Number(msg.endSec) || 0);
+        if (matched.length === 1) {
+          const cue = matched[0];
+          if (canReceiveAsrCandidate(cue)) {
+            sentenceCandidates[cue.id] = {
+              text,
+              provenance: "asr:whisper-large-v3-turbo",
+              start: Number(msg.startSec) || 0,
+              end: Number(msg.endSec) || 0,
+              createdAt: Date.now(),
+            };
+            updated = true;
+          }
+        }
+      }
+    }
+
+    if (updated) {
+      await saveSentenceState();
+      publishSidePanelState({ forceList: true });
+    }
+  }
+
   function bridgeFetch(path, opts = {}) {
     if (!chrome?.runtime?.sendMessage) {
       return Promise.reject(new Error("Extension context invalidated"));
@@ -1266,7 +1313,12 @@
     if (settings.barTextOpacity == null) settings.barTextOpacity = DEFAULTS.barTextOpacity;
     if (settings.barShowJa == null) settings.barShowJa = true;
     if (settings.barShowEn == null) settings.barShowEn = true;
-    if (settings.barShowVi == null) settings.barShowVi = true;
+    if (settings.barShowVi == null) settings.barShowVi = false;
+    if (!settings.barViDefaultMigratedV2) {
+      settings.barShowVi = false;
+      settings.barViDefaultMigratedV2 = true;
+      void saveSettings();
+    }
     if (settings.enableBilingualJlptColor == null) settings.enableBilingualJlptColor = true;
     if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
       settings.barScale = DEFAULTS.barScale;
@@ -1619,7 +1671,10 @@
         const projection = sentenceProjection;
         if (!projection) return;
         const wanted = new Set(enhancedCues.filter(inWindow).flatMap(c => c.groupIds));
-        const languages = [settings.barShowVi !== false ? "vi" : "", settings.barShowEn !== false ? "en" : ""].filter(Boolean);
+        const languages = [
+          (settings.barShowVi !== false || settings.sidepanelShowVi !== false) ? "vi" : "",
+          (settings.barShowEn !== false || settings.sidepanelShowEn === true) ? "en" : "",
+        ].filter(Boolean);
         const jobs = [];
         for (const group of projection.groups) {
           if (group.protected || !wanted.has(group.id)) continue;
@@ -2212,7 +2267,10 @@
             const hit = findCachedMatch(cacheList, start, source);
             if (hit && (hit.vi || hit.en) && compactSource(hit.source) === compactSource(prev.source)) {
               prev.en = hit.en || prev.en || "";
-              prev.vi = hit.vi || prev.vi || "";
+              const hitVi = hit.vi || "";
+              if (!Normalize.isBogusInterjectionTranslation(prev.source, hitVi)) {
+                prev.vi = hitVi || prev.vi || "";
+              }
               if (originalTokensMatch(prev.source, hit.tokens)) prev.tokens = hit.tokens;
               prev.translated = !!(prev.vi || prev.en);
               if (hit.mt_locked) {
@@ -2242,7 +2300,8 @@
         let id = (hit && hit.id) || cueId(start, source);
         while (usedIds.has(id)) id += `:yt:${index}`;
         usedIds.add(id);
-        const hasVi = !!(hit && String(hit.vi || "").trim());
+        const hitVi = hit && !hit.mt_locked && Normalize.isBogusInterjectionTranslation(source, hit.vi) ? "" : ((hit && hit.vi) || "");
+        const hasVi = !!String(hitVi || "").trim();
         const hasEn = !!(hit && String(hit.en || "").trim());
         const hasMt = hasVi || hasEn;
         const translated = !!(hit && (hit.translated || hasMt));
@@ -2252,7 +2311,7 @@
           end_media_time: hit && isOwnedCue(hit) ? Number(hit.end_media_time) || end : end,
           source: hit && isOwnedCue(hit) ? String(hit.source || source) : source,
           en: (hit && hit.en) || "",
-          vi: (hit && hit.vi) || "",
+          vi: hitVi,
           tokens: originalTokensMatch(source, hit?.tokens) ? hit.tokens : [],
           translated,
           text_source: hit && isOwnedCue(hit) ? hit.text_source : "yt",
@@ -3545,11 +3604,33 @@
       _session: spSessionId,
     };
     if (forceCues) {
-      payload.enhancedCues = (enhancedCues || []).map((c) => ({
-        ...c,
-        candidate: sentenceCandidates[c.id] || null,
-        hasUndo: !!sentenceUndoRevisions[c.id],
-      }));
+      payload.enhancedCues = (enhancedCues || []).map((c) => {
+        let cand = sentenceCandidates[c.id] || null;
+        let hasUndo = !!sentenceUndoRevisions[c.id];
+        if (!cand && c.sourceCueId) cand = sentenceCandidates[c.sourceCueId] || null;
+        if (!hasUndo && c.sourceCueId) hasUndo = !!sentenceUndoRevisions[c.sourceCueId];
+        if (!cand && Array.isArray(c.sourceRefs)) {
+          for (const ref of c.sourceRefs) {
+            if (sentenceCandidates[ref.cueId]) {
+              cand = sentenceCandidates[ref.cueId];
+              break;
+            }
+          }
+        }
+        if (!hasUndo && Array.isArray(c.sourceRefs)) {
+          for (const ref of c.sourceRefs) {
+            if (sentenceUndoRevisions[ref.cueId]) {
+              hasUndo = true;
+              break;
+            }
+          }
+        }
+        return {
+          ...c,
+          candidate: cand,
+          hasUndo,
+        };
+      });
       payload.cues = cues.map((c) => ({
         id: c.id,
         source: c.source,
@@ -4743,7 +4824,12 @@
       <div class="lr-overlay-wrap">
         <div class="lr-card-ja">
           <button type="button" class="lr-replay-btn" title="Phát lại câu này (phím S / Space)">▶</button>
-          <div class="lr-text-ja">${showJa ? rubyHtml(cue) : ""}</div>
+          <div class="lr-card-body">
+            <div class="lr-text-ja">${showJa ? rubyHtml(cue) : ""}</div>
+            ${viHtml ? `<div class="bar-vi">${viHtml}</div>` : ""}
+            ${enHtml ? `<div class="bar-en">${enHtml}</div>` : ""}
+            ${translationFailure ? `<div role="status">${translationFailure} · Dịch lỗi, sẽ thử lại</div>` : ""}
+          </div>
           <div class="lr-card-actions">
             <button type="button" class="lr-scale-btn lr-scale-down-btn" title="Giảm cỡ chữ phụ đề (phím [)">A-</button>
             <button type="button" class="lr-scale-btn lr-scale-up-btn" title="Tăng cỡ chữ phụ đề (phím ])">A+</button>
@@ -4751,9 +4837,6 @@
             <button type="button" class="lr-more-btn" title="Cài đặt phụ đề & Dịch AI">⋮</button>
           </div>
         </div>
-        ${viHtml ? `<div class="bar-vi">${viHtml}</div>` : ""}
-        ${enHtml ? `<div class="bar-en">${enHtml}</div>` : ""}
-        ${translationFailure ? `<div role="status">${translationFailure} · Dịch lỗi, sẽ thử lại</div>` : ""}
       </div>
     `;
     const pill = bar.querySelector(".hardsub-bridge-pill");
@@ -4948,12 +5031,30 @@
     const key = sentenceTrackKey();
     if (key !== sentenceSourceKey) {
       sentenceSourceKey = key;
-      captionMode = "enhanced";
+      sentenceCandidates = {};
       sentenceUndoIds = new Set();
       sentenceUndoRevisions = {};
       sentenceTranslations = {};
       sentenceTokens = {};
       sentenceProjection = null;
+      const trackKind = typeof sentenceTrackKind !== "undefined" ? sentenceTrackKind : "asr";
+      if (trackKind === "asr") {
+        captionMode = "enhanced";
+        if (typeof toggleAudioListening === "function") {
+          void toggleAudioListening(true, { auto: true });
+        }
+        if (typeof audioListeningAutoStarted !== "undefined") {
+          audioListeningAutoStarted = true;
+        }
+      } else {
+        captionMode = "original";
+        if (typeof audioListeningAutoStarted !== "undefined" && audioListeningAutoStarted) {
+          if (typeof toggleAudioListening === "function") {
+            void toggleAudioListening(false, { auto: true });
+          }
+          audioListeningAutoStarted = false;
+        }
+      }
     }
     const engine = globalThis.HardsubSentenceGroups;
     if (!sentenceEnhancementEnabled()) {
@@ -5615,7 +5716,10 @@
     const video = findVideo();
     if (video) sentenceBenchmark?.sample({ time: video.currentTime, rate: video.playbackRate, paused: video.paused, seeking: video.seeking,
       hidden: document.hidden, mode: captionMode,
-      languages: [settings.barShowVi !== false ? "vi" : "", settings.barShowEn !== false ? "en" : ""].filter(Boolean),
+      languages: [
+        (settings.barShowVi !== false || settings.sidepanelShowVi !== false) ? "vi" : "",
+        (settings.barShowEn !== false || settings.sidepanelShowEn === true) ? "en" : "",
+      ].filter(Boolean),
       units: getSortedCues() }, performance.now());
     const nextId = active?.id || "";
     if (nextId !== activeCueId) {
@@ -5970,7 +6074,7 @@
       if (settings.barTextOpacity == null) settings.barTextOpacity = DEFAULTS.barTextOpacity;
       if (settings.barShowJa == null) settings.barShowJa = true;
       if (settings.barShowEn == null) settings.barShowEn = true;
-      if (settings.barShowVi == null) settings.barShowVi = true;
+      if (settings.barShowVi == null) settings.barShowVi = false;
       if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
         settings.barScale = DEFAULTS.barScale;
       }

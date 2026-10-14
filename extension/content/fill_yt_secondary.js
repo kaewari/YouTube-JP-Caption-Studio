@@ -150,6 +150,11 @@
     const used = new Set();
     let n = 0;
     const canPaint = (c) => !isLocked(c) && !String(c[field] || "").trim();
+    const isBogusInterjection = (src, txt) => {
+      const cleanSrc = String(src || "").trim().replace(/[、。・…〜～!?！？\s「」『』"“”'・]/gu, "");
+      const cleanTxt = String(txt || "").trim().replace(/^["'“”「」『』\s]+|["'“”「」『』\s.!?…~～]+$/gu, "");
+      return /^[ぁ-んー]{1,2}$/.test(cleanSrc) && /^(?:chim cốc|con cốc|cormorant)$/i.test(cleanTxt);
+    };
 
     // Pass 1: Standard match (tier 0, tier 1, tier 2)
     for (let i = 0; i < list.length; i++) {
@@ -161,7 +166,7 @@
         findBestRow(cues, sec, tol, canPaint, false) || findBestRow(cues, sec, tol, null, false);
       if (hit) {
         used.add(i);
-        if (canPaint(hit)) {
+        if (canPaint(hit) && !isBogusInterjection(hit.source, text)) {
           paintField(hit, field, text);
           n += 1;
         }
@@ -190,9 +195,12 @@
         }
       }
       if (bestI < 0) continue;
-      paintField(cue, field, String(list[bestI].text || "").trim());
+      const textToPaint = String(list[bestI].text || "").trim();
+      if (!isBogusInterjection(cue.source, textToPaint)) {
+        paintField(cue, field, textToPaint);
+        n += 1;
+      }
       used.add(bestI);
-      n += 1;
     }
     return n;
   }

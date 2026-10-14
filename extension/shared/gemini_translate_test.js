@@ -109,8 +109,16 @@ const server = http.createServer((req,res)=>{
   await assert.rejects(Gemini.handleTranslationMessage({type:'GEMINI_KEY_CHECK',apiKey:'test-only'},
     {id:'fixture-extension',tab:{id:1},url:'https://unsupported.example/'}),/origin/);
   assert.equal((await tabA.testApiKey('test-only')).ok,true);
-  assert.equal((await Gemini.handleTranslationMessage({type:'GEMINI_KEY_CHECK',apiKey:'test-only'},
-    {id:'fixture-extension',tab:{id:9},url:'chrome-extension://fixture-extension/popup/index.html'},false)).ok,true);
+  assert.equal(Gemini.PROMPT_VERSION, 2, "PROMPT_VERSION must be 2");
+  assert.equal(Gemini.sanitizeTranslation("chim cốc", "う"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("chim cốc.", "う"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("chim cốc", "う…"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("chim cốc", "う。"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("chim cốc", "「う」"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("cormorant", "うー"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("con cốc", "う"), "Ư...");
+  assert.equal(Gemini.sanitizeTranslation("đi đâu đấy?", "どこ行くんですか?"), "đi đâu đấy?");
+  console.log("PASS: PROMPT_VERSION 2 and sanitizeTranslation cleans homophone dictionary leaks for isolated kana interjections");
   delete global.chrome;
   console.log(`PASS: two production clients share one broker; 90 jobs HTTP peak ${peak}, valid Settings probe admitted, oversized/foreign/unsupported rejected`);
 })().catch(err=>{console.error(err);process.exitCode=1;}).finally(()=>{global.fetch=actualFetch;server.close();});

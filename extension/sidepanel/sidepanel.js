@@ -929,15 +929,15 @@
     pop.hidden = false;
 
     const rect = btn.getBoundingClientRect();
+    const popRect = pop.getBoundingClientRect();
     const popWidth = Math.min(320, window.innerWidth - 20);
-    let left = rect.right + 10;
-    if (left + popWidth > window.innerWidth) {
-      left = Math.max(10, rect.left - popWidth - 10);
+    const popHeight = popRect.height || 100;
+    let left = Math.max(10, Math.min(rect.left, window.innerWidth - popWidth - 10));
+    let top = rect.bottom + 8;
+    if (top + popHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - popHeight - 8);
     }
-    let top = rect.top - 8;
-    if (top + 200 > window.innerHeight) {
-      top = Math.max(10, window.innerHeight - 210);
-    }
+    pop.style.maxWidth = `${popWidth}px`;
     pop.style.left = `${Math.round(left)}px`;
     pop.style.top = `${Math.round(top)}px`;
   }
@@ -1002,6 +1002,8 @@
   function ensureDictDelegate() {
     if (listEl.dataset.dictDelegate === "1") return;
     listEl.dataset.dictDelegate = "1";
+    listEl.addEventListener("scroll", hidePlayPopover, { passive: true });
+    window.addEventListener("scroll", hidePlayPopover, { passive: true });
     listEl.addEventListener("mouseover", (e) => {
       const playBtn = e.target.closest?.(".sp-play");
       if (playBtn && listEl.contains(playBtn)) {
@@ -1578,6 +1580,7 @@
     listDelegateBound = true;
     ensureDictDelegate();
     listEl.addEventListener("click", (e) => {
+      hidePlayPopover();
       const row = e.target.closest(".sp-sentence");
       if (row && !e.target.closest(".sp-del")) {
         if (!followTimeline) setFollowTimeline(true, { scroll: false });
@@ -1591,6 +1594,7 @@
       if (btn.classList.contains("sp-original-edit")) { void openOriginalEditor(btn.dataset.id); return; }
       if (btn.classList.contains("sp-undo-sentence")) { void sendCmd("undo_sentence", { id: btn.dataset.id }); return; }
       if (btn.classList.contains("sp-play")) {
+        hidePlayPopover();
         setFollowTimeline(true);
         sendCmd("play", { mediaTime: Number(btn.dataset.t || btn.dataset.time) });
       } else if (btn.classList.contains("sp-star")) {
@@ -2143,6 +2147,7 @@
   }
 
   document.addEventListener("click", (e) => {
+    hidePlayPopover();
     if (!tokenFromEventTarget(e.target) && !e.target.closest?.(".sp-play")) {
       if (spPinnedTok) {
         spPinnedTok = null;

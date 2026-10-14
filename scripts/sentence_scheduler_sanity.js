@@ -33,7 +33,8 @@ let cues=[{id:'a',source:'晴れ。',start_media_time:0,end_media_time:1},
  {id:'c',source:'川。',start_media_time:3,end_media_time:4}];
 let currentSource='youtube',currentVideoId=${JSON.stringify(videoId)},captionMode='original',sentenceSourceKey='',
  sentenceProjection=null,sentenceProjectionCues=null,enhancedCues=[],sentenceTranslations={},sentenceTokens={},
- sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
+ sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceCandidates={},sentenceTrackKind='asr',audioListeningAutoStarted=false,
+ sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
  listDirty=true,currentMediaTime=2,navigateGen=1,translatingWithGemini=false,paints=[],publishes=0,sentenceBenchmark=testTrace,sentenceRawTrack=null,
  transcriptMeta={rev:1,owned:false,tombstones:[]};
 const settings={sourceLang:'ja',barShowVi:true,barShowEn:false};

@@ -14,23 +14,41 @@ const starFunctions = source.slice(source.indexOf("  function isCueStarred"), so
 const metadata = source.slice(source.indexOf("  function cachedSourceMetadata("), source.indexOf("  function cacheCueScore("));
 const cacheWrapper = source.slice(source.indexOf("  async function loadCachedCues"), source.indexOf("  async function loadLegacyCachedCues"));
 const writes = source.slice(source.indexOf("  let transcriptWritePending"), source.indexOf("  async function saveTranscript(opts"));
+const publishFunction = source.slice(source.indexOf("  async function ensureContentTabId"), source.indexOf("  /** Status/toast only — omit cues"));
 const workerSource=fs.readFileSync(require.resolve('../extension/background/service_worker.js'),'utf8');
 const savedWorker=workerSource.slice(workerSource.indexOf('let savedStateWritePending'),workerSource.indexOf('async function ensureBridgePollAlarm'));
-const context = vm.createContext({ console, Normalize:require("../extension/content/normalize_cues.js"), structuredClone, performance, HardsubSentenceGroups: require("../extension/shared/sentence_groups.js") });
+const context = vm.createContext({
+  console,
+  Normalize: require("../extension/content/normalize_cues.js"),
+  structuredClone,
+  performance,
+  HardsubSentenceGroups: require("../extension/shared/sentence_groups.js"),
+});
 vm.runInContext(`
 let cues=[{id:'a',source:'どこ',start_media_time:0,end_media_time:1,vi:'Mảnh A'},
   {id:'b',source:'行くんですか?',start_media_time:1,end_media_time:3,vi:'Mảnh B'}];
 let currentSource='youtube',currentVideoId='fixture',captionMode='original',sentenceSourceKey='',
   sentenceProjection=null,sentenceProjectionCues=null,enhancedCues=[],sentenceTranslations={},sentenceTokens={},
-  sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
-  listDirty=true,currentMediaTime=2,savedCues={},navigateGen=1,settings={sourceLang:'ja'},sentenceBenchmark=null,sentenceRawTrack=null;
+  sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceCandidates={},audioListeningActive=false,sentenceTrackKind='asr',audioListeningAutoStarted=false,
+  sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
+  listDirty=true,currentMediaTime=2,savedCues={},navigateGen=1,settings={sourceLang:'ja'},sentenceBenchmark=null,sentenceRawTrack=null,
+  publishedStates=[],lastStatusText='',contentTabId=1,spPublishSeq=0,activeCueId='',bridgeReady=false,userVocab={},scriptSource=null,spSessionId='fixture-session';
+const cacheStats=()=>({cached:0,n:0});
+const sourceLabel=()=>'yt';
 const syncToPlayhead=async()=>{};
 const triggerGeminiTranslationIfNeeded=async()=>{};
 const enrichSentenceGroups=async()=>{};
-const publishSidePanelState=()=>{};
 const cache={};
 const chrome={runtime:{id:'fixture',getURL:path=>'chrome-extension://fixture/'+path,
-  sendMessage:msg=>handleSavedCueMutation(msg,{id:'fixture',url:'https://www.youtube.com/watch?v=fixture',tab:{id:1}})},
+  sendMessage:async msg=>{
+    if (msg?.type === 'SP_STATE') {
+      publishedStates.push(msg.payload);
+      return { ok: true };
+    }
+    if (msg?.type?.startsWith('AUDIO_')) return { ok: true };
+    if (msg?.type === 'CONTENT_GET_TAB_ID') return { tabId: 1 };
+    return handleSavedCueMutation(msg,{id:'fixture',url:'https://www.youtube.com/watch?v=fixture',tab:{id:1}});
+  }},
 storage:{local:{get:async(key)=>({[key]:cache[key]}),set:async(value)=>{
   stored=JSON.parse(JSON.stringify(value));Object.assign(cache,stored);
 }}}};
@@ -47,6 +65,7 @@ const isSupportedUrl=url=>url.startsWith('https://www.youtube.com/');
 ${savedWorker}
 ${writes}
 const updateBar=cue=>{painted=cue};
+${publishFunction}
 ${projectionFunctions}
 ${originalTokens}
 ${commandFunction}
@@ -174,6 +193,91 @@ const run = expression => vm.runInContext(expression, context);
   console.log("PASS: versioned sidecar adapter reload restores undo; changed source invalidates override (isolated storage adapter)");
   console.log("PASS: malformed/unavailable disposable sidecar preserves successful legacy cache load");
   console.log("PASS: same-track new navigation reads its own sidecar instead of reusing aborted session load");
-  console.log("PASS: production JSON export payload preserves original clocks/text, raw track, metadata and saved provenance; browser delivery not covered");
   console.log("PASS: explicit restore/recovery preserves source clocks, locks, tombstones and other saved videos; wrong video/duplicate IDs rejected (isolated storage adapter)");
+
+  // Test ASR auto-activation vs Manual track
+  run("cues = [{id:'a',source:'どこ',start_media_time:0,end_media_time:1}, {id:'b',source:'行くんですか?',start_media_time:1,end_media_time:3}]; sentenceTrackKind = 'asr'; currentVideoId = 'vid-asr'; refreshSentenceProjection(true)");
+  assert.equal(run("captionMode"), "enhanced", "ASR track must auto-enable enhanced mode");
+  assert.equal(run("audioListeningActive"), true, "ASR track must auto-start audio listening");
+
+  run("sentenceTrackKind = 'manual'; currentVideoId = 'vid-manual'; refreshSentenceProjection(true)");
+  assert.equal(run("captionMode"), "original", "Manual track must default to original mode");
+  assert.equal(run("audioListeningActive"), false, "Manual track must not auto-start audio listening");
+
+  // Test Enhanced candidate resolution & Accept / Undo lifecycle
+  run("sentenceTrackKind = 'asr'; currentVideoId = 'fixture-cand'; cues = [{id:'c1', source:'雨', start_media_time:0, end_media_time:2}, {id:'c2', source:'です', start_media_time:2, end_media_time:4}]; listDirty = true; refreshSentenceProjection(true)");
+  assert.ok(run("enhancedCues.length > 0"));
+  const candEnhancedId = run("enhancedCues[0].id");
+
+  // Simulate ASR_CANDIDATE_RECEIVED for c1
+  await run(`handleAsrCandidateReceived({
+    videoId: 'fixture-cand',
+    startSec: 0,
+    endSec: 2,
+    result: { text: '飴' }
+  })`);
+  assert.equal(run("sentenceCandidates['c1']?.text"), "飴");
+
+  // Publish side panel state and verify candidate is mapped onto enhanced cue
+  run("publishSidePanelState({ forceList: true })");
+  let lastState = run("publishedStates[publishedStates.length - 1]");
+  let enhancedTarget = lastState.enhancedCues.find(c => c.id === candEnhancedId);
+  assert.ok(enhancedTarget, "Enhanced cue must be published");
+  assert.equal(enhancedTarget.candidate?.text, "飴", "Candidate on source cue c1 must be resolved for enhanced cue");
+  assert.equal(enhancedTarget.hasUndo, false, "Initial candidate should not have undo");
+
+  // Accept candidate using enhanced cue ID
+  const acceptRes = await run(`handleSidePanelCmd({ cmd: 'accept_asr_candidate', id: '${candEnhancedId}' })`);
+  assert.equal(acceptRes.ok, true, "accept_asr_candidate must succeed with enhanced cue ID");
+  assert.equal(run("cues.find(c => c.id === 'c1').source"), "飴");
+  assert.equal(run("cues.find(c => c.id === 'c1').text_source"), "asr:whisper-large-v3-turbo");
+
+  // Check that publishSidePanelState now reflects hasUndo: true
+  run("publishSidePanelState({ forceList: true })");
+  lastState = run("publishedStates[publishedStates.length - 1]");
+  enhancedTarget = lastState.enhancedCues.find(c => c.id === candEnhancedId);
+  assert.equal(enhancedTarget.hasUndo, true, "After accepting candidate, enhanced cue must reflect hasUndo = true");
+
+  // Undo using enhanced cue ID
+  const undoRes = await run(`handleSidePanelCmd({ cmd: 'undo_sentence', id: '${candEnhancedId}' })`);
+  assert.equal(undoRes.ok, true, "undo_sentence must succeed with enhanced cue ID");
+  assert.equal(run("cues.find(c => c.id === 'c1').source"), "雨", "Undo must restore original cue source");
+
+  run("publishSidePanelState({ forceList: true })");
+  lastState = run("publishedStates[publishedStates.length - 1]");
+  enhancedTarget = lastState.enhancedCues.find(c => c.id === candEnhancedId);
+  assert.equal(enhancedTarget.hasUndo, false, "After undo, enhanced cue must reflect hasUndo = false");
+
+  // Test Enhanced candidate resolution on SECOND cue of a multi-cue unit
+  run("sentenceTrackKind = 'asr'; currentVideoId = 'fixture-cand-2'; cues = [{id:'m1', source:'今日は', start_media_time:0, end_media_time:2}, {id:'m2', source:'雨', start_media_time:2, end_media_time:4}]; listDirty = true; refreshSentenceProjection(true)");
+  assert.ok(run("enhancedCues.length > 0"));
+  const multiEnhancedId = run("enhancedCues[0].id");
+
+  // Candidate arrives for m2 (the second cue in the merged sentence)
+  await run(`handleAsrCandidateReceived({
+    videoId: 'fixture-cand-2',
+    startSec: 2,
+    endSec: 4,
+    result: { text: '晴れ' }
+  })`);
+  assert.equal(run("sentenceCandidates['m2']?.text"), "晴れ");
+
+  run("publishSidePanelState({ forceList: true })");
+  lastState = run("publishedStates[publishedStates.length - 1]");
+  enhancedTarget = lastState.enhancedCues.find(c => c.id === multiEnhancedId);
+  assert.equal(enhancedTarget.candidate?.text, "晴れ", "Candidate on non-first cue m2 must be resolved on multi-cue enhanced unit");
+
+  // Accept candidate on multiEnhancedId - must target m2!
+  const acceptRes2 = await run(`handleSidePanelCmd({ cmd: 'accept_asr_candidate', id: '${multiEnhancedId}' })`);
+  assert.equal(acceptRes2.ok, true, "accept_asr_candidate must succeed on multi-cue unit when candidate is on m2");
+  assert.equal(run("cues.find(c => c.id === 'm1').source"), "今日は", "m1 must remain unchanged");
+  assert.equal(run("cues.find(c => c.id === 'm2').source"), "晴れ", "m2 must be updated to candidate text");
+
+  // Undo candidate on multiEnhancedId - must restore m2!
+  const undoRes2 = await run(`handleSidePanelCmd({ cmd: 'undo_sentence', id: '${multiEnhancedId}' })`);
+  assert.equal(undoRes2.ok, true, "undo_sentence must succeed on multi-cue unit when undo is on m2");
+  assert.equal(run("cues.find(c => c.id === 'm2').source"), "雨", "m2 original source must be restored");
+
+  console.log("PASS: ASR auto-enables Enhanced + Audio listening; manual keeps Original and Audio off");
+  console.log("PASS: Enhanced mode candidate mapping, accept with enhanced ID, hasUndo tracking, and undo restoration (including non-first cue in multi-cue sentences)");
 })().catch(err => { console.error(err); process.exitCode = 1; });

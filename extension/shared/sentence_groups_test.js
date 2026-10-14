@@ -230,4 +230,17 @@ const asrProj = Groups.buildSentenceGroups([asrTestCue], { sourceKey: 'asr_test'
 const asrEnhanced = Groups.projectDisplayCues([asrTestCue], asrProj, {}, {});
 assert.equal(asrEnhanced[0].words?.length, 1);
 assert.equal(asrEnhanced[0].words[0].word, '乗せて');
+const singleCue = { id: 's1', source: 'う', text: 'う', vi: 'chim cốc', start_media_time: 1.0, end_media_time: 2.0, tokens: [] };
+const singleProj = Groups.buildSentenceGroups([singleCue], { sourceKey: 'single_test' });
+const singleEnhancedWithTrans = Groups.projectDisplayCues([singleCue], singleProj, {
+  [singleProj.groups[0].id]: { revision: singleProj.groups[0].revision, vi: 'Ư...' }
+}, {});
+assert.equal(singleEnhancedWithTrans[0].vi, 'Ư...', 'Enhanced mode must prioritize sentence translation over raw original.vi for single-cue groups');
+
+const singleLockedCue = { id: 's2', source: 'う', text: 'う', vi: 'chim cốc', start_media_time: 1.0, end_media_time: 2.0, tokens: [], mt_locked: true };
+const singleLockedProj = Groups.buildSentenceGroups([singleLockedCue], { sourceKey: 'single_locked_test' });
+const singleLockedEnhanced = Groups.projectDisplayCues([singleLockedCue], singleLockedProj, {
+  [singleLockedProj.groups[0].id]: { revision: singleLockedProj.groups[0].revision, vi: 'chim cốc' }
+}, {});
+assert.equal(singleLockedEnhanced[0].vi, 'chim cốc', 'User locked translation must be preserved even when sentence translation exists');
 console.log('PASS: captured ordinal fragment joins with exact source spans/clocks; generalized numeral forms and independent safety boundaries retained');
