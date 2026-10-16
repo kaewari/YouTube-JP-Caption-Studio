@@ -479,11 +479,26 @@ body {
   box-shadow: 0 1px 4px rgba(123, 92, 255, 0.35);
 }
 
-#sp-audio-mode.active {
-  background: #00b4d8;
-  color: #ffffff;
-  border-color: #48cae4;
-  box-shadow: 0 1px 4px rgba(0, 180, 216, 0.4);
+#sp-caption-mode {
+  background: #1e1e2d;
+  color: var(--muted);
+  border: 1px solid #333348;
+}
+
+#sp-caption-mode[data-mode="enhanced"],
+#sp-caption-mode.enhanced {
+  background: #10b981 !important;
+  color: #ffffff !important;
+  border-color: #34d399 !important;
+  box-shadow: 0 1px 6px rgba(16, 185, 129, 0.4);
+}
+
+#sp-audio-mode.active,
+#sp-audio-mode[data-mode="active"] {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 1px 6px rgba(2, 132, 199, 0.4);
 }
 
 .sp-btn-txt-full {
@@ -723,6 +738,25 @@ body {
   font-weight: 500;
   margin-bottom: 6px;
   word-break: break-word;
+}
+
+.sp-diff-del {
+  color: #f87171;
+  text-decoration: line-through;
+  background-color: rgba(239, 68, 68, 0.2);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 1px;
+}
+
+.sp-diff-ins {
+  color: #34d399;
+  text-decoration: none;
+  font-weight: 600;
+  background-color: rgba(16, 185, 129, 0.2);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 1px;
 }
 
 .sp-candidate-actions {
@@ -1102,8 +1136,11 @@ textarea.sp-ja {
 .sp-play-cue-popover {
   position: fixed;
   z-index: 10000;
-  max-width: 330px;
-  background: rgba(18, 22, 28, 0.94);
+  max-width: 360px;
+  max-height: 280px;
+  overflow-y: auto;
+  pointer-events: auto;
+  background: rgba(18, 22, 28, 0.96);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1114,8 +1151,9 @@ textarea.sp-ja {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   line-height: 1.45;
-  pointer-events: none;
   animation: spPopIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
 }
 
 @keyframes spPopIn {

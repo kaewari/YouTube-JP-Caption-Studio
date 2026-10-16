@@ -95,6 +95,7 @@
   let apLastPausedCueId = "";
   let barPosIndex = 0;
   let translatingWithGemini = false;
+  let lastBackgroundPrefetchTime = 0;
   let lrHotkeysBound = false;
   let caps = { max_in_flight: 3, max_fps: 10 };
   let translatingIds = new Set();
@@ -1226,6 +1227,12 @@
    * bridge script-store regex, Drive folder names, and the SW allowlist).
    */
   function videoIdFromUrl() {
+    const domVid = (currentSource === "youtube" || sourceFromHost() === "youtube")
+      ? (document.querySelector("ytd-watch-flexy, ytd-watch-grid")?.getAttribute("video-id") || "")
+      : "";
+    if (globalThis.HardsubUrlHash?.videoIdFromUrl) {
+      return globalThis.HardsubUrlHash.videoIdFromUrl(location.href, domVid);
+    }
     const source = sourceFromHost();
     if (source === "youtube") {
       try {
@@ -1282,10 +1289,19 @@
     return String(currentSource || "YT").toUpperCase();
   }
 
-  /** SPA fires no yt-navigate on ABEMA — poll for URL/source change cheaply. */
+  function canonicalPageWatchKey() {
+    const src = sourceFromHost();
+    const vid = videoIdFromUrl();
+    if (vid) return `${src}|vid:${vid}`;
+    return `${src}|path:${location.pathname}`;
+  }
+
+  /** SPA fires no yt-navigate on ABEMA — poll for URL/source change cheaply.
+   * Only triggers on video identity change, never on &t= query updates during pause/scrub.
+   */
   let pageWatchKey = "";
   function checkPageWatch() {
-    const key = `${currentSource}|${location.href}`;
+    const key = canonicalPageWatchKey();
     if (key === pageWatchKey) return;
     pageWatchKey = key;
     void onNavigate();
@@ -1670,24 +1686,47 @@
         refreshSentenceProjection();
         const projection = sentenceProjection;
         if (!projection) return;
-        const wanted = new Set(enhancedCues.filter(inWindow).flatMap(c => c.groupIds));
+
+        const isVisible = c => c.end_media_time >= currentMediaTime && c.start_media_time <= currentMediaTime + 5;
+        const isAhead = c => c.end_media_time > currentMediaTime + 5 && c.start_media_time <= currentMediaTime + ahead;
+        const visibleGroupIds = new Set(enhancedCues.filter(isVisible).flatMap(c => c.groupIds));
+        const aheadGroupIds = new Set(enhancedCues.filter(isAhead).flatMap(c => c.groupIds));
+        const wantedGroupIds = new Set(enhancedCues.flatMap(c => c.groupIds));
+
+        const now = Date.now();
+        const canPrefetchBackground = force || (now - lastBackgroundPrefetchTime >= 6000);
+        let queuedBackgroundCount = 0;
+
         const languages = [
           (settings.barShowVi !== false || settings.sidepanelShowVi !== false) ? "vi" : "",
           (settings.barShowEn !== false || settings.sidepanelShowEn === true) ? "en" : "",
         ].filter(Boolean);
         const jobs = [];
         for (const group of projection.groups) {
-          if (group.protected || !wanted.has(group.id)) continue;
+          if (group.protected || !wantedGroupIds.has(group.id)) continue;
+          const isVis = visibleGroupIds.has(group.id);
+          const isAh = aheadGroupIds.has(group.id);
+          const isBg = !isVis && !isAh;
+
+          if (isBg && !canPrefetchBackground) continue;
+          if (isBg && queuedBackgroundCount >= 30) continue;
+
+          const jobPriority = force ? (isVis ? 40 : (isAh ? 30 : 10)) : (isVis ? 30 : (isAh ? 20 : 10));
+
           for (const language of languages) {
             if (!force && sentenceTranslations[group.id]?.revision === group.revision && sentenceTranslations[group.id]?.[language]) continue;
             if (!force && sentenceTranslations[group.id]?.revision === group.revision &&
                 (sentenceTranslations[group.id]?.retryAt?.[language] || 0) > Date.now()) continue;
             jobs.push({ id: group.id, revision: group.revision, source: group.text, sourceKey: projection.sourceKey,
-              algorithmVersion: projection.version, context: group.context, language });
+              algorithmVersion: projection.version, context: group.context, language, priority: jobPriority });
+            if (isBg) queuedBackgroundCount++;
           }
         }
+        if (queuedBackgroundCount > 0 && !force) {
+          lastBackgroundPrefetchTime = now;
+        }
         trace?.translationsQueued?.(jobs, force, mode, performance.now());
-        report = await translator.translateGroups(jobs, { apiKey, force, priority: force ? 0 : 10, scope: force ? "manual" : "automatic",
+        report = await translator.translateGroups(jobs, { apiKey, force, priority: force ? 40 : 20, scope: force ? "manual" : "automatic",
           onResult: result => {
             trace?.request(result.request, performance.now());
             if (!isCurrent() || !sentenceEnhancementEnabled() || result.status === "cancelled") {
@@ -5807,15 +5846,24 @@
   }
 
   async function onNavigate() {
+    const newWatchKey = canonicalPageWatchKey();
+    const prevVideoId = currentVideoId;
+    currentSource = sourceFromHost();
+    const newVideoId = videoIdFromUrl();
+
+    // Guard: If it's the exact same video and cues are already loaded,
+    // do not teardown UI or wipe cues on redundant navigation or query changes (e.g. &t= on pause/scrub)
+    if (newVideoId && newVideoId === prevVideoId && cues.length > 0 && newWatchKey === pageWatchKey) {
+      return;
+    }
+    pageWatchKey = newWatchKey;
+    currentVideoId = newVideoId;
+
     cancelSentencePrefetch();
     sentenceTokenRetryAt.clear();
     const gen = ++navigateGen;
-    const prevVideoId = currentVideoId;
-    currentSource = sourceFromHost();
-    currentVideoId = videoIdFromUrl();
     sentenceBenchmark = currentSource === "youtube" ? globalThis.HardsubSentenceBenchmark?.createTrace({
       traceId: crypto.randomUUID(), openedAt: gen === 1 ? 0 : performance.now() }) || null : null;
-    pageWatchKey = `${currentSource}|${location.href}`;
 
     if (!isCurrentPlatformEnabled()) {
       teardownUI();

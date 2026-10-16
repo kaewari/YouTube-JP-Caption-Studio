@@ -12,6 +12,7 @@ from app.api.captions import router as captions_router
 from app.api.dict import router as dict_router
 from app.api.health import router as health_router
 from app.api.ime import router as ime_router
+from app.api.saved_items import router as saved_items_router
 from app.api.scripts import router as scripts_router
 from app.api.state import load_ext_state_disk
 from app.api.state import router as state_router
@@ -41,6 +42,7 @@ app.include_router(dict_router)
 app.include_router(scripts_router)
 app.include_router(ime_router)
 app.include_router(state_router)
+app.include_router(saved_items_router)
 app.include_router(asr_router)
 
 

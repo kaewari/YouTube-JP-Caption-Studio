@@ -16,6 +16,7 @@
     "http://127.0.0.1:3000/*",
     "http://localhost:3000/*",
     "https://www.googleapis.com/*",
+    "https://accounts.google.com/o/oauth2/revoke",
     "https://generativelanguage.googleapis.com/*"
   ],
   "oauth2": {
@@ -81,6 +82,7 @@
         "shared/dfxp_parser.js",
         "shared/timedtext_parse.js",
         "shared/romaji_kana.js",
+        "shared/url_hash.js",
         "shared/gemini_translate.js",
         "content/normalize_cues.js",
         "shared/sentence_groups.js",

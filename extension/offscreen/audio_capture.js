@@ -7,7 +7,8 @@
  */
 
 const BRIDGE_ASR_URL = "http://127.0.0.1:8765/asr/transcribe";
-const SLICE_DURATION_MS = 5000; // 5-second slices
+const SLICE_DURATION_MS = 8000; // 8-second slices for faster throughput & richer context
+const OVERLAP_MS = 1500; // 1.5-second overlap across slice boundaries
 
 let currentStream = null;
 let currentAudioCtx = null;
@@ -54,6 +55,9 @@ async function startCapture(streamId, tabId, videoId, initialPlayhead = 0) {
 
     // Pipe audio to speakers so video remains audible
     currentAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (currentAudioCtx.state === "suspended") {
+      await currentAudioCtx.resume();
+    }
     const sourceNode = currentAudioCtx.createMediaStreamSource(currentStream);
     sourceNode.connect(currentAudioCtx.destination);
 
@@ -99,8 +103,8 @@ function recordNextSlice() {
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
       dispatchSliceToBridge(blob, startTimestamp, expectedEnd, activeTabId, activeVideoId);
     }
-    // Advance playhead estimate
-    sliceStartTime = expectedEnd;
+    // Advance playhead estimate with overlap
+    sliceStartTime = Math.max(0, expectedEnd - (OVERLAP_MS / 1000));
     if (isCapturing) {
       recordNextSlice();
     }

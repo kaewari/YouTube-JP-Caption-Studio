@@ -413,6 +413,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
     return true;
   }
+  if (msg?.type === "DRIVE_DISCONNECT") {
+    disconnectDrive()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
+    return true;
+  }
+  if (msg?.type === "SET_DRIVE_FOLDER_ID") {
+    setDriveFolderId(msg.folderId)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
+    return true;
+  }
 });
 
 /**
@@ -1233,14 +1245,12 @@ function dataUrlToBlob(dataUrl) {
 }
 
 // --- Drive sync: vocab in caption-studio-backup.json, scripts as <videoId>/ folders ---
-const DRIVE_FOLDER_ID = "1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA";
 const DRIVE_BACKUP_NAME = "caption-studio-backup.json";
 const DRIVE_SETTINGS_NAME = "caption-studio-settings.json";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 const MIRROR_FILES = ["cues.json", "meta.json", "script.txt"];
-/** ponytail: setTimeout, so a killed MV3 worker drops the pending mirror. Upgrade: chrome.alarms (1 min floor). */
 const DRIVE_UPLOAD_DEBOUNCE_MS = 5000;
 const DRIVE_SETTINGS_DEBOUNCE_MS = 1500;
 const DRIVE_STORAGE_KEYS = [
@@ -1250,7 +1260,83 @@ const DRIVE_STORAGE_KEYS = [
   "driveConnected",
   "driveSettingsFileId",
   "settingsLastAppliedUpdatedAt",
+  "driveFolderId",
 ];
+
+let _cachedDriveFolderId = "";
+async function getDriveFolderId(interactive = false) {
+  if (_cachedDriveFolderId) return _cachedDriveFolderId;
+  const stored = await chrome.storage.local.get(["driveFolderId"]);
+  if (stored.driveFolderId) {
+    _cachedDriveFolderId = stored.driveFolderId;
+    return _cachedDriveFolderId;
+  }
+  const q = encodeURIComponent("name = 'YouTube JP Caption Studio' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+  const listRes = await driveRequest(`/files?q=${q}&fields=files(id,name)&spaces=drive&supportsAllDrives=true`, {}, interactive).catch(() => null);
+  if (listRes && listRes.ok) {
+    const list = await listRes.json().catch(() => null);
+    if (list?.files && list.files.length > 0) {
+      _cachedDriveFolderId = list.files[0].id;
+      await chrome.storage.local.set({ driveFolderId: _cachedDriveFolderId });
+      return _cachedDriveFolderId;
+    }
+  }
+  const createRes = await driveRequest("/files?supportsAllDrives=true", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "YouTube JP Caption Studio",
+      mimeType: DRIVE_FOLDER_MIME,
+    }),
+  }, interactive).catch(() => null);
+  if (createRes && createRes.ok) {
+    const created = await createRes.json().catch(() => null);
+    if (created?.id) {
+      _cachedDriveFolderId = created.id;
+      await chrome.storage.local.set({ driveFolderId: _cachedDriveFolderId });
+      return _cachedDriveFolderId;
+    }
+  }
+  throw new Error("Không thể tìm hoặc tạo thư mục 'YouTube JP Caption Studio' trên Google Drive.");
+}
+
+async function setDriveFolderId(folderIdOrUrl) {
+  const raw = String(folderIdOrUrl || "").trim();
+  let folderId = raw;
+  const m = raw.match(/folders\/([A-Za-z0-9_-]{10,})/);
+  if (m && m[1]) folderId = m[1];
+  if (!folderId) throw new Error("Folder ID không hợp lệ");
+  _cachedDriveFolderId = folderId;
+  await chrome.storage.local.set({ driveFolderId: folderId });
+  return { ok: true, folderId };
+}
+
+async function disconnectDrive() {
+  try {
+    const token = await getAuthToken(false).catch(() => null);
+    if (token) {
+      try {
+        await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${encodeURIComponent(token)}`);
+      } catch (_) {}
+      await clearAuthToken(token);
+    }
+    if (chrome.identity?.clearAllCachedAuthTokens) {
+      await chrome.identity.clearAllCachedAuthTokens().catch(() => {});
+    }
+  } catch (_) {}
+  _cachedDriveFolderId = "";
+  await chrome.storage.local.remove([
+    "driveConnected",
+    "driveFileId",
+    "driveSettingsFileId",
+    "driveFolderId",
+    "driveSyncStatus",
+    "driveLastAppliedUpdatedAt",
+    "settingsLastAppliedUpdatedAt",
+  ]);
+  await setDriveStatus("");
+  return { ok: true };
+}
 
 let _driveUploadTimer = null;
 let _driveBusy = false;
@@ -1338,9 +1424,10 @@ async function driveRequest(path, opts = {}, interactive = false) {
 async function ensureDriveFileId(interactive = false) {
   const stored = await chrome.storage.local.get(["driveFileId"]);
   if (stored.driveFileId) return stored.driveFileId;
+  const folderId = await getDriveFolderId(interactive);
 
   const q = encodeURIComponent(
-    `'${DRIVE_FOLDER_ID}' in parents and name='${DRIVE_BACKUP_NAME}' and trashed=false`
+    `'${folderId}' in parents and name='${DRIVE_BACKUP_NAME}' and trashed=false`
   );
   const listRes = await driveRequest(
     `/files?q=${q}&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`,
@@ -1361,7 +1448,7 @@ async function ensureDriveFileId(interactive = false) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: DRIVE_BACKUP_NAME,
-          parents: [DRIVE_FOLDER_ID],
+          parents: [folderId],
           mimeType: "application/json",
         }),
       },
@@ -1470,8 +1557,9 @@ async function driveChildren(folderId) {
 }
 
 async function ensureVideoFolder(videoId) {
+  const folderId = await getDriveFolderId(false);
   const found = await driveList(
-    `'${DRIVE_FOLDER_ID}' in parents and name='${videoId}' ` +
+    `'${folderId}' in parents and name='${videoId}' ` +
       `and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`
   );
   if (found[0]?.id) return found[0].id;
@@ -1480,7 +1568,7 @@ async function ensureVideoFolder(videoId) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: videoId,
-      parents: [DRIVE_FOLDER_ID],
+      parents: [folderId],
       mimeType: DRIVE_FOLDER_MIME,
     }),
   });
@@ -1572,8 +1660,9 @@ async function mirrorFromDrive(videoIds, opts = {}) {
     if (fresh.length === want.length) return { ok: true, skipped: "checked_recently" };
     for (const id of want) _freshCheckedAt.set(id, now);
   }
+  const folderId = await getDriveFolderId(false);
   const folders = await driveList(
-    `'${DRIVE_FOLDER_ID}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`
+    `'${folderId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`
   );
   const { lastMirroredRev = {} } = await chrome.storage.local.get(["lastMirroredRev"]);
   const pulled = [];
@@ -1649,9 +1738,10 @@ function updatedAtMs(value) {
 async function ensureSettingsFileId(interactive = false, createIfMissing = true) {
   const stored = await chrome.storage.local.get(["driveSettingsFileId"]);
   if (stored.driveSettingsFileId) return stored.driveSettingsFileId;
+  const folderId = await getDriveFolderId(interactive);
 
   const q = encodeURIComponent(
-    `'${DRIVE_FOLDER_ID}' in parents and name='${DRIVE_SETTINGS_NAME}' and trashed=false`
+    `'${folderId}' in parents and name='${DRIVE_SETTINGS_NAME}' and trashed=false`
   );
   const listRes = await driveRequest(
     `/files?q=${q}&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`,
@@ -1673,7 +1763,7 @@ async function ensureSettingsFileId(interactive = false, createIfMissing = true)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: DRIVE_SETTINGS_NAME,
-          parents: [DRIVE_FOLDER_ID],
+          parents: [folderId],
           mimeType: "application/json",
         }),
       },

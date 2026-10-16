@@ -17,7 +17,7 @@ const server = http.createServer((req,res)=>{
     setTimeout(()=>{
       active--;
       if(mode==='rate-limit' && retries++===0){res.writeHead(429);res.end('fixture rate limit');return;}
-      if(mode==='shared-rate-limit' && attempts.get(jobs[0].source)===1 && jobs[0].source!=='どこ行くんですか? 30'){
+      if(mode==='shared-rate-limit' && attempts.get(jobs[0].source)===1 && jobs[0].source!=='どこ行くんですか? 60'){
         res.writeHead(429,{'Retry-After':jobs[0].source==='どこ行くんですか? 0'?'0.05':'0.25'});res.end('fixture shared limit');return;
       }
       if(mode==='http-error'){res.writeHead(503);res.end('fixture unavailable');return;}
@@ -37,17 +37,17 @@ const server = http.createServer((req,res)=>{
   const before=JSON.stringify(jobs);
   const [a,b]=await Promise.all([Gemini.translateGroups(jobs,{apiKey:'test-only'}),Gemini.translateGroups(jobs,{apiKey:'test-only'})]);
   assert.equal(a.completed,90);assert.equal(b.completed,90);assert.equal(a.failed,0);
-  assert.equal(requests,6);assert.ok(peak<=3);assert.equal(JSON.stringify(jobs),before);
+  assert.equal(requests,3);assert.ok(peak<=3);assert.equal(JSON.stringify(jobs),before);
   const after=await Gemini.translateGroups(jobs,{apiKey:'test-only'});
-  assert.equal(after.completed,90);assert.equal(requests,6);
+  assert.equal(after.completed,90);assert.equal(requests,3);
   const receipts=new Map(a.results.map(r=>[r.request.id,r.request]));
-  assert.equal(receipts.size,6);assert.equal([...receipts.values()].flatMap(r=>r.attempts).length,6);
+  assert.equal(receipts.size,3);assert.equal([...receipts.values()].flatMap(r=>r.attempts).length,3);
   assert.ok([...receipts.values()].every(r=>r.attempts.every(a=>a.status===200 && a.elapsedMs>=0)));
   assert.ok(after.results.every(r=>!r.request),'cache hits must not count historical requests');
   console.log(`PASS: localhost HTTP200, 90 jobs / concurrent duplicate callers / ${requests} batches / peak ${peak}; immutable inputs and cache`);
   const changed=[{...jobs[0],context:'different'},{...jobs[0],language:'en'}];
   const changedResult=await Gemini.translateGroups(changed,{apiKey:'test-only'});
-  assert.equal(changedResult.completed,2);assert.equal(requests,7);
+  assert.equal(changedResult.completed,2);assert.equal(requests,4);
   for(const invalidMode of ['wrong-revision','duplicate','http-error']){
     mode=invalidMode;
     const result=await Gemini.translateGroups(jobs.slice(0,2).map(j=>({...j,sourceKey:invalidMode})),{apiKey:'test-only'});
@@ -84,9 +84,9 @@ const server = http.createServer((req,res)=>{
   assert.equal(retried.completed,1);assert.equal(retries,2);assert.ok(Date.now()-retryStart>=1000);
   console.log('PASS: key probe shares three-request admission; actual HTTP429 without Retry-After waits >=1000ms then retries once');
   mode='shared-rate-limit';
-  const shared=await Gemini.translateGroups(jobs.slice(0,45).map(j=>({...j,sourceKey:'shared-rate-limit'})),{apiKey:'test-only'});
-  assert.equal(shared.completed,45);
-  const longStart=rateRecords.find(r=>r.first==='どこ行くんですか? 15' && r.n===1).time;
+  const shared=await Gemini.translateGroups(jobs.slice(0,90).map(j=>({...j,sourceKey:'shared-rate-limit'})),{apiKey:'test-only'});
+  assert.equal(shared.completed,90);
+  const longStart=rateRecords.find(r=>r.first==='どこ行くんですか? 30' && r.n===1).time;
   const shortRetry=rateRecords.find(r=>r.first==='どこ行くんですか? 0' && r.n===2).time;
   assert.ok(shortRetry-longStart>=250,`short retry bypassed shared cooldown: ${shortRetry-longStart}ms`);
   console.log('PASS: concurrent HTTP429 retries honor the longer shared cooldown');
@@ -103,13 +103,13 @@ const server = http.createServer((req,res)=>{
   const brokerReports=await Promise.all([tabA.translateGroups(jobs.slice(0,45).map(j=>({...j,sourceKey:'tab-a'}))),
     tabB.translateGroups(jobs.slice(0,45).map(j=>({...j,sourceKey:'tab-b'})))]);
   assert.ok(brokerReports.every(r=>r.completed===45));assert.ok(peak<=3);
-  await assert.rejects(Gemini.handleTranslationMessage({jobs:jobs.slice(0,16)},
+  await assert.rejects(Gemini.handleTranslationMessage({jobs:jobs.slice(0,31)},
     {id:'fixture-extension',url:'chrome-extension://fixture-extension/sidepanel.html'}),/contract/);
   await assert.rejects(Gemini.handleTranslationMessage({jobs:[]},{id:'wrong-extension'}),/sender/);
   await assert.rejects(Gemini.handleTranslationMessage({type:'GEMINI_KEY_CHECK',apiKey:'test-only'},
     {id:'fixture-extension',tab:{id:1},url:'https://unsupported.example/'}),/origin/);
   assert.equal((await tabA.testApiKey('test-only')).ok,true);
-  assert.equal(Gemini.PROMPT_VERSION, 2, "PROMPT_VERSION must be 2");
+  assert.equal(Gemini.PROMPT_VERSION, 3, "PROMPT_VERSION must be 3");
   assert.equal(Gemini.sanitizeTranslation("chim cốc", "う"), "Ư...");
   assert.equal(Gemini.sanitizeTranslation("chim cốc.", "う"), "Ư...");
   assert.equal(Gemini.sanitizeTranslation("chim cốc", "う…"), "Ư...");

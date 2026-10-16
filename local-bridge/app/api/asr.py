@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, Optional
 
@@ -66,7 +67,8 @@ async def transcribe(
         )
 
     try:
-        result = transcribe_audio(
+        result = await asyncio.to_thread(
+            transcribe_audio,
             audio_input=audio_bytes,
             model_name=model,
             language=language,

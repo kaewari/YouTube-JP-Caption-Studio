@@ -158,7 +158,7 @@
       group.id = "sg:" + JSON.stringify([VERSION, opts.sourceKey, opts.sourceRevision || "", group.sourceIdentity,
         group.sourceRefs.map(r => [r.cueId, r.charStart, r.charEnd]), group.text]);
       delete group.sourceIdentity;
-      group.context = [groups[i - 1], groups[i + 1]].map(g => g && !g.protected ? g.text.slice(0, 120) : "").join("\n");
+      group.context = [groups[i - 2], groups[i - 1], groups[i + 1]].map(g => g && !g.protected ? g.text.slice(0, 120) : "").filter(Boolean).join("\n");
       group.revision = JSON.stringify([group.id, group.context]);
       group.action = group.sourceRefs.length > 1 ? "merge" : "keep";
     }

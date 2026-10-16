@@ -374,31 +374,61 @@
       if (!tabs?.length || !isSupportedVideoUrl(tabs[0]?.url)) {
         tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       }
+      if (!tabs?.length || !isSupportedVideoUrl(tabs[0]?.url)) {
+        tabs = await chrome.tabs.query({ active: true });
+      }
       let active = tabs?.find((t) => isSupportedVideoUrl(t?.url));
       if (active?.id != null) {
         let newVid = "";
         try {
-          const u = new URL(active.url || "");
-          newVid = u.searchParams.get("v") || "";
+          if (globalThis.HardsubUrlHash?.videoIdFromUrl) {
+            newVid = globalThis.HardsubUrlHash.videoIdFromUrl(active.url || "");
+          } else {
+            const u = new URL(active.url || "");
+            newVid = u.searchParams.get("v") || "";
+          }
         } catch (_) {}
 
-        const vidChanged = newVid && state.videoId && newVid !== state.videoId;
+        const vidChanged = (state.videoId || "") !== (newVid || "");
         if (active.id !== currentActiveTabId || vidChanged) {
           currentActiveTabId = active.id;
           tabId = active.id;
           if (vidChanged) {
-            state.videoId = newVid;
+            state.videoId = newVid || "";
             state.cues = [];
+            state.rawCues = [];
+            listDirty = true;
             syncListVisibility();
+            renderList(true);
           }
-          const cached = tabStates.get(active.id);
-          if (cached && (!newVid || cached.videoId === newVid)) {
-            applyState(cached, { forceList: true });
+          if (!newVid) {
+            setStatus("Sẵn sàng · Mở video YouTube/Netflix/ABEMA để tải phụ đề");
+          } else {
+            const cached = tabStates.get(active.id);
+            if (cached && cached.videoId === newVid) {
+              applyState(cached, { forceList: true });
+            } else {
+              state.cues = [];
+              state.rawCues = [];
+              state.videoId = newVid;
+              listDirty = true;
+              renderList(true);
+              setStatus("Đang tải dữ liệu tab...");
+            }
+            try {
+              chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
+            } catch (_) {}
           }
-          try {
-            chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
-          } catch (_) {}
         }
+      } else {
+        currentActiveTabId = null;
+        tabId = null;
+        state.cues = [];
+        state.rawCues = [];
+        state.videoId = "";
+        listDirty = true;
+        renderList(true);
+        setStatus("Side panel chỉ hoạt động trên YouTube, Netflix hoặc ABEMA.");
       }
     } catch (_) {}
   }
@@ -903,20 +933,41 @@
   }
 
   let playPopoverEl = null;
+  let playPopoverTimer = null;
+  let activePlayBtn = null;
+
+  function clearPlayPopoverTimer() {
+    if (playPopoverTimer) {
+      clearTimeout(playPopoverTimer);
+      playPopoverTimer = null;
+    }
+  }
+
   function ensurePlayPopover() {
     if (playPopoverEl) return playPopoverEl;
     playPopoverEl = document.createElement("div");
     playPopoverEl.id = "sp-play-cue-popover";
     playPopoverEl.className = "sp-play-cue-popover";
     playPopoverEl.hidden = true;
+    playPopoverEl.addEventListener("mouseenter", clearPlayPopoverTimer);
+    playPopoverEl.addEventListener("mouseleave", scheduleHidePlayPopover);
     document.body.appendChild(playPopoverEl);
     return playPopoverEl;
   }
 
   function showPlayPopover(btn) {
+    clearPlayPopoverTimer();
     const pop = ensurePlayPopover();
     const row = btn.closest(".sp-sentence");
     if (!row) return;
+
+    // Stash button title to prevent native browser tooltip from overlaying the Japanese sentence
+    if (btn.hasAttribute("title")) {
+      btn.dataset.stashedTitle = btn.getAttribute("title");
+      btn.removeAttribute("title");
+    }
+    activePlayBtn = btn;
+
     const jaText = row.querySelector(".sp-ja-view, .sp-ja")?.textContent?.trim() || "";
     const viText = row.querySelector(".sp-vi")?.textContent?.trim() || "";
     const enText = row.querySelector(".sp-en")?.textContent?.trim() || "";
@@ -930,7 +981,7 @@
 
     const rect = btn.getBoundingClientRect();
     const popRect = pop.getBoundingClientRect();
-    const popWidth = Math.min(320, window.innerWidth - 20);
+    const popWidth = Math.min(360, window.innerWidth - 20);
     const popHeight = popRect.height || 100;
     let left = Math.max(10, Math.min(rect.left, window.innerWidth - popWidth - 10));
     let top = rect.bottom + 8;
@@ -943,9 +994,25 @@
   }
 
   function hidePlayPopover() {
+    clearPlayPopoverTimer();
+    if (activePlayBtn) {
+      if (activePlayBtn.dataset.stashedTitle) {
+        activePlayBtn.setAttribute("title", activePlayBtn.dataset.stashedTitle);
+        delete activePlayBtn.dataset.stashedTitle;
+      }
+      activePlayBtn = null;
+    }
     if (playPopoverEl) {
       playPopoverEl.hidden = true;
     }
+  }
+
+  function scheduleHidePlayPopover() {
+    clearPlayPopoverTimer();
+    playPopoverTimer = setTimeout(() => {
+      playPopoverTimer = null;
+      hidePlayPopover();
+    }, 180);
   }
 
   function highlightCluster(tok, active) {
@@ -1039,7 +1106,7 @@
     listEl.addEventListener("mouseout", (e) => {
       const playBtn = e.target.closest?.(".sp-play");
       if (playBtn) {
-        hidePlayPopover();
+        scheduleHidePlayPopover();
       }
 
       const tok = tokenFromEventTarget(e.target);
@@ -1436,6 +1503,14 @@
     return escapeHtml(raw);
   }
 
+  function renderCandidateDiff(cue) {
+    if (!cue.candidate?.text) return "";
+    if (globalThis.HardsubJapaneseDiff?.renderJapaneseDiffHtml) {
+      return globalThis.HardsubJapaneseDiff.renderJapaneseDiffHtml(cue.source, cue.candidate.text);
+    }
+    return escapeHtml(cue.candidate.text);
+  }
+
   function rowTemplate(cue, idx) {
     const isActive = cue.id === state.activeCueId;
     const starred = isCueStarred(cue.id);
@@ -1476,7 +1551,7 @@
         <div class="sp-candidate-header">
           <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
         </div>
-        <div class="sp-candidate-text">${escapeHtml(cue.candidate.text)}</div>
+        <div class="sp-candidate-text">${renderCandidateDiff(cue)}</div>
         <div class="sp-candidate-actions">
           <button type="button" class="sp-candidate-accept" data-id="${escapeAttr(cue.id)}" title="Áp dụng gợi ý này vào phụ đề">Áp dụng</button>
           <button type="button" class="sp-candidate-revert" data-id="${escapeAttr(cue.id)}" title="Bỏ qua gợi ý này">Bỏ qua</button>
@@ -1531,7 +1606,7 @@
           <div class="sp-candidate-header">
             <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
           </div>
-          <div class="sp-candidate-text">${escapeHtml(cue.candidate.text)}</div>
+          <div class="sp-candidate-text">${renderCandidateDiff(cue)}</div>
           <div class="sp-candidate-actions">
             <button type="button" class="sp-candidate-accept" data-id="${escapeAttr(cue.id)}" title="Áp dụng gợi ý này vào phụ đề">Áp dụng</button>
             <button type="button" class="sp-candidate-revert" data-id="${escapeAttr(cue.id)}" title="Bỏ qua gợi ý này">Bỏ qua</button>
@@ -1543,7 +1618,7 @@
       existingCand.remove();
     } else if (cue.candidate && existingCand) {
       const txt = existingCand.querySelector(".sp-candidate-text");
-      if (txt) txt.textContent = cue.candidate.text;
+      if (txt) txt.innerHTML = renderCandidateDiff(cue);
     }
 
     let undoBtn = row.querySelector(".sp-undo-sentence");
@@ -1728,6 +1803,9 @@
     if (incoming.savedCues) patchSubtitleStars();
     if (captionModeBtn) {
       const enhanced = state.captionMode === "enhanced";
+      captionModeBtn.dataset.mode = state.captionMode;
+      captionModeBtn.classList.toggle("enhanced", enhanced);
+      captionModeBtn.classList.toggle("original", !enhanced);
       captionModeBtn.innerHTML = enhanced
         ? '<span class="sp-btn-text"><span class="sp-btn-txt-full">Enhanced</span><span class="sp-btn-txt-compact">Enh</span></span><span class="sp-badge-beta"> · thử nghiệm</span>'
         : '<span class="sp-btn-text"><span class="sp-btn-txt-full">Original</span><span class="sp-btn-txt-compact">Orig</span></span>';
@@ -1739,6 +1817,7 @@
     }
     if (audioModeBtn) {
       const active = !!state.audioListeningActive;
+      audioModeBtn.dataset.mode = active ? "active" : "idle";
       audioModeBtn.classList.toggle("active", active);
       audioModeBtn.setAttribute("aria-pressed", String(active));
       audioModeBtn.innerHTML = active
@@ -2523,31 +2602,52 @@
     if (activeInfo?.tabId != null) {
       try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
+        if (tab?.url && (tab.url.startsWith("chrome-extension://") || tab.url.startsWith("chrome://") || tab.url.startsWith("about:"))) {
+          return;
+        }
         if (tab && isSupportedVideoUrl(tab.url)) {
           currentActiveTabId = tab.id;
           tabId = tab.id;
-          // 0ms instant restore from cache if exists
-          const cached = tabStates.get(tab.id);
-          if (cached) {
-            applyState(cached, { forceList: true });
+          const activeVid = globalThis.HardsubUrlHash?.videoIdFromUrl ? globalThis.HardsubUrlHash.videoIdFromUrl(tab.url) : "";
+          if (activeVid) {
+            // 0ms instant restore from cache if exists and videoId matches
+            const cached = tabStates.get(tab.id);
+            if (cached && cached.videoId === activeVid) {
+              applyState(cached, { forceList: true });
+            } else {
+              state.cues = [];
+              state.rawCues = [];
+              state.videoId = activeVid;
+              listDirty = true;
+              renderList(true);
+              setStatus("Đang tải dữ liệu tab...");
+            }
+            chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
           } else {
+            state.videoId = "";
             state.cues = [];
             state.rawCues = [];
             listDirty = true;
             renderList(true);
-            setStatus("Đang tải dữ liệu tab...");
+            setStatus("Sẵn sàng · Mở video YouTube/Netflix/ABEMA để tải phụ đề");
           }
-          chrome.tabs.sendMessage(currentActiveTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
         } else {
           currentActiveTabId = null;
           tabId = null;
           state.cues = [];
           state.rawCues = [];
+          state.videoId = "";
           listDirty = true;
           renderList(true);
           setStatus("Side panel chỉ hoạt động trên YouTube, Netflix hoặc ABEMA.");
         }
       } catch (_) {}
+    }
+  });
+
+  chrome.tabs?.onUpdated?.addListener?.(async (updatedTabId, changeInfo) => {
+    if (updatedTabId === currentActiveTabId && changeInfo.url) {
+      await syncActiveTab();
     }
   });
 
@@ -2614,12 +2714,20 @@
   syncFollowBtn();
 
   function isSupportedVideoUrl(url) {
+    if (!url || typeof url !== "string") return false;
     try {
-      const h = new URL(url || "").hostname.toLowerCase();
+      const u = new URL(url);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+      const h = u.hostname.toLowerCase();
       return (
         h === "www.youtube.com" ||
         h === "youtube.com" ||
         h === "m.youtube.com" ||
+        h === "music.youtube.com" ||
+        h === "youtu.be" ||
+        h.endsWith(".youtu.be") ||
+        h === "youtube-nocookie.com" ||
+        h.endsWith(".youtube-nocookie.com") ||
         h === "abema.tv" ||
         h.endsWith(".abema.tv") ||
         h === "www.netflix.com" ||
