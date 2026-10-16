@@ -29,6 +29,7 @@ function scanDir(dir, fileList = []) {
 const targetDirs = [
   path.join(__dirname),
   path.join(__dirname, "../extension/shared"),
+  path.join(__dirname, "../tests"),
 ];
 
 const allTests = [];

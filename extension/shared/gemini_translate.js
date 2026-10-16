@@ -303,8 +303,9 @@
       const reports = await Promise.all(chunks.map(async chunk => {
         let report;
         try {
+          const chunkPriority = Math.max(Number(options.priority) || 0, ...chunk.map(j => Number(j.priority) || 0));
           report = await chrome.runtime.sendMessage({ type: "GEMINI_TRANSLATE_GROUPS", jobs: chunk,
-            force: !!options.force, priority: options.priority || 0, scope, epoch, clientId });
+            force: !!options.force, priority: chunkPriority, scope, epoch, clientId });
           if (!Array.isArray(report?.results) || report.results.length !== chunk.length) throw new Error("Worker disconnected");
         } catch (_) {
           report = { results: chunk.map(j => ({ id: j.id, revision: j.revision, language: j.language,
@@ -333,9 +334,10 @@
       if (cached[i]) return Promise.resolve(cached[i]);
       if (!apiKey) return Promise.resolve({ id: job.id, revision: job.revision, language: job.language, status: "error", error: "API key missing" });
       const pendingKey = keys[i] + "|" + apiKey;
+      const itemPriority = Math.max(Number(job.priority) || 0, Number(snapshots[i]?.priority) || 0, Number(options.priority) || 0);
       const existing = pending.get(pendingKey);
-      if (existing) { existing.owners.set(owner, epoch); existing.priority = Math.max(existing.priority, options.priority || 0); return existing.promise; }
-      const entry = { key: keys[i], pendingKey, job, apiKey, priority: options.priority || 0, owners: new Map([[owner, epoch]]) };
+      if (existing) { existing.owners.set(owner, epoch); existing.priority = Math.max(existing.priority, itemPriority); return existing.promise; }
+      const entry = { key: keys[i], pendingKey, job, apiKey, priority: itemPriority, owners: new Map([[owner, epoch]]) };
       entry.promise = new Promise(resolve => { entry.resolve = resolve; });
       pending.set(entry.pendingKey, entry);
       queue.push(entry);

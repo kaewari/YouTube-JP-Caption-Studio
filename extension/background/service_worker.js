@@ -679,11 +679,18 @@ if (chrome.alarms?.onAlarm) {
       // Crash-recovery path: SW was killed before the setTimeout fired.
       // Read pending IDs from session storage (in-memory Set was lost).
       const storage = chrome.storage.session || chrome.storage.local;
-      storage.get([DRIVE_PENDING_MIRROR_KEY]).then((r) => {
+      storage.get([DRIVE_PENDING_MIRROR_KEY]).then(async (r) => {
         const ids = r[DRIVE_PENDING_MIRROR_KEY] || [];
         if (!ids.length) return;
-        storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
-        void driveQueued(() => mirrorToDrive(ids));
+        try {
+          const res = await driveQueued(() => mirrorToDrive(ids));
+          if (res && res.ok) {
+            storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+            for (const id of ids) _pendingMirror.delete(id);
+          }
+        } catch (e) {
+          console.warn("[drive] alarm mirror failed, keeping pending IDs:", e);
+        }
       }).catch(() => {});
     }
   });
@@ -1966,12 +1973,24 @@ function scheduleDriveUpload(videoId) {
   storage.set({ [DRIVE_PENDING_MIRROR_KEY]: Array.from(_pendingMirror) }).catch(() => {});
   // Alarm is the crash-recovery path; timer preserves the existing 5s UI debounce.
   void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1 }).catch?.(() => {});
-  _driveUploadTimer = setTimeout(() => {
+  _driveUploadTimer = setTimeout(async () => {
     _driveUploadTimer = null;
     const ids = Array.from(_pendingMirror);
-    _pendingMirror.clear();
-    storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
-    void driveQueued(() => mirrorToDrive(ids));
+    if (!ids.length) return;
+    try {
+      const res = await driveQueued(() => mirrorToDrive(ids));
+      if (res && res.ok) {
+        for (const id of ids) _pendingMirror.delete(id);
+        const remaining = Array.from(_pendingMirror);
+        if (remaining.length) {
+          storage.set({ [DRIVE_PENDING_MIRROR_KEY]: remaining }).catch(() => {});
+        } else {
+          storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("[drive] debounced mirror failed, keeping pending IDs:", e);
+    }
   }, DRIVE_UPLOAD_DEBOUNCE_MS);
 }
 
@@ -1993,7 +2012,13 @@ async function uploadDriveNow() {
   } catch (e) {
     console.warn("[drive] bridge snapshot skipped:", e);
   }
-  return driveQueued(() => mirrorToDrive());
+  const res = await driveQueued(() => mirrorToDrive());
+  if (res && res.ok) {
+    _pendingMirror.clear();
+    const storage = chrome.storage.session || chrome.storage.local;
+    storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+  }
+  return res;
 }
 
 async function uploadDriveFromBridge() {

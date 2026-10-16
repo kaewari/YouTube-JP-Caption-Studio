@@ -1119,10 +1119,29 @@
 
   function matchCuesForSegment(cuesList, segStart, segEnd) {
     return (cuesList || []).filter((c) => {
-      const cStart = Number(c.start_media_time) || 0;
-      const cEnd = Number(c.end_media_time) || (cStart + 1);
+      const cStart = Number(c.start_media_time ?? c.start) || 0;
+      const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
       return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
     });
+  }
+
+  function findBestCueForSegmentByIoU(cuesList, segStart, segEnd) {
+    const matched = matchCuesForSegment(cuesList, segStart, segEnd);
+    if (!matched.length) return null;
+    let bestCue = null;
+    let bestIoU = 0;
+    for (const c of matched) {
+      const cStart = Number(c.start_media_time ?? c.start) || 0;
+      const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
+      const inter = Math.max(0, Math.min(cEnd, segEnd) - Math.max(cStart, segStart));
+      const union = Math.max(cEnd, segEnd) - Math.min(cStart, segStart);
+      const iou = union > 0 ? inter / union : 0;
+      if (iou > bestIoU) {
+        bestIoU = iou;
+        bestCue = c;
+      }
+    }
+    return bestIoU > 0.05 ? bestCue : null;
   }
 
   async function handleAsrCandidateReceived(msg) {
@@ -1140,37 +1159,33 @@
         if (!segText) continue;
         const segStart = (Number(msg.startSec) || 0) + (Number(seg.start) || 0);
         const segEnd = (Number(msg.startSec) || 0) + (Number(seg.end) || (Number(seg.start) || 0) + 1);
-        const matched = matchCuesForSegment(cues, segStart, segEnd);
-        if (matched.length === 1) {
-          const cue = matched[0];
-          if (canReceiveAsrCandidate(cue)) {
-            sentenceCandidates[cue.id] = {
-              text: segText,
-              provenance: "asr:whisper-large-v3-turbo",
-              start: segStart,
-              end: segEnd,
-              createdAt: Date.now(),
-            };
-            updated = true;
-          }
+        const cue = findBestCueForSegmentByIoU(cues, segStart, segEnd);
+        if (cue && canReceiveAsrCandidate(cue)) {
+          sentenceCandidates[cue.id] = {
+            text: segText,
+            provenance: "asr:whisper-large-v3-turbo",
+            start: segStart,
+            end: segEnd,
+            createdAt: Date.now(),
+          };
+          updated = true;
         }
       }
     } else if (msg.result.text) {
       const text = String(msg.result.text).trim();
       if (text) {
-        const matched = matchCuesForSegment(cues, Number(msg.startSec) || 0, Number(msg.endSec) || 0);
-        if (matched.length === 1) {
-          const cue = matched[0];
-          if (canReceiveAsrCandidate(cue)) {
-            sentenceCandidates[cue.id] = {
-              text,
-              provenance: "asr:whisper-large-v3-turbo",
-              start: Number(msg.startSec) || 0,
-              end: Number(msg.endSec) || 0,
-              createdAt: Date.now(),
-            };
-            updated = true;
-          }
+        const segStart = Number(msg.startSec) || 0;
+        const segEnd = Number(msg.endSec) || (segStart + 1);
+        const cue = findBestCueForSegmentByIoU(cues, segStart, segEnd);
+        if (cue && canReceiveAsrCandidate(cue)) {
+          sentenceCandidates[cue.id] = {
+            text,
+            provenance: "asr:whisper-large-v3-turbo",
+            start: segStart,
+            end: segEnd,
+            createdAt: Date.now(),
+          };
+          updated = true;
         }
       }
     }
@@ -1726,7 +1741,7 @@
           lastBackgroundPrefetchTime = now;
         }
         trace?.translationsQueued?.(jobs, force, mode, performance.now());
-        report = await translator.translateGroups(jobs, { apiKey, force, priority: force ? 40 : 20, scope: force ? "manual" : "automatic",
+        report = await translator.translateGroups(jobs, { apiKey, force, priority: force ? 40 : 0, scope: force ? "manual" : "automatic",
           onResult: result => {
             trace?.request(result.request, performance.now());
             if (!isCurrent() || !sentenceEnhancementEnabled() || result.status === "cancelled") {

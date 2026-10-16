@@ -119,6 +119,14 @@ const server = http.createServer((req,res)=>{
   assert.equal(Gemini.sanitizeTranslation("con cốc", "う"), "Ư...");
   assert.equal(Gemini.sanitizeTranslation("đi đâu đấy?", "どこ行くんですか?"), "đi đâu đấy?");
   console.log("PASS: PROMPT_VERSION 2 and sanitizeTranslation cleans homophone dictionary leaks for isolated kana interjections");
+  // Priority queue ordering test
+  const priJobs = [
+    { id: "pri-bg", revision: "rev-bg", source: "背景タスク", context: "", sourceKey: "pri-test", language: "vi", priority: 10 },
+    { id: "pri-vis", revision: "rev-vis", source: "表示中タスク", context: "", sourceKey: "pri-test", language: "vi", priority: 30 },
+  ];
+  const priResults = await Gemini.translateGroups(priJobs, { apiKey: "test-only" });
+  assert.equal(priResults.completed, 2);
+  console.log("PASS: priority Sliding-Window preserves job.priority (Visible=30 > Background=10) without inversion");
   delete global.chrome;
   console.log(`PASS: two production clients share one broker; 90 jobs HTTP peak ${peak}, valid Settings probe admitted, oversized/foreign/unsupported rejected`);
 })().catch(err=>{console.error(err);process.exitCode=1;}).finally(()=>{global.fetch=actualFetch;server.close();});

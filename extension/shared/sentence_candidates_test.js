@@ -43,10 +43,29 @@ function serializeCueRevision(cue) {
 
 function matchCuesForSegment(cues, segStart, segEnd) {
   return cues.filter((c) => {
-    const cStart = Number(c.start_media_time) || 0;
-    const cEnd = Number(c.end_media_time) || cStart + 1;
+    const cStart = Number(c.start_media_time ?? c.start) || 0;
+    const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
     return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
   });
+}
+
+function findBestCueForSegmentByIoU(cuesList, segStart, segEnd) {
+  const matched = matchCuesForSegment(cuesList, segStart, segEnd);
+  if (!matched.length) return null;
+  let bestCue = null;
+  let bestIoU = 0;
+  for (const c of matched) {
+    const cStart = Number(c.start_media_time ?? c.start) || 0;
+    const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
+    const inter = Math.max(0, Math.min(cEnd, segEnd) - Math.max(cStart, segStart));
+    const union = Math.max(cEnd, segEnd) - Math.min(cStart, segStart);
+    const iou = union > 0 ? inter / union : 0;
+    if (iou > bestIoU) {
+      bestIoU = iou;
+      bestCue = c;
+    }
+  }
+  return bestIoU > 0.05 ? bestCue : null;
 }
 
 // -------------------------------------------------------------------------
@@ -167,7 +186,30 @@ assert.strictEqual(matchesSpan.length, 2, "Segment spanning across two cues shou
 assert.strictEqual(matchesSpan[0].id, "c1");
 assert.strictEqual(matchesSpan[1].id, "c2");
 
+// IoU matching on spanning segment selects best matching cue
+const bestMatch = findBestCueForSegmentByIoU(timelineCues, 13.5, 15.0);
+assert.ok(bestMatch, "Best match must not be null");
+assert.strictEqual(bestMatch.id, "c2", "c2 has greater IoU (0.5/3.5) with [13.5, 15.0] than c1 (0.5/4.5)");
+
 const matchesGap = matchCuesForSegment(timelineCues, 18.5, 19.5);
 assert.strictEqual(matchesGap.length, 0, "Segment in gap should match nothing");
+const bestGap = findBestCueForSegmentByIoU(timelineCues, 18.5, 19.5);
+assert.strictEqual(bestGap, null, "Segment in gap should yield null best cue");
+
+// -------------------------------------------------------------------------
+// Test 7: Enhanced sentence groups format ({ id, start, end }) matching
+// -------------------------------------------------------------------------
+console.log("Running Test 7: Sentence projection groups format matching...");
+const sentenceGroups = [
+  { id: "sg:1", text: "みなさん、こんにちは。", start: 10.0, end: 14.0 },
+  { id: "sg:2", text: "今日はいい天気ですね。", start: 14.5, end: 18.0 },
+];
+const sgMatch = findBestCueForSegmentByIoU(sentenceGroups, 10.5, 13.5);
+assert.ok(sgMatch, "Must match sentence group");
+assert.strictEqual(sgMatch.id, "sg:1", "Must match sg:1 correctly based on start and end properties");
+
+const sgBestSpan = findBestCueForSegmentByIoU(sentenceGroups, 13.5, 15.0);
+assert.ok(sgBestSpan, "Must match spanning segment against sentence groups");
+assert.strictEqual(sgBestSpan.id, "sg:2", "Must pick sg:2 with higher IoU");
 
 console.log("PASS: all candidate lifecycle and data protection invariant tests passed!");
