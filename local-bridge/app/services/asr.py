@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import math
 import logging
+import re
 import resource
 import shutil
 import subprocess
@@ -34,6 +35,16 @@ DEFAULT_INITIAL_PROMPT = "こんにちは。日本語のYouTube動画の字幕�
 DEFAULT_AUDIO_FILTER_CHAIN = (
     "highpass=f=100,lowpass=f=8000,afftdn=nf=-25,dynaudnorm=f=150:g=15:p=0.95:b=1"
 )
+
+
+def is_valid_speech_text(text: str) -> bool:
+    """Check whether transcribed text contains speech characters beyond whitespace and punctuation."""
+    if not text:
+        return False
+    clean = re.sub(r"[\s!！?？.。,:：;；~～\-_—…·、。「」『』（）()\[\]【】]+", "", text)
+    return len(clean) > 0
+
+
 
 
 def build_audio_filter_chain(filter_profile: str = "enhanced") -> str:
@@ -295,6 +306,7 @@ def transcribe_audio(
     logprob_threshold: float = -1.5,
     initial_prompt: Optional[str] = DEFAULT_INITIAL_PROMPT,
     preprocess: bool = True,
+    fp16: bool = False,
     word_timestamps: bool = False,
     compression_ratio_threshold: Optional[float] = 2.4,
     hallucination_silence_threshold: Optional[float] = None,
@@ -311,6 +323,7 @@ def transcribe_audio(
     - logprob_threshold: Set -1.5 for speech confidence threshold.
     - initial_prompt: Initial prompt context for Japanese YouTube domain.
     - preprocess: Enable FFmpeg audio DSP filter chain.
+    - fp16: Use float16 (True) or float32 (False, recommended to prevent NaN overflow on Metal).
     - word_timestamps: Extract per-word timestamps if needed.
     - compression_ratio_threshold: Whisper compression ratio threshold.
     - hallucination_silence_threshold: Threshold to suppress hallucinations on silence.
@@ -330,6 +343,11 @@ def transcribe_audio(
     if audio.size == 0:
         raise ValueError("Audio array contains no samples")
 
+    # Sanitize audio array against NaN / Inf and clamp to [-1.0, 1.0]
+    audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+    audio = np.clip(audio, -1.0, 1.0)
+    audio = np.ascontiguousarray(audio, dtype=np.float32)
+
     duration_sec = len(audio) / TARGET_SAMPLE_RATE
     if duration_sec < MIN_AUDIO_DURATION_SEC:
         raise ValueError(f"Audio duration is too short ({duration_sec:.3f}s < {MIN_AUDIO_DURATION_SEC}s)")
@@ -341,16 +359,23 @@ def transcribe_audio(
     rss_before = get_process_rss_bytes()
     start_time = time.perf_counter()
 
+    # Kotoba-Whisper (Distil-Whisper with 2-layer decoder) is highly sensitive to
+    # initial prompts on short audio slices; suppress default initial prompt for Kotoba.
+    effective_prompt = initial_prompt
+    if "kotoba" in model_name.lower() and initial_prompt == DEFAULT_INITIAL_PROMPT:
+        effective_prompt = None
+
     try:
         raw_result = mlx_whisper.transcribe(
             audio,
             path_or_hf_repo=model_name,
             language=language,
+            fp16=fp16,
             temperature=temperature,
             condition_on_previous_text=condition_on_previous_text,
             no_speech_threshold=no_speech_threshold,
             logprob_threshold=logprob_threshold,
-            initial_prompt=initial_prompt,
+            initial_prompt=effective_prompt,
             word_timestamps=word_timestamps,
             compression_ratio_threshold=compression_ratio_threshold,
             hallucination_silence_threshold=hallucination_silence_threshold,
@@ -371,16 +396,26 @@ def transcribe_audio(
     else:
         full_text = str(raw_result).strip()
 
+    # Filter out single-character punctuation / token 0 collapses (e.g. '!')
+    if not is_valid_speech_text(full_text):
+        full_text = ""
+
     segments = []
     for idx, seg in enumerate(raw_segments):
         if not isinstance(seg, dict):
+            continue
+        seg_text = str(seg.get("text", "")).strip()
+        if not is_valid_speech_text(seg_text):
             continue
         segments.append({
             "id": int(seg.get("id", idx)),
             "start": round(float(seg.get("start", 0.0)), 3),
             "end": round(float(seg.get("end", 0.0)), 3),
-            "text": str(seg.get("text", "")).strip(),
+            "text": seg_text,
         })
+
+    if not full_text and segments:
+        full_text = " ".join(s["text"] for s in segments)
 
     rtf = elapsed_time / duration_sec if duration_sec > 0 else 0.0
 
@@ -393,9 +428,11 @@ def transcribe_audio(
         "rtf": round(float(rtf), 4),
         "model": model_name,
         "preprocess": preprocess,
+        "fp16": fp16,
         "rssBytes": max(rss_before, rss_after),
         "metalPeakBytes": metal_peak,
     }
+
 
 
 def get_asr_status() -> Dict[str, Any]:

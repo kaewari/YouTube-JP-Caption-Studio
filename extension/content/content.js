@@ -1144,6 +1144,12 @@
     return bestIoU > 0.05 ? bestCue : null;
   }
 
+  function isValidAsrCandidateText(text) {
+    if (!text) return false;
+    const clean = String(text).replace(/[\s!！?？.。,:：;；~～\-_—…·、。「」『』（）()[\]【】]+/g, "").trim();
+    return clean.length > 0;
+  }
+
   async function handleAsrCandidateReceived(msg) {
     if (!msg || !msg.result) return;
     if (msg.videoId && currentVideoId && msg.videoId !== currentVideoId) return;
@@ -1157,7 +1163,7 @@
     if (segments) {
       for (const seg of segments) {
         const segText = String(seg?.text || "").trim();
-        if (!segText) continue;
+        if (!isValidAsrCandidateText(segText)) continue;
         const segStart = (Number(msg.startSec) || 0) + (Number(seg.start) || 0);
         const segEnd = (Number(msg.startSec) || 0) + (Number(seg.end) || (Number(seg.start) || 0) + 1);
         const cue = findBestCueForSegmentByIoU(cues, segStart, segEnd);
@@ -1175,7 +1181,7 @@
       }
     } else if (msg.result.text) {
       const text = String(msg.result.text).trim();
-      if (text) {
+      if (isValidAsrCandidateText(text)) {
         const segStart = Number(msg.startSec) || 0;
         const segEnd = Number(msg.endSec) || (segStart + 1);
         const cue = findBestCueForSegmentByIoU(cues, segStart, segEnd);
@@ -1192,6 +1198,7 @@
         }
       }
     }
+
 
     if (updated) {
       await saveSentenceState();

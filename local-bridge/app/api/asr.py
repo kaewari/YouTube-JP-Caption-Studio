@@ -39,6 +39,7 @@ async def transcribe(
     logprob_threshold: float = Query(-1.5, description="Average logprob threshold"),
     initial_prompt: Optional[str] = Query(DEFAULT_INITIAL_PROMPT, description="Initial prompt context"),
     preprocess: bool = Query(True, description="Enable audio DSP preprocessing filter chain"),
+    fp16: bool = Query(False, description="Use float16 (True) or float32 (False, recommended)"),
 ) -> Dict[str, Any]:
     """Transcribe audio slice and return text and segment timestamps.
 
@@ -84,8 +85,10 @@ async def transcribe(
             logprob_threshold=logprob_threshold,
             initial_prompt=initial_prompt,
             preprocess=preprocess,
+            fp16=fp16,
         )
         return result
+
     except ValueError as e:
         logger.warning("Invalid audio payload for ASR: %s", e)
         raise HTTPException(status_code=400, detail=str(e))

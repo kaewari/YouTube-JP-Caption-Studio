@@ -165,3 +165,18 @@ def test_asr_transcribe_duration_too_short():
     response = client.post("/asr/transcribe", content=tiny_wav)
     assert response.status_code == 400
     assert "too short" in response.json()["detail"]
+
+
+def test_asr_transcribe_fp16_parameter():
+    """POST /asr/transcribe should accept fp16 query parameter."""
+    wav_bytes = make_sine_wav(duration_sec=1.0, sr=16000)
+    response = client.post(
+        "/asr/transcribe",
+        params={"fp16": "false"},
+        content=wav_bytes,
+        headers={"Content-Type": "audio/wav"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "fp16" in data
+    assert data["fp16"] is False
