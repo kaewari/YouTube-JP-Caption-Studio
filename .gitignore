@@ -93,3 +93,7 @@ patch_*.py
 rewrite_parsers.py
 fix_content_js_json3.py
 tmp-ime-*
+
+# Audio test binaries (keep manifest.json only)
+*.wav
+testdata/**/wav/
