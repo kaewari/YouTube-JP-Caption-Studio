@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.asr import (
+    DEFAULT_MODEL_NAME,
     MAX_AUDIO_BYTES,
     TARGET_SAMPLE_RATE,
     decode_audio_bytes,
@@ -110,7 +111,7 @@ def test_asr_status_endpoint():
     data = response.json()
     assert "available" in data
     assert data["targetSampleRate"] == 16000
-    assert data["defaultModel"] == "mlx-community/whisper-large-v3-turbo"
+    assert data["defaultModel"] == DEFAULT_MODEL_NAME
 
 
 def test_asr_transcribe_empty_body_rejected():
@@ -142,7 +143,7 @@ def test_asr_transcribe_raw_body_wav():
     assert data["durationSec"] == 1.0
     assert "rtf" in data
     assert "elapsedSec" in data
-    assert data["model"] == "mlx-community/whisper-large-v3-turbo"
+    assert data["model"] == DEFAULT_MODEL_NAME
 
 
 def test_asr_transcribe_multipart_upload():

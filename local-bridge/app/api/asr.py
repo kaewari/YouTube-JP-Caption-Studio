@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
 from app.services.asr import (
+    DEFAULT_INITIAL_PROMPT,
     DEFAULT_MODEL_NAME,
     MAX_AUDIO_BYTES,
     get_asr_status,
@@ -33,6 +34,11 @@ async def transcribe(
     model: str = Query(DEFAULT_MODEL_NAME, description="Model repository or local path"),
     language: str = Query("ja", description="Target language code"),
     temperature: float = Query(0.0, description="Decoding temperature"),
+    condition_on_previous_text: bool = Query(False, description="Condition on previous text"),
+    no_speech_threshold: float = Query(0.85, description="No speech threshold"),
+    logprob_threshold: float = Query(-1.5, description="Average logprob threshold"),
+    initial_prompt: Optional[str] = Query(DEFAULT_INITIAL_PROMPT, description="Initial prompt context"),
+    preprocess: bool = Query(True, description="Enable audio DSP preprocessing filter chain"),
 ) -> Dict[str, Any]:
     """Transcribe audio slice and return text and segment timestamps.
 
@@ -73,6 +79,11 @@ async def transcribe(
             model_name=model,
             language=language,
             temperature=temperature,
+            condition_on_previous_text=condition_on_previous_text,
+            no_speech_threshold=no_speech_threshold,
+            logprob_threshold=logprob_threshold,
+            initial_prompt=initial_prompt,
+            preprocess=preprocess,
         )
         return result
     except ValueError as e:

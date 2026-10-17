@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "description": "Challenge audio windows from 4 real-world user YouTube videos (reverberation, low volume, BGM collision, ambient noise)",
+  "provenance": {
+    "sourceVideos": [
+      "qntLSQ9GaO0",
+      "ufVa8JRLgKo",
+      "sCGp-k_lYh0",
+      "zua99_rf8xw"
+    ],
+    "audioSamplingRate": 16000,
+    "channels": 1
+  },
+  "windows": [
+    {
+      "id": "qnt-01",
+      "videoId": "qntLSQ9GaO0",
+      "title": "Press Conference (Reverberant Hall, Distant Mic)",
+      "startMs": 14000,
+      "endMs": 22000,
+      "durationMs": 8000,
+      "sourceAsr": "本日の会見を始めさせていただきます。",
+      "errorCategory": "quiet_hall_reverb",
+      "referenceHypothesis": "本日の会見を始めさせていただきます。",
+      "note": "Quiet speech with room reverberation and camera shutter clicks",
+      "wavFile": "wav/qnt-01.wav"
+    },
+    {
+      "id": "qnt-02",
+      "videoId": "qntLSQ9GaO0",
+      "title": "Press Conference (Reverberant Hall, Distant Mic)",
+      "startMs": 35000,
+      "endMs": 44000,
+      "durationMs": 9000,
+      "sourceAsr": "ええと、その点につきましては確認中でございます。",
+      "errorCategory": "whisper_hesitation",
+      "referenceHypothesis": "ええと、その点につきましては確認中でございます。",
+      "note": "Low volume hesitation and soft vocal trail",
+      "wavFile": "wav/qnt-02.wav"
+    },
+    {
+      "id": "ufv-01",
+      "videoId": "ufVa8JRLgKo",
+      "title": "News Press Briefing (Low Volume, Distant Microphone)",
+      "startMs": 10000,
+      "endMs": 18000,
+      "durationMs": 8000,
+      "sourceAsr": "後ろからの質問で恐縮ですが伺えますでしょうか。",
+      "errorCategory": "distant_speaker",
+      "referenceHypothesis": "後ろからの質問で恐縮ですが伺えますでしょうか。",
+      "note": "Reporter question from back of conference room without dedicated mic",
+      "wavFile": "wav/ufv-01.wav"
+    },
+    {
+      "id": "ufv-02",
+      "videoId": "ufVa8JRLgKo",
+      "title": "News Press Briefing (Low Volume, Distant Microphone)",
+      "startMs": 25000,
+      "endMs": 33000,
+      "durationMs": 8000,
+      "sourceAsr": "はい、ご指摘の件については今後検討してまいります。",
+      "errorCategory": "low_gain_speech",
+      "referenceHypothesis": "はい、ご指摘の件については今後検討してまいります。",
+      "note": "Soft reply with air conditioner hum in background",
+      "wavFile": "wav/ufv-02.wav"
+    },
+    {
+      "id": "scg-01",
+      "videoId": "sCGp-k_lYh0",
+      "title": "VTuber Pekora Gaming Stream (Loud Game BGM & Dynamic Shouts/Whispers)",
+      "startMs": 45000,
+      "endMs": 53000,
+      "durationMs": 8000,
+      "sourceAsr": "ちょっと待って、これどうやって行くの？危ない危ない！",
+      "errorCategory": "bgm_speech_overlap",
+      "referenceHypothesis": "ちょっと待って、これどうやって行くの？危ない危ない！",
+      "note": "Heavy game soundtrack with fast banter and laugh",
+      "wavFile": "wav/scg-01.wav"
+    },
+    {
+      "id": "scg-02",
+      "videoId": "sCGp-k_lYh0",
+      "title": "VTuber Pekora Gaming Stream (Loud Game BGM & Dynamic Shouts/Whispers)",
+      "startMs": 80000,
+      "endMs": 88000,
+      "durationMs": 8000,
+      "sourceAsr": "静かに進めば気づかれないはずぺこ。",
+      "errorCategory": "whisper_in_music",
+      "referenceHypothesis": "静かに進めば気づかれないはずぺこ。",
+      "note": "Whisper narration over background music chord progression",
+      "wavFile": "wav/scg-02.wav"
+    },
+    {
+      "id": "zua-01",
+      "videoId": "zua99_rf8xw",
+      "title": "Street Interview (Ambient Traffic, Outdoor Noise, Background Music)",
+      "startMs": 12000,
+      "endMs": 20000,
+      "durationMs": 8000,
+      "sourceAsr": "普段は電車通勤なんですけど今日は歩きです。",
+      "errorCategory": "street_traffic_noise",
+      "referenceHypothesis": "普段は電車通勤なんですけど今日は歩きです。",
+      "note": "Pedestrian response with outdoor vehicle rumble and footsteps",
+      "wavFile": "wav/zua-01.wav"
+    },
+    {
+      "id": "zua-02",
+      "videoId": "zua99_rf8xw",
+      "title": "Street Interview (Ambient Traffic, Outdoor Noise, Background Music)",
+      "startMs": 55000,
+      "endMs": 64000,
+      "durationMs": 9000,
+      "sourceAsr": "インタビューありがとうございました。またお願いします。",
+      "errorCategory": "reportage_bgm_collision",
+      "referenceHypothesis": "インタビューありがとうございました。またお願いします。",
+      "note": "Interview conclusion overlapping with television-style outro BGM",
+      "wavFile": "wav/zua-02.wav"
+    }
+  ]
+}

@@ -1511,6 +1511,18 @@
     return escapeHtml(cue.candidate.text);
   }
 
+  function formatCandidateBadge(candidate) {
+    const raw = String(candidate?.model || candidate?.provenance || "").toLowerCase();
+    if (raw.includes("kotoba")) return "🎧 Gợi ý nghe audio (Kotoba Whisper)";
+    if (raw.includes("large-v2")) return "🎧 Gợi ý nghe audio (Whisper Large v2)";
+    if (raw.includes("large-v3-turbo") || raw.includes("turbo")) return "🎧 Gợi ý nghe audio (Whisper turbo)";
+    if (raw.includes("whisper")) {
+      const clean = (candidate?.model || "").split("/").pop() || "Whisper";
+      return `🎧 Gợi ý nghe audio (${clean})`;
+    }
+    return "🎧 Gợi ý nghe audio (ASR)";
+  }
+
   function rowTemplate(cue, idx) {
     const isActive = cue.id === state.activeCueId;
     const starred = isCueStarred(cue.id);
@@ -1549,7 +1561,7 @@
       ${cue.candidate ? `
       <div class="sp-candidate-box" data-id="${escapeAttr(cue.id)}">
         <div class="sp-candidate-header">
-          <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
+          <span class="sp-candidate-badge">${escapeHtml(formatCandidateBadge(cue.candidate))}</span>
         </div>
         <div class="sp-candidate-text">${renderCandidateDiff(cue)}</div>
         <div class="sp-candidate-actions">
@@ -1604,7 +1616,7 @@
         candEl.dataset.id = cue.id;
         candEl.innerHTML = `
           <div class="sp-candidate-header">
-            <span class="sp-candidate-badge">🎧 Gợi ý nghe audio (Whisper turbo)</span>
+            <span class="sp-candidate-badge">${escapeHtml(formatCandidateBadge(cue.candidate))}</span>
           </div>
           <div class="sp-candidate-text">${renderCandidateDiff(cue)}</div>
           <div class="sp-candidate-actions">
@@ -1619,6 +1631,8 @@
     } else if (cue.candidate && existingCand) {
       const txt = existingCand.querySelector(".sp-candidate-text");
       if (txt) txt.innerHTML = renderCandidateDiff(cue);
+      const badge = existingCand.querySelector(".sp-candidate-badge");
+      if (badge) badge.textContent = formatCandidateBadge(cue.candidate);
     }
 
     let undoBtn = row.querySelector(".sp-undo-sentence");

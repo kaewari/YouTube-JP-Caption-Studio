@@ -1153,6 +1153,7 @@
       ? msg.result.segments
       : null;
 
+    const provenanceModel = String(msg.result?.model || "kaiinui/kotoba-whisper-v2.0-mlx");
     if (segments) {
       for (const seg of segments) {
         const segText = String(seg?.text || "").trim();
@@ -1163,7 +1164,8 @@
         if (cue && canReceiveAsrCandidate(cue)) {
           sentenceCandidates[cue.id] = {
             text: segText,
-            provenance: "asr:whisper-large-v3-turbo",
+            provenance: `asr:${provenanceModel}`,
+            model: provenanceModel,
             start: segStart,
             end: segEnd,
             createdAt: Date.now(),
@@ -1180,7 +1182,8 @@
         if (cue && canReceiveAsrCandidate(cue)) {
           sentenceCandidates[cue.id] = {
             text,
-            provenance: "asr:whisper-large-v3-turbo",
+            provenance: `asr:${provenanceModel}`,
+            model: provenanceModel,
             start: segStart,
             end: segEnd,
             createdAt: Date.now(),
