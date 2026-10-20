@@ -59,6 +59,19 @@ were simulated on a clean `git archive` of the branch: all green. The base commi
 `local-bridge` needs the gitignored `data/dict/dict.sqlite` — without it 19 dictionary
 tests fail for environment reasons.
 
+## Commits
+
+| Commit | Content |
+|---|---|
+| `a4e9e448a` | The P0 remediation itself |
+| `769f501a6` | First review: cold-start SQLite race, sync cursor, mock-mlx tests, the capture-error listener, the bridge write error, `close_dictionary` |
+| `47cfc0ebb` | The plan file and this wiki ingest |
+| `a67e3faf9` | The dictionary corpus tests skip when the corpus is absent (the required CI check was red for a missing-data reason) |
+| `7791f9a75` | Second review: `close_dictionary` was a no-op, the sync cursor dropped tied rows, the CI job was still red |
+| `318298cd5` | The review round and the green CI simulation |
+| `817ed65fd` | Dropped the redundant `awaitDisk` option |
+| `141387fd3` | The capture error is scoped to the tab that asked for it and reported once |
+
 ## Review rounds
 
 Two independent read-only reviews ran against the change set. The first found a blocking
