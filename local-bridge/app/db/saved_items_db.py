@@ -30,10 +30,9 @@ def connect_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     creating thread, so every worker thread gets its own.
     """
     path = str(db_path or get_db_path())
-    # check_same_thread=False: the connection is used by its own worker thread,
-    # but it must also be closable from another one (a replaced database file
-    # has to release the lock the old handle holds).
-    conn = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
+    # The connection is opened and closed inside one request, so it stays
+    # bound to the thread that owns it.
+    conn = sqlite3.connect(path, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000;")
     conn.execute("PRAGMA synchronous = NORMAL;")
@@ -46,9 +45,13 @@ def init_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     path = str(db_path or get_db_path())
     conn = connect_db(path)
 
-    # WAL mode & high-concurrency pragmas. journal_mode needs an exclusive
-    # lock, so it must not run while another thread is opening the same file.
-    conn.execute("PRAGMA journal_mode = WAL;")
+    # WAL mode & high-concurrency pragmas. Switching the journal mode needs an
+    # exclusive lock, so it only runs when the file is not in WAL mode yet -
+    # on a database that is already WAL the pragma is a no-op that would still
+    # wait for the lock.
+    mode = conn.execute("PRAGMA journal_mode;").fetchone()
+    if not mode or str(mode[0]).lower() != "wal":
+        conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
 
     with conn:

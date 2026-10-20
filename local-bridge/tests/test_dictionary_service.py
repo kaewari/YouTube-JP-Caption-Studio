@@ -190,3 +190,40 @@ def test_close_dictionary_closes_every_thread_handle():
     assert results and results[0].startswith("closed"), (
         f"the handle must be closed for its owning thread, got {results}"
     )
+
+
+def test_worker_thread_opens_a_new_handle_after_the_dictionary_is_closed():
+    """A thread must not keep using the handle that close_dictionary() closed.
+
+    The base kept one handle per thread and closed only the caller's, so the
+    other threads kept reading the replaced file (stale dictionary) until the
+    bridge restarted.
+    """
+    import threading
+
+    from app.services import dictionary as dictionary_service
+
+    ready = threading.Event()
+    go = threading.Event()
+    handles = []
+
+    def worker():
+        handles.append(dictionary_service._get_db())
+        ready.set()
+        go.wait(5)
+        handles.append(dictionary_service._get_db())
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    ready.wait(5)
+    # The rebuild runs in another thread (as it does on /bootstrap).
+    dictionary_service.close_dictionary()
+    go.set()
+    thread.join()
+
+    if not handles or handles[0] is None:
+        pytest.skip("dict.sqlite is not available in this environment")
+
+    assert handles[0] is not handles[1], (
+        "the thread must open a new handle after the dictionary was closed"
+    )

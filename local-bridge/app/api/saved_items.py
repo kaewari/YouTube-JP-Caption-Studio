@@ -120,6 +120,14 @@ MAX_SYNC_ITEMS = 5000
 
 @router.post("/saved/sync", response_model=SyncResponse)
 def api_sync_saved(body: SyncRequest) -> SyncResponse:
+    """Two-way sync.
+
+    Cursor contract: the response carries at most 5000 rows, ordered by
+    (updated_at, rowid). A client that receives `has_more: true` must send the
+    returned `next_since` / `next_rowid` back as `since` / `since_rowid` to get
+    the next page - `sync_timestamp` is the server clock, not a cursor.
+    The request payload is capped at 5000 items (HTTP 413 above that).
+    """
     if len(body.items) > MAX_SYNC_ITEMS:
         raise HTTPException(
             status_code=413,

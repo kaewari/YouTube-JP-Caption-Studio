@@ -307,33 +307,29 @@ _TAIL_PATTERNS = [
     re.compile(r"(っ[たて]|[いう]$)"),
 ]
 
-_local = threading.local()
+# One process-wide read-only handle guarded by a lock. A per-thread handle
+# would have to be closed by another thread after a rebuild, and closing a
+# SQLite connection while another thread uses it crashes the interpreter.
 _loaded = False
-# Every thread keeps its own read-only handle; a rebuild must close them all,
-# otherwise the other threads keep reading the replaced file.
-_open_conns: list[sqlite3.Connection] = []
-_open_conns_lock = threading.Lock()
+_db_lock = threading.RLock()
+_db_conn: sqlite3.Connection | None = None
 
 
 def _get_db() -> sqlite3.Connection | None:
-    global _loaded
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
-        return conn
-    if SQLITE_DB.is_file():
-        try:
-            # check_same_thread=False so close_dictionary() can close this
-            # handle from another thread (sqlite3 forbids that otherwise).
-            # The handle is read-only (PRAGMA query_only), so sharing it is safe.
-            conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0, check_same_thread=False)
-            conn.execute("PRAGMA query_only = ON;")
-            _local.conn = conn
-            with _open_conns_lock:
-                _open_conns.append(conn)
-            _loaded = True
-            return conn
-        except Exception as exc:
-            logger.warning("Failed opening dict.sqlite: %s", exc)
+    """The shared read-only handle, or None when the database is missing."""
+    global _loaded, _db_conn
+    with _db_lock:
+        if _db_conn is not None:
+            return _db_conn
+        if SQLITE_DB.is_file():
+            try:
+                conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0, check_same_thread=False)
+                conn.execute("PRAGMA query_only = ON;")
+                _db_conn = conn
+                _loaded = True
+                return conn
+            except Exception as exc:
+                logger.warning("Failed opening dict.sqlite: %s", exc)
     return None
 
 
@@ -342,17 +338,16 @@ def is_loaded() -> bool:
 
 
 def close_dictionary() -> None:
-    """Close every read-only SQLite handle so a rebuilt DB can be reopened."""
-    global _loaded, _en_vi_cache
-    with _open_conns_lock:
-        conns = list(_open_conns)
-        _open_conns.clear()
-    for conn in conns:
-        try:
-            conn.close()
-        except Exception as exc:
-            logger.warning("Failed closing dict.sqlite handle: %s", exc)
-    _local.conn = None
+    """Close the shared read-only handle so a rebuilt DB can be reopened."""
+    global _loaded, _en_vi_cache, _db_conn
+    with _db_lock:
+        conn = _db_conn
+        _db_conn = None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as exc:
+                logger.warning("Failed closing dict.sqlite handle: %s", exc)
     _loaded = False
     _en_vi_cache = None
     dict_cache.clear()
@@ -360,11 +355,12 @@ def close_dictionary() -> None:
 
 def load_dictionary() -> bool:
     """Ensure SQLite DB is ready (reopens after close_dictionary / rebuild)."""
-    close_dictionary()
-    conn = _get_db()
-    if conn is not None:
-        logger.info("Dictionary DB ready at %s", SQLITE_DB)
-        return True
+    with _db_lock:
+        close_dictionary()
+        conn = _get_db()
+        if conn is not None:
+            logger.info("Dictionary DB ready at %s", SQLITE_DB)
+            return True
     return False
 
 
@@ -760,7 +756,8 @@ def has_entry(key: str) -> bool:
     k = (key or "").strip()
     if not k:
         return False
-    return _has_key(k)
+    with _db_lock:
+        return _has_key(k)
 
 
 def _longest_prefix_match(text: str) -> str | None:
@@ -856,6 +853,17 @@ def _expand_candidates(
 
 
 def lookup(
+    surface: str,
+    lemma: str = "",
+    context_tokens: list[str] | None = None,
+) -> DictResponse:
+    # One process-wide connection cannot be used by two threads at the same
+    # time, so the whole lookup runs under the lock.
+    with _db_lock:
+        return _lookup_locked(surface, lemma, context_tokens)
+
+
+def _lookup_locked(
     surface: str,
     lemma: str = "",
     context_tokens: list[str] | None = None,

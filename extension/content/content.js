@@ -2250,7 +2250,9 @@
     const gen = navigateGen, videoId = currentVideoId, input = cues;
     const current = () => gen === navigateGen && videoId === currentVideoId && input === cues;
     return withTranscriptWrite(async () => {
-      if (!current()) return;
+      // Every path returns a result: the caller (clearTranslations) must be
+      // able to tell "saved" from "nothing was written".
+      if (!current()) return { saved: false, skipped: true, diskWritten: false };
       const force = !!opts.force;
       // Persist the full cue list — display limits (settings.maxSentences) apply at
       // render only, never here (a truncated save would drop owned cues on reload).
