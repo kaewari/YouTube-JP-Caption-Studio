@@ -302,3 +302,44 @@ def test_sync_paging_keeps_rows_that_share_a_timestamp(test_db: sqlite3.Connecti
     assert len(delivered) == total, (
         f"paging lost {total - len(delivered)} rows that share a timestamp"
     )
+
+
+def test_connection_recovers_when_the_database_file_is_replaced(tmp_path, monkeypatch):
+    """A replaced database file must not break the next request.
+
+    The stale connection keeps a lock on the old file, so the new one has to
+    be opened after the old handles are released.
+    """
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    # A worker thread holds a connection to the current file.
+    def worker():
+        with saved_items_api.db_conn() as conn:
+            upsert_item(conn, {"id": "before", "type": "cue", "source": "s"})
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    # Replace the file (a restore or a wipe).
+    for path in tmp_path.glob("saved_items.db*"):
+        path.unlink()
+
+    result = []
+
+    def second_worker():
+        try:
+            with saved_items_api.db_conn() as conn:
+                upsert_item(conn, {"id": "after", "type": "cue", "source": "s"})
+            result.append("ok")
+        except Exception as exc:
+            result.append(f"{type(exc).__name__}: {exc}")
+
+    thread2 = threading.Thread(target=second_worker)
+    thread2.start()
+    thread2.join()
+    assert result == ["ok"], f"the next request must recover, got {result}"

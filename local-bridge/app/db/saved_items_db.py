@@ -30,6 +30,9 @@ def connect_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     creating thread, so every worker thread gets its own.
     """
     path = str(db_path or get_db_path())
+    # check_same_thread=False: the connection is used by its own worker thread,
+    # but it must also be closable from another one (a replaced database file
+    # has to release the lock the old handle holds).
     conn = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000;")
