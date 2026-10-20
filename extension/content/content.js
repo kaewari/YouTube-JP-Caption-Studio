@@ -735,9 +735,16 @@
         sendResponse({ ok: false, error: "not_this_tab" });
         return true;
       }
+      // Only act when this tab thinks it is listening. The error is also
+      // reported through the answer of the AUDIO_START_CAPTURE request, which
+      // is where the user-facing message is shown - here we only make sure the
+      // overlay leaves the "listening" state.
+      if (!audioListeningActive) {
+        sendResponse({ ok: true, error: "not_listening" });
+        return true;
+      }
       audioListeningActive = false;
       publishSidePanelState({ forceList: true });
-      toast("Không bật được nghe audio: " + (msg?.error || "Lỗi capture"));
       sendResponse({ ok: true });
       return true;
     }
