@@ -45,14 +45,30 @@ Every P0 of the 2026-10-18 full-codebase audit, after re-verifying each claim on
 | Check | Result |
 |---|---|
 | `node extension/shared/*_test.js` + offscreen + sidepanel suites | 11/11 exit 0 |
-| `cd local-bridge && python -m pytest -q tests/ -k "not test_live_…"` | 84 passed, 5 skipped (mlx-only) |
+| `cd local-bridge && python -m pytest -q tests/ -k "not test_live_…"` | 85 passed, 5 skipped (mlx-only) |
 | `python -m pytest -q tests/` (repo root) | 30 passed |
+| the CI handshake step (uvicorn + `test_tokenize_import_enrich.py`) | exit 0 |
 | `cd web/saved-items && npm run check` | exit 0 |
 | `node scripts/verify_no_fake_tests.js` | PASSED |
 | `git diff --check` | clean |
 
+All four CI jobs (`bridge-test-suite`, `root-tests`, `extension-tests`, `saved-items-check`)
+were simulated on a clean `git archive` of the branch: all green. The base commit was red
+(8 failed on Linux, and the root tests did not even collect).
+
 `local-bridge` needs the gitignored `data/dict/dict.sqlite` — without it 19 dictionary
 tests fail for environment reasons.
+
+## Review rounds
+
+Two independent read-only reviews ran against the change set. The first found a blocking
+defect (the per-thread connection still ran `PRAGMA journal_mode=WAL`, so a fresh database
+raced into "database is locked" → HTTP 500) plus four partial gaps; the second found that
+`close_dictionary()` was a no-op (sqlite3 forbids `close()` from a non-owning thread and
+the bare `except` hid it), that the sync cursor still dropped rows sharing a timestamp, and
+that the required CI job stayed red (the handshake script asserted `sudachi` before the
+`/tokenize` call that loads it). All were fixed, and every fix has a test that fails on the
+old code.
 
 ## Open gaps
 

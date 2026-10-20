@@ -19,6 +19,7 @@ based on `fix/audit-p0-20261020` (378e2aeb6). `master` is never a base of this b
 | Extension unit suites | `node extension/shared/*_test.js`, `node extension/offscreen/audio_capture_test.js`, `node extension/sidepanel/sidepanel_pure_test.js` |
 | Bridge | `cd local-bridge && python -m pytest -q tests/ -k "not test_live_ja_android and not test_live_en_watch_html"` |
 | Repo root | `python -m pytest -q tests/` |
+| CI handshake step | `cd local-bridge && BRIDGE_URL=… python tests/test_tokenize_import_enrich.py` (needs a running bridge) |
 | Web | `cd web/saved-items && npm run check` |
 | Anti-fake gate | `node scripts/verify_no_fake_tests.js` |
 
