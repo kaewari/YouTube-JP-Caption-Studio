@@ -7,7 +7,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/hoangson/Documents/YouTube JP Caption Studio/iphone-app/Scripts/renew-iphone-signing.sh</string>
+		<string>~/Documents/YouTube JP Caption Studio/iphone-app/Scripts/renew-iphone-signing.sh</string>
 	</array>
 	<!-- Set before load, or edit here: -->
 	<key>EnvironmentVariables</key>
@@ -23,8 +23,8 @@
 	<key>RunAtLoad</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>/Users/hoangson/Library/Logs/YouTubeJPCaptionStudio-iPhone-renew.launchd.out.log</string>
+	<string>~/Library/Logs/YouTubeJPCaptionStudio-iPhone-renew.launchd.out.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/hoangson/Library/Logs/YouTubeJPCaptionStudio-iPhone-renew.launchd.err.log</string>
+	<string>~/Library/Logs/YouTubeJPCaptionStudio-iPhone-renew.launchd.err.log</string>
 </dict>
 </plist>

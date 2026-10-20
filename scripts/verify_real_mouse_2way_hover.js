@@ -13,6 +13,8 @@ const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+// Screenshots/artifacts go to the OS temp dir - not a personal machine folder.
+const ARTIFACT_DIR = require("os").tmpdir();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -158,7 +160,7 @@ async function main() {
     `));
   };
 
-  const artifactDir = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6";
+  const artifactDir = ARTIFACT_DIR;
 
   // Test 1: Hover JA '皆' in Stitched Card 1 -> VI 'các bạn' lights up simultaneously
   console.log("\n[Test 1] Moving real mouse to JA '皆' at (" + targets.ja_mina.screenX + ", " + targets.ja_mina.screenY + ")...");

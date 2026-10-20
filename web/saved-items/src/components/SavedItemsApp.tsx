@@ -185,13 +185,15 @@ export function SavedItemsApp() {
       // Serialize writes — rapid clicks must persist in order, never out of date.
       persistChain.current = persistChain.current
         .then(() => persistWordsAsync(next))
-        .then((src) => {
+        .then(({ source: src, bridgeError }) => {
           setSource(src);
-          setNoteError(false);
+          setNoteError(!!bridgeError);
           setNote(
-            src === "chrome.storage"
-              ? "Đã ghi chrome.storage · userVocab"
-              : "Đã lưu localStorage + bridge",
+            bridgeError
+              ? `Đã lưu ${src === "chrome.storage" ? "chrome.storage" : "localStorage"}, nhưng bridge chưa đồng bộ: ${bridgeError}`
+              : src === "chrome.storage"
+                ? "Đã ghi chrome.storage · userVocab"
+                : "Đã lưu localStorage + bridge",
           );
         })
         .catch((error: unknown) => {

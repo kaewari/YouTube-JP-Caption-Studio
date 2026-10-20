@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.db.saved_items_db import (
+    connect_db,
     delete_item,
     get_item,
     init_db,
@@ -25,12 +26,28 @@ router = APIRouter()
 # One SQLite connection per worker thread (sqlite3 connections are not
 # thread-safe, and FastAPI runs sync endpoints in a thread pool).
 _local = threading.local()
+# The schema is created once per process: journal_mode=WAL needs an exclusive
+# lock, so concurrent first requests must not run it at the same time.
+_schema_lock = threading.Lock()
+_schema_ready = False
+
+
+def _ensure_schema() -> None:
+    global _schema_ready
+    if _schema_ready:
+        return
+    with _schema_lock:
+        if _schema_ready:
+            return
+        init_db().close()
+        _schema_ready = True
 
 
 def db_conn():
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = init_db()
+        _ensure_schema()
+        conn = connect_db()
         _local.conn = conn
     return conn
 
@@ -60,6 +77,9 @@ class SyncResponse(BaseModel):
     applied: int
     server_items: list[dict[str, Any]]
     sync_timestamp: float
+    # True when more rows are waiting; the client continues with next_since.
+    has_more: bool = False
+    next_since: float = 0.0
 
 
 MAX_SYNC_ITEMS = 5000

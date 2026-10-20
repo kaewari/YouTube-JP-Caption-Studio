@@ -11,6 +11,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger("bridge")
 
+# Max rows one sync response may carry (the client pages with next_since).
+SYNC_PAGE_LIMIT = 5000
+
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
@@ -20,16 +23,29 @@ def get_db_path() -> Path:
     return data_dir / "saved_items.db"
 
 
-def init_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
+def connect_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
+    """Open a connection to an already-initialised database.
+
+    Safe to call from several threads: sqlite3 connections are bound to their
+    creating thread, so every worker thread gets its own.
+    """
     path = str(db_path or get_db_path())
     conn = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-
-    # WAL mode & high-concurrency pragmas
-    conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA busy_timeout = 5000;")
-    conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+
+def init_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
+    """Create the schema (once) and return a connection to it."""
+    path = str(db_path or get_db_path())
+    conn = connect_db(path)
+
+    # WAL mode & high-concurrency pragmas. journal_mode needs an exclusive
+    # lock, so it must not run while another thread is opening the same file.
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
 
     with conn:
         conn.execute("""
@@ -276,16 +292,24 @@ def sync_items(
         upsert_item(conn, item)
         applied_count += 1
 
-    # Fetch updates from server since timestamp (including deleted items as tombstones)
+    # Fetch updates from server since timestamp (including deleted items as tombstones).
+    # One row more than the limit tells us whether more rows are waiting.
     cur = conn.execute(
-        "SELECT * FROM saved_items WHERE updated_at > ? ORDER BY updated_at ASC LIMIT 5000",
-        (since_timestamp,)
+        "SELECT * FROM saved_items WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?",
+        (since_timestamp, SYNC_PAGE_LIMIT + 1),
     )
-    server_updates = [row_to_dict(r) for r in cur.fetchall()]
+    rows = cur.fetchall()
+    has_more = len(rows) > SYNC_PAGE_LIMIT
+    server_updates = [row_to_dict(r) for r in rows[:SYNC_PAGE_LIMIT]]
     now = time.time()
+    # A client paging on `since` must continue from the last row it received,
+    # not from "now" - otherwise the rows behind the page are never delivered.
+    next_since = server_updates[-1]["updated_at"] if server_updates else since_timestamp
 
     return {
         "applied": applied_count,
         "server_items": server_updates,
         "sync_timestamp": now,
+        "has_more": has_more,
+        "next_since": next_since,
     }

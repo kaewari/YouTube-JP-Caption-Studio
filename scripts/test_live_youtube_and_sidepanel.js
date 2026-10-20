@@ -14,6 +14,8 @@ const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+// Screenshots/artifacts go to the OS temp dir - not a personal machine folder.
+const ARTIFACT_DIR = require("os").tmpdir();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -349,7 +351,7 @@ async function main() {
   // 5. CAPTURE LIVE FULL SCREENSHOT
   // -------------------------------------------------------------------------
   console.log("[5/5] Capturing live side-by-side Chrome screenshot...");
-  const artifactPath = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/youtube_live_side_by_side_verified.png";
+  const artifactPath = path.join(ARTIFACT_DIR, "youtube_live_side_by_side_verified.png");
   execFileSync("screencapture", ["-x", artifactPath]);
   console.log(`Screenshot captured: ${artifactPath}`);
 

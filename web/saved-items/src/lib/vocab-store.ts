@@ -107,7 +107,9 @@ function mergeUpstreamMap(prev: SavedWord[], map: UserVocabMap): SavedWord[] {
   return mergeUserVocabMap(prev, visible);
 }
 
-async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
+/** Push the vocab map to the local bridge. Returns the failure (if any) so
+ *  the caller can report what really happened instead of claiming success. */
+async function pushVocabToBridge(map: UserVocabMap): Promise<string | null> {
   try {
     await fetch(`${BRIDGE_BASE}/extension_state`, {
       method: "POST",
@@ -118,8 +120,9 @@ async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
       }),
       signal: AbortSignal.timeout(2000),
     });
-  } catch {
-    /* optional */
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 
@@ -263,10 +266,16 @@ export function loadWords(): LoadResult {
   };
 }
 
+export type PersistResult = {
+  source: DataSource;
+  /** Set when the local store was written but the bridge mirror failed. */
+  bridgeError: string | null;
+};
+
 /** Persist the word list. Rejects when the target store could not be written —
  *  callers must surface that instead of reporting "Đã lưu". */
-export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource> {
-  if (typeof window === "undefined") return "mock";
+export async function persistWordsAsync(words: SavedWord[]): Promise<PersistResult> {
+  if (typeof window === "undefined") return { source: "mock", bridgeError: null };
   const map = toUserVocabMap(words);
 
   let localError: unknown = null;
@@ -279,8 +288,7 @@ export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource>
   if (hasChromeStorage()) {
     try {
       await getChromeStorage()!.set({ [CHROME_USER_VOCAB_KEY]: map });
-      void pushVocabToBridge(map);
-      return "chrome.storage";
+      return { source: "chrome.storage", bridgeError: await pushVocabToBridge(map) };
     } catch (error) {
       // chrome.storage is the extension's source of truth — never report success.
       throw new Error(
@@ -295,8 +303,7 @@ export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource>
     );
   }
 
-  void pushVocabToBridge(map);
-  return "localStorage";
+  return { source: "localStorage", bridgeError: await pushVocabToBridge(map) };
 }
 
 export function persistWords(words: SavedWord[]): void {

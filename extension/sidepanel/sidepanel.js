@@ -13,13 +13,19 @@
     renderLevelPreviewHtml: () => "",
   };
 
-  const Pure = globalThis.HardsubSidepanelPure || {
-    rowsNeedReorder: () => false,
-    collectWords: () => new Map(),
-    wordsSignature: () => "",
-    savedSignature: () => "",
-    buildSavedWordHtml: (lemma) => `<span class="lr-saved-word-box">${lemma}</span>`,
-  };
+  // sidepanel_pure.js must be loaded (sidepanel.html). A silent fallback would
+  // disable the row-order, re-render-gating and escaping fixes unnoticed, so
+  // the degraded path logs loudly.
+  const Pure = globalThis.HardsubSidepanelPure || (() => {
+    console.error("[sidepanel] sidepanel_pure.js is missing - order/gating/escaping fixes are disabled");
+    return {
+      rowsNeedReorder: () => false,
+      collectWords: () => new Map(),
+      wordsSignature: () => "",
+      savedSignature: () => "",
+      buildSavedWordHtml: (lemma) => `<span class="lr-saved-word-box">${lemma}</span>`,
+    };
+  })();
 
   const statusEl = document.getElementById("sp-status");
   const driveStatusEl = document.getElementById("sp-drive-status");

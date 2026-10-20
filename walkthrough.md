@@ -233,8 +233,8 @@ Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
   - `scripts/cue_timing_sanity.js`: PASSED.
   - `rtk node -c`: Toàn bộ 7 file JS biên dịch exit code 0 không có lỗi cú pháp.
 - **Headless Chrome Pixel Verification:**
-  - `scripts/verify_overlay_saved.png`: Đạt chuẩn thiết kế Language Reactor 5.1.8.
-  - `scripts/verify_words_tab.png`: Hiển thị đúng dải banner 500-increment và romaji trên từng token.
+  - `scripts/chrome_live_test_qa.png`: overlay phụ đề đạt chuẩn thiết kế Language Reactor 5.1.8.
+  - `scripts/chrome_live_mouse_qa.png`: hiển thị đúng dải banner 500-increment và romaji trên từng token.
 
 ---
 

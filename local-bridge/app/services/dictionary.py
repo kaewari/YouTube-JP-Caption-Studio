@@ -309,6 +309,10 @@ _TAIL_PATTERNS = [
 
 _local = threading.local()
 _loaded = False
+# Every thread keeps its own read-only handle; a rebuild must close them all,
+# otherwise the other threads keep reading the replaced file.
+_open_conns: list[sqlite3.Connection] = []
+_open_conns_lock = threading.Lock()
 
 
 def _get_db() -> sqlite3.Connection | None:
@@ -321,6 +325,8 @@ def _get_db() -> sqlite3.Connection | None:
             conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0)
             conn.execute("PRAGMA query_only = ON;")
             _local.conn = conn
+            with _open_conns_lock:
+                _open_conns.append(conn)
             _loaded = True
             return conn
         except Exception as exc:
@@ -333,15 +339,17 @@ def is_loaded() -> bool:
 
 
 def close_dictionary() -> None:
-    """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
+    """Close every read-only SQLite handle so a rebuilt DB can be reopened."""
     global _loaded, _en_vi_cache
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
+    with _open_conns_lock:
+        conns = list(_open_conns)
+        _open_conns.clear()
+    for conn in conns:
         try:
             conn.close()
         except Exception:
             pass
-        _local.conn = None
+    _local.conn = None
     _loaded = False
     _en_vi_cache = None
     dict_cache.clear()

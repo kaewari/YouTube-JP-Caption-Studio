@@ -62,7 +62,14 @@
       showContext: !!m.showContext,
       practice: !!m.practice,
       words: (m.words || []).map((w) => [w.lemma, w.context || ""]),
-      cues: (m.cues || []).map((c) => [c.id, c.source || "", c.vi || "", c.en || ""]),
+      cues: (m.cues || []).map((c) => [
+        c.id,
+        c.source || "",
+        c.vi || "",
+        c.en || "",
+        c.start_media_time ?? "",
+        c.end_media_time ?? "",
+      ]),
     });
   }
 

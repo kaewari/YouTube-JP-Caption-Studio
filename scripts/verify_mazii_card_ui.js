@@ -11,6 +11,8 @@ const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+// Screenshots/artifacts go to the OS temp dir - not a personal machine folder.
+const ARTIFACT_DIR = require("os").tmpdir();
 
 function runChromeJsFile(urlSubstring, jsCode) {
   const tmpFile = "/tmp/chrome_eval_mazii.js";
@@ -176,7 +178,7 @@ async function main() {
 
   // 5. Capture native screenshot of Chrome window
   console.log("\n5. Capturing real macOS browser screenshot...");
-  const screenshotPath = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/mazii_card_verified_ui.png";
+  const screenshotPath = path.join(ARTIFACT_DIR, "mazii_card_verified_ui.png");
   execSync(`screencapture -x "${screenshotPath}"`);
   const exists = fs.existsSync(screenshotPath);
   const size = exists ? fs.statSync(screenshotPath).size : 0;

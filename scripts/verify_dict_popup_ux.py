@@ -12,6 +12,7 @@ Tests real Chrome runtime:
 """
 
 import os
+import tempfile
 import json
 import time
 import subprocess
@@ -304,7 +305,7 @@ def main():
     print("  ✓ 'して' English fallback banner accuracy & POS badges VERIFIED!")
 
     # Screenshot live Chrome runtime harness
-    media_dir = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/.tempmediaStorage"
+    media_dir = os.path.join(tempfile.gettempdir(), ".tempmediaStorage")
     os.makedirs(media_dir, exist_ok=True)
     shot_harness = os.path.join(media_dir, "dict_popup_runtime_harness.png")
     subprocess.run(["screencapture", "-x", shot_harness], check=True)

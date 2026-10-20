@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 from app.services.dictionary import lookup, lookup_word, load_dictionary, _query_hanviet
 from app.schemas.models import DictResponse
@@ -107,3 +109,35 @@ def test_context_cache_keeps_token_boundaries():
     assert joined.matched == '水色'
     separated = lookup('水', context_tokens=['水,色'])
     assert separated.matched == '水'
+
+
+def test_close_dictionary_closes_every_thread_handle():
+    """A rebuild must close the handles of all threads, not only the caller's.
+
+    Each worker thread keeps its own read-only connection; closing only the
+    caller's left the other threads reading the replaced dict.sqlite.
+    """
+    import threading
+
+    from app.services import dictionary as dictionary_service
+
+    handles = []
+
+    def worker():
+        conn = dictionary_service._get_db()
+        if conn is not None:
+            handles.append(conn)
+
+    threads = [threading.Thread(target=worker) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    if not handles:
+        pytest.skip("dict.sqlite is not available in this environment")
+
+    dictionary_service.close_dictionary()
+    for conn in handles:
+        with pytest.raises(sqlite3.ProgrammingError):
+            conn.execute("SELECT 1")

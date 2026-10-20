@@ -13,6 +13,8 @@ const { execFileSync, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+// Screenshots/artifacts go to the OS temp dir - not a personal machine folder.
+const ARTIFACT_DIR = require("os").tmpdir();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -251,7 +253,7 @@ async function main() {
     console.log("✓ Live screenshot captured:", shotFile);
 
     // Copy to tempmediaStorage for artifact embed
-    const artifactDir = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/.tempmediaStorage";
+    const artifactDir = path.join(ARTIFACT_DIR, ".tempmediaStorage");
     if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
     const artifactShot = path.join(artifactDir, "dict_popup_redesign_live.png");
     fs.copyFileSync(shotFile, artifactShot);

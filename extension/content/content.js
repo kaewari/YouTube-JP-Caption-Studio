@@ -726,6 +726,15 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg?.type === "ASR_CAPTURE_ERROR") {
+      // The offscreen document could not capture the tab audio. Without this
+      // the overlay would keep showing "listening" while no recorder runs.
+      audioListeningActive = false;
+      publishSidePanelState({ forceList: true });
+      toast("Không bật được nghe audio: " + (msg?.error || "Lỗi capture"));
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg?.type !== "SP_CMD") return;
     handleSidePanelCmd(msg)
       .then((r) => sendResponse(r || { ok: true }))
@@ -2261,7 +2270,10 @@
           updatedAt: new Date().toISOString(), tombstones: Array.from(new Set(transcriptMeta.tombstones || [])) },
         cues: payload.map(({ tokens, ...rest }) => rest) });
       if (!result?.ok) throw new Error(result?.error || "Script save failed");
-      if (result.skipped) { toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp"); return; }
+      if (result.skipped) {
+        toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp");
+        return { saved: false, skipped: true, diskWritten: false };
+      }
       if (!current()) return;
       await saveSentenceState();
       if (!current()) return;
@@ -2274,6 +2286,7 @@
       }
       // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
       if (current()) await saveTranscriptToDisk(payload);
+      return { saved: true, skipped: false, diskWritten: true };
     });
   }
 
@@ -5322,12 +5335,15 @@
       saveTimer = null;
     }
     // force + awaitDisk: ownership score must not block wipe; disk must not keep old EN/VI.
-    await saveTranscript({ force: true, awaitDisk: true });
+    const res = await saveTranscript({ force: true, awaitDisk: true });
     listDirty = true;
     const active = getActiveDisplayCue();
     updateBar(active || null);
     updateCaptionStatusLine();
     publishSidePanelState();
+    // The write can be skipped when another tab holds a newer script - the
+    // disk copy then still holds the old EN/VI, so do not claim success.
+    if (res && res.skipped) return;
     toast("Đã xóa bản dịch");
   }
 
