@@ -7,6 +7,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
+		<string>-lc</string>
 		<string>~/Documents/YouTube JP Caption Studio/iphone-app/Scripts/renew-iphone-signing.sh</string>
 	</array>
 	<!-- Set before load, or edit here: -->

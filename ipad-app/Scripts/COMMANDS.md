@@ -73,6 +73,9 @@ launchctl start com.youtubejpcaptionstudio.renew
 
 Logs: `~/Library/Logs/YouTubeJPCaptionStudio-renew.log` (+ `.launchd.out/err.log`).
 
+> The plist runs `~/Documents/YouTube JP Caption Studio/...` — keep the repo in
+> that folder (or edit the path in the plist before loading it).
+
 Paid Developer Program: bỏ qua chu kỳ ~7 ngày free.
 
 ---

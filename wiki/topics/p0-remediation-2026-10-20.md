@@ -12,12 +12,15 @@ Raw: [plan/p0-remediation-2026-10-20.md](../../plan/p0-remediation-2026-10-20.md
 Every P0 of the 2026-10-18 full-codebase audit, after re-verifying each claim on disk
 (the audit is a hypothesis list — two of its findings were already wrong, one was half right).
 
-- **local-bridge**: per-thread SQLite connections with a once-per-process schema creation
-  (the previous shared connection raised `ProgrammingError` on any other worker thread);
-  `/saved/sync` capped at 5000 rows with a `has_more`/`next_since` cursor; 413 above 5000
-  incoming items; duplicate `DictResponse.hanviet` removed; missing `Any` import added;
-  `close_dictionary()` now closes every thread's handle; ffmpeg subprocesses get a timeout;
-  caller-supplied title/url can no longer inject a `JA:` cue into the rendered script.
+- **local-bridge**: the saved-items API gives every request its own connection (the
+  previous shared connection raised `ProgrammingError` on any other worker thread) and
+  creates the schema once per process; `/saved/sync` is capped at 5000 rows with a
+  lossless `(updated_at, rowid)` cursor plus `has_more`/`next_since`/`next_rowid`; 413
+  above 5000 incoming items; the dictionary uses **one** process-wide read-only handle
+  under a lock (a per-thread handle had to be closed by another thread after a rebuild,
+  which segfaults CPython); duplicate `DictResponse.hanviet` removed; missing `Any` import
+  added; ffmpeg subprocesses get a timeout; caller-supplied title/url can no longer inject
+  a `JA:` cue into the rendered script.
 - **extension**: `romaji_kana.js` no longer throws `ReferenceError` on every latin keystroke;
   duplicate `BILINGUAL_MAP` keys no longer wipe the JLPT level of だす/たい/欲しい/ほしい;
   the Drive mirror queue survives a service-worker idle-kill; a failed offscreen capture
@@ -45,7 +48,7 @@ Every P0 of the 2026-10-18 full-codebase audit, after re-verifying each claim on
 | Check | Result |
 |---|---|
 | `node extension/shared/*_test.js` + offscreen + sidepanel suites | 11/11 exit 0 |
-| `cd local-bridge && python -m pytest -q tests/ -k "not test_live_…"` | 85 passed, 5 skipped (mlx-only) |
+| `cd local-bridge && python -m pytest -q tests/ -k "not test_live_…"` | 89 passed, 5 skipped (with the local dictionary corpus) / 79 passed, 15 skipped (clean checkout) |
 | `python -m pytest -q tests/` (repo root) | 30 passed |
 | the CI handshake step (uvicorn + `test_tokenize_import_enrich.py`) | exit 0 |
 | `cd web/saved-items && npm run check` | exit 0 |
@@ -74,6 +77,7 @@ tests fail for environment reasons.
 | `6127faf08` | Every saved-items request opens its own connection (no stale handle to a replaced file) |
 | `4a6b64b2f` | Third and fourth review: the dictionary uses one process-wide connection under a lock (closing it from another thread segfaults), the WAL pragma only runs for a new file, and the vacuous tests became meaningful |
 | `aeaf8ed8b` | The `/saved/sync` cursor contract in the plan |
+| `d1175a2eb` | The final review rounds in this topic |
 
 ## Review rounds
 

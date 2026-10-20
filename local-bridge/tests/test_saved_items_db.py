@@ -235,20 +235,40 @@ def test_saved_items_api_routes(tmp_path, monkeypatch):
     assert res_del.json()["ok"] is True
 
 
-def test_a_connection_stays_with_its_own_thread(test_db: sqlite3.Connection):
-    """A connection must not be used by another thread.
+def test_a_request_connection_stays_with_its_own_thread(tmp_path, monkeypatch):
+    """The connection of a request must not be usable by another thread.
 
-    The API hands out one connection per request, so the connection belongs
-    to the thread that opened it - a shared connection would raise
-    "SQLite objects created in a thread can only be used in that same thread".
+    The API hands out one connection per request, so it belongs to the thread
+    that opened it - a shared connection would raise "SQLite objects created
+    in a thread can only be used in that same thread".
     """
-    errors: list[Exception] = []
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    opened = []
+    real_connect = saved_items_api.connect_db
+
+    def counting_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(saved_items_api, "connect_db", counting_connect)
+
+    with saved_items_api.db_conn() as conn:
+        pass
+    assert opened, "the request must open a connection"
+
+    errors = []
 
     def worker() -> None:
         try:
-            test_db.execute("SELECT 1").fetchone()
+            opened[0].execute("SELECT 1").fetchone()
         except sqlite3.ProgrammingError:
-            return  # the expected outcome: the handle is thread-bound
+            return  # expected: the handle belongs to the request thread
         except Exception as exc:  # pragma: no cover - failure path
             errors.append(exc)
             return
@@ -408,7 +428,12 @@ def test_each_request_uses_its_own_connection(tmp_path, monkeypatch):
 
     assert not errors, errors
     assert statuses == [200] * 4, f"every request must succeed, got {statuses}"
-    assert len(opened) == 4, f"every request needs its own connection, got {len(opened)}"
+
+    # A sequential request opens its own connection as well - a connection
+    # cached between requests would break the next request served by another
+    # worker thread.
+    assert TestClient(app).get("/saved/items?limit=5").status_code == 200
+    assert len(opened) == 5, f"every request needs its own connection, got {len(opened)}"
     # Every connection was released when the request ended.
     for conn in opened:
         try:
