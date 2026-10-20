@@ -430,7 +430,7 @@
       publishSidePanelState({ forceList: true });
       if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
       void triggerGeminiTranslationIfNeeded();
-      await saveTranscript({ force: true, awaitDisk: !!transcriptMeta.owned });
+      await saveTranscript({ force: true });
       return;
     }
     const [cached, meta] = await Promise.all([
@@ -2242,9 +2242,6 @@
     if (!currentVideoId) return { saved: false, skipped: false, diskWritten: false };
     const gen = navigateGen, videoId = currentVideoId, input = cues;
     const current = () => gen === navigateGen && videoId === currentVideoId && input === cues;
-    // awaitDisk: the caller needs the disk copy to be up to date, so a failed
-    // disk write must be reported instead of being silently accepted.
-    const awaitDisk = !!opts.awaitDisk;
     return withTranscriptWrite(async () => {
       if (!current()) return;
       const force = !!opts.force;
@@ -2299,11 +2296,7 @@
       }
       // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
       const disk = current() ? await saveTranscriptToDisk(payload) : { ok: false };
-      const diskWritten = !!(disk && disk.ok);
-      if (awaitDisk && !diskWritten) {
-        return { saved: true, skipped: false, diskWritten: false };
-      }
-      return { saved: true, skipped: false, diskWritten };
+      return { saved: true, skipped: false, diskWritten: !!(disk && disk.ok) };
     });
   }
 
@@ -5351,8 +5344,9 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    // force + awaitDisk: ownership score must not block wipe; disk must not keep old EN/VI.
-    const res = await saveTranscript({ force: true, awaitDisk: true });
+    // force: the ownership score must not block the wipe, and the disk must
+    // not keep the old EN/VI. The result reports whether the disk was written.
+    const res = await saveTranscript({ force: true });
     listDirty = true;
     const active = getActiveDisplayCue();
     updateBar(active || null);
