@@ -20,6 +20,31 @@ def _setup_dict():
     dict_cache.clear()
 
 
+
+def _require_dictionary_corpus() -> None:
+    """Skip when the full dictionary corpus is not present.
+
+    JMdict / Mazii are downloaded by POST /bootstrap and are not committed, so a
+    clean checkout (CI) only has the seed. Without them these assertions would
+    fail for a missing-data reason, not for a code reason.
+    """
+    import sqlite3
+
+    from app.services.dictionary import SQLITE_DB
+
+    if not SQLITE_DB.is_file():
+        pytest.skip("dictionary corpus is not built (run the bootstrap)")
+    try:
+        conn = sqlite3.connect(str(SQLITE_DB))
+        try:
+            row = conn.execute("SELECT COUNT(*) FROM jmdict").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        pytest.skip(f"dictionary corpus is not usable: {exc}")
+    if not row or not row[0]:
+        pytest.skip("dictionary corpus is empty (run the bootstrap)")
+
 # 50 common Japanese words spanning JLPT N5 to N1
 JLPT_VOCAB_50: list[tuple[str, str, str]] = [
     # (word, expected_hanviet, expected_vi_substring)
@@ -77,6 +102,7 @@ JLPT_VOCAB_50: list[tuple[str, str, str]] = [
 
 
 def test_jlpt_vocab_50_accuracy_and_hanviet():
+    _require_dictionary_corpus()
     for word, expected_hv, expected_vi in JLPT_VOCAB_50:
         res = lookup_word(word)
         assert res is not None, f"Lookup failed for {word}"
@@ -102,6 +128,7 @@ def test_no_broken_en_vi_translation_artifacts():
 
 
 def test_idioms_and_compound_verbs():
+    _require_dictionary_corpus()
     # Greedy multi-token idiom
     r1 = lookup("気", context_tokens=["気", "に", "する"])
     assert r1.found is True
@@ -125,6 +152,7 @@ def test_idioms_and_compound_verbs():
 
 
 def test_clean_jmdict_en_fallback():
+    _require_dictionary_corpus()
     # Rare word that only has JMdict EN definitions
     res = lookup_word("頑な")
     assert res is not None
