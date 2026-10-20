@@ -129,6 +129,7 @@ def test_asr_transcribe_invalid_bytes_rejected():
 
 def test_asr_transcribe_raw_body_wav():
     """POST /asr/transcribe with raw body WAV should transcribe successfully."""
+    pytest.importorskip("mlx_whisper")
     wav_bytes = make_sine_wav(duration_sec=1.0, sr=16000)
     response = client.post(
         "/asr/transcribe",
@@ -148,6 +149,7 @@ def test_asr_transcribe_raw_body_wav():
 
 def test_asr_transcribe_multipart_upload():
     """POST /asr/transcribe with multipart/form-data upload."""
+    pytest.importorskip("mlx_whisper")
     wav_bytes = make_sine_wav(duration_sec=1.5, sr=48000, channels=2)
     files = {"file": ("test_stereo.wav", wav_bytes, "audio/wav")}
     response = client.post("/asr/transcribe", files=files)
@@ -169,6 +171,7 @@ def test_asr_transcribe_duration_too_short():
 
 def test_asr_transcribe_fp16_parameter():
     """POST /asr/transcribe should accept fp16 query parameter."""
+    pytest.importorskip("mlx_whisper")
     wav_bytes = make_sine_wav(duration_sec=1.0, sr=16000)
     response = client.post(
         "/asr/transcribe",

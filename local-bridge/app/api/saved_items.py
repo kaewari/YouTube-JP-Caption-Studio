@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -21,15 +22,17 @@ from app.db.saved_items_db import (
 logger = logging.getLogger("bridge")
 router = APIRouter()
 
-# Keep persistent connection initialized
-_conn = None
+# One SQLite connection per worker thread (sqlite3 connections are not
+# thread-safe, and FastAPI runs sync endpoints in a thread pool).
+_local = threading.local()
 
 
 def db_conn():
-    global _conn
-    if _conn is None:
-        _conn = init_db()
-    return _conn
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        conn = init_db()
+        _local.conn = conn
+    return conn
 
 
 class SavedItemPayload(BaseModel):
@@ -59,8 +62,16 @@ class SyncResponse(BaseModel):
     sync_timestamp: float
 
 
+MAX_SYNC_ITEMS = 5000
+
+
 @router.post("/saved/sync", response_model=SyncResponse)
 def api_sync_saved(body: SyncRequest) -> SyncResponse:
+    if len(body.items) > MAX_SYNC_ITEMS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many items in sync payload (max {MAX_SYNC_ITEMS})",
+        )
     try:
         conn = db_conn()
         res = sync_items(conn, body.items, since_timestamp=body.since)

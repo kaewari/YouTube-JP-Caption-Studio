@@ -10,6 +10,7 @@ import threading
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 from app.core.cache import dict_cache
 from app.data.hanviet_data import get_hanviet_reading

@@ -1,6 +1,11 @@
 /**
  * Unit tests for ASR candidate lifecycle and data protection invariants.
  *
+ * The production helpers live inside the content-script IIFE
+ * (extension/content/content.js). This test executes that real source — it
+ * does NOT keep a copy of the logic, so production drift cannot leave this
+ * suite green (same technique as scripts/sentence_provenance_sanity.js).
+ *
  * Verifies:
  * 1. Strict protection invariant: locked, user-edited, user-owned, or deleted cues NEVER receive candidates.
  * 2. Non-destructive candidate storage: candidate attachment never automatically mutates cue text.
@@ -11,62 +16,46 @@
  */
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
 
-function isOwnedCue(c) {
-  const src = String(c?.text_source || "");
-  return src === "edit" || src === "manual" || src === "script";
-}
+const CONTENT_JS = path.resolve(__dirname, "../content/content.js");
 
-function canReceiveAsrCandidate(cue) {
-  if (!cue) return false;
-  if (cue.mt_locked) return false;
-  if (isOwnedCue(cue)) return false;
-  if (cue.user_owned) return false;
-  if (["user", "import"].includes(cue.translation_source)) return false;
-  if (["edit", "import", "manual", "script"].includes(cue.text_source)) return false;
-  if (cue.deleted) return false;
-  return true;
-}
-
-function serializeCueRevision(cue) {
-  return JSON.stringify([
-    cue.id,
-    cue.source,
-    cue.start_media_time,
-    cue.end_media_time,
-    cue.rawSource || null,
-    cue.text_source || "",
-    !!cue.mt_locked,
-    ["user", "import"].includes(cue.translation_source) ? cue.translation_source : "",
-  ]);
-}
-
-function matchCuesForSegment(cues, segStart, segEnd) {
-  return cues.filter((c) => {
-    const cStart = Number(c.start_media_time ?? c.start) || 0;
-    const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
-    return Math.max(cStart, segStart) < Math.min(cEnd, segEnd);
-  });
-}
-
-function findBestCueForSegmentByIoU(cuesList, segStart, segEnd) {
-  const matched = matchCuesForSegment(cuesList, segStart, segEnd);
-  if (!matched.length) return null;
-  let bestCue = null;
-  let bestIoU = 0;
-  for (const c of matched) {
-    const cStart = Number(c.start_media_time ?? c.start) || 0;
-    const cEnd = Number(c.end_media_time ?? c.end) || (cStart + 1);
-    const inter = Math.max(0, Math.min(cEnd, segEnd) - Math.max(cStart, segStart));
-    const union = Math.max(cEnd, segEnd) - Math.min(cStart, segStart);
-    const iou = union > 0 ? inter / union : 0;
-    if (iou > bestIoU) {
-      bestIoU = iou;
-      bestCue = c;
+/** Slice one function out of the content script source. */
+function sliceFunction(source, name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  assert.ok(start >= 0, `${name} must exist in content.js`);
+  let depth = 0;
+  let seenBody = false;
+  for (let i = source.indexOf("{", start); i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "{") {
+      depth++;
+      seenBody = true;
+    } else if (ch === "}") {
+      depth--;
+      if (seenBody && depth === 0) return source.slice(start, i + 1);
     }
   }
-  return bestIoU > 0.05 ? bestCue : null;
+  throw new Error(`could not slice ${name} out of content.js`);
 }
+
+// Execute the REAL production helpers.
+const contentSource = fs.readFileSync(CONTENT_JS, "utf8");
+const production = vm.runInNewContext(
+  `(() => {
+    const isOwnedCue = ${sliceFunction(contentSource, "isOwnedCue")};
+    const canReceiveAsrCandidate = ${sliceFunction(contentSource, "canReceiveAsrCandidate")};
+    const matchCuesForSegment = ${sliceFunction(contentSource, "matchCuesForSegment")};
+    const findBestCueForSegmentByIoU = ${sliceFunction(contentSource, "findBestCueForSegmentByIoU")};
+    const sentenceCueRevision = ${sliceFunction(contentSource, "sentenceCueRevision")};
+    return { isOwnedCue, canReceiveAsrCandidate, matchCuesForSegment, findBestCueForSegmentByIoU, sentenceCueRevision };
+  })()`,
+  { console },
+);
+const { isOwnedCue, canReceiveAsrCandidate, matchCuesForSegment, findBestCueForSegmentByIoU, sentenceCueRevision } = production;
 
 // -------------------------------------------------------------------------
 // Test 1: Invariant - Locked and User-Owned cues REJECT candidates
@@ -99,6 +88,10 @@ assert.strictEqual(canReceiveAsrCandidate(deletedCue), false, "deleted: true mus
 const cleanAsrCue = { id: "c9", source: "勘無料だよ", text_source: "yt", mt_locked: false };
 assert.strictEqual(canReceiveAsrCandidate(cleanAsrCue), true, "Clean YouTube ASR cue should accept ASR candidate");
 
+// isOwnedCue is the production ownership predicate
+assert.strictEqual(isOwnedCue({ text_source: "edit" }), true, "edit is an owned cue");
+assert.strictEqual(isOwnedCue({ text_source: "yt" }), false, "yt is not an owned cue");
+
 // -------------------------------------------------------------------------
 // Test 2: Invariant - Candidates NEVER automatically mutate cue text
 // -------------------------------------------------------------------------
@@ -121,15 +114,15 @@ assert.strictEqual(sentenceCandidates[cue.id].text, "どんな理由だよ。あ
 assert.strictEqual(sentenceCandidates[cue.id].provenance, "asr:whisper-large-v3-turbo");
 
 // -------------------------------------------------------------------------
-// Test 3: Accept applies candidate, updates text_source, and creates Undo
+// Test 3: Candidate Accept applies candidate, updates text_source, and creates Undo
 // -------------------------------------------------------------------------
 console.log("Running Test 3: Candidate Accept lifecycle...");
 const sentenceUndoRevisions = {};
 const candidate = sentenceCandidates[cue.id];
 
-// User clicks Accept:
+// User clicks Accept (mirrors handleSidePanelCmd "accept_asr_candidate"):
 assert.ok(canReceiveAsrCandidate(cue), "Must re-verify invariant before accept");
-sentenceUndoRevisions[cue.id] = serializeCueRevision(cue);
+sentenceUndoRevisions[cue.id] = sentenceCueRevision(cue);
 cue.source = candidate.text;
 cue.text_source = candidate.provenance;
 delete sentenceCandidates[cue.id];

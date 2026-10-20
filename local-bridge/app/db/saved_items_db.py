@@ -22,7 +22,7 @@ def get_db_path() -> Path:
 
 def init_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     path = str(db_path or get_db_path())
-    conn = sqlite3.connect(path, timeout=5.0)
+    conn = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
     # WAL mode & high-concurrency pragmas
@@ -278,7 +278,7 @@ def sync_items(
 
     # Fetch updates from server since timestamp (including deleted items as tombstones)
     cur = conn.execute(
-        "SELECT * FROM saved_items WHERE updated_at > ? ORDER BY updated_at ASC",
+        "SELECT * FROM saved_items WHERE updated_at > ? ORDER BY updated_at ASC LIMIT 5000",
         (since_timestamp,)
     )
     server_updates = [row_to_dict(r) for r in cur.fetchall()]

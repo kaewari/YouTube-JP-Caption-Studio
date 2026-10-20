@@ -29,6 +29,9 @@ logger = logging.getLogger("bridge.asr")
 TARGET_SAMPLE_RATE = 16000
 MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_AUDIO_DURATION_SEC = 300.0       # 5 minutes
+# A wedged ffmpeg must not pin the ASR worker thread forever.
+FFMPEG_TIMEOUT_SEC = 60
+
 MIN_AUDIO_DURATION_SEC = 0.05        # 50 ms
 DEFAULT_MODEL_NAME = "kaiinui/kotoba-whisper-v2.0-mlx"
 DEFAULT_INITIAL_PROMPT = "こんにちは。日本語のYouTube動画の字幕です。"
@@ -113,6 +116,7 @@ def apply_audio_dsp(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
+            timeout=FFMPEG_TIMEOUT_SEC,
         )
         if proc.stdout and len(proc.stdout) > 0:
             valid_len = (len(proc.stdout) // 4) * 4
@@ -218,7 +222,14 @@ def decode_audio_bytes(
             "pipe:1",
         ])
         try:
-            proc = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            proc = subprocess.run(
+                cmd,
+                input=data,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=FFMPEG_TIMEOUT_SEC,
+            )
             if proc.stdout and len(proc.stdout) > 0:
                 valid_len = (len(proc.stdout) // 4) * 4
                 audio_arr = np.frombuffer(proc.stdout[:valid_len], dtype=np.float32)
@@ -256,7 +267,14 @@ def decode_audio_bytes(
             "pipe:1",
         ]
         try:
-            proc = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            proc = subprocess.run(
+                cmd,
+                input=data,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=FFMPEG_TIMEOUT_SEC,
+            )
             if not proc.stdout or len(proc.stdout) == 0:
                 raise ValueError("ffmpeg output was empty")
             valid_len = (len(proc.stdout) // 4) * 4

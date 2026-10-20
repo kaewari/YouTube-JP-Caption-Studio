@@ -202,6 +202,8 @@
                   <span class="lr-kbd">Space</span>
                 </div>
               </div>
+            </div>
+
             <div class="lr-settings-divider"></div>
 
             <!-- Section 6: AI Translation (Gemini) -->
@@ -267,7 +269,7 @@
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
 
-    // Opacity Slider (Real-time preview)
+    // Opacity Slider — live preview on every tick, persist only on release.
     const optOpacity = host.querySelector("#lr-opt-opacity");
     const opacityValEl = host.querySelector("#lr-opacity-val");
     optOpacity?.addEventListener("input", () => {
@@ -278,6 +280,8 @@
       if (bar) {
         bar.style.setProperty("--bar-bg-a", String(val));
       }
+    });
+    optOpacity?.addEventListener("change", () => {
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
 
@@ -420,5 +424,7 @@
   root.HardsubSettingsModal = {
     open: openSettingsModal,
     close: closeModal,
+    // Exposed for the markup regression test (sidepanel/sidepanel_pure_test.js).
+    createModalHtml,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

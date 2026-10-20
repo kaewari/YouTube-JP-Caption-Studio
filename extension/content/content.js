@@ -660,7 +660,7 @@
     // Only the page script we inject (same window) may answer — a cross-origin
     // iframe or page-world script could otherwise forge caption results.
     if (ev.source !== window) return;
-    if (!ev.data || ev.data.source !== "hardsub-ocr-page") return;
+    if (!ev.data || typeof ev.data !== "object" || ev.data.source !== "hardsub-ocr-page") return;
     const { requestId, result, cap } = ev.data;
     // Capability token gate: check top-level cap or result.cap
     const msgCap = cap || result?.cap;
@@ -1068,6 +1068,12 @@
     audioListeningActive = nextState;
     const tabId = await getContentTabId();
     if (audioListeningActive) {
+      // Fail closed: without a tab id the capture cannot be routed.
+      if (!tabId) {
+        audioListeningActive = false;
+        if (!opts.auto) toast("Không bật được nghe audio: chưa lấy được tab id");
+        return { ok: false, error: "no_tab_id", audioListeningActive: false };
+      }
       if (!opts.auto) toast("Đang bật nghe audio (Whisper trên Apple Silicon)...");
       try {
         const res = await chrome.runtime.sendMessage({
@@ -1294,6 +1300,10 @@
 
   function teardownUI() {
     stopLoop();
+    if (videoLayoutTimer) {
+      clearInterval(videoLayoutTimer);
+      videoLayoutTimer = null;
+    }
     if (playerToggleObserver) {
       playerToggleObserver.disconnect();
       playerToggleObserver = null;
@@ -2502,6 +2512,10 @@
   function ensureVideoLayoutSync() {
     if (videoLayoutTimer) return;
     videoLayoutTimer = setInterval(() => {
+      // Hidden tabs do not need layout work, and a disabled platform must not
+      // re-create the overlay the teardown just removed.
+      if (document.hidden) return;
+      if (!isCurrentPlatformEnabled()) return;
       ensureUI();
       applyBarPosition();
       applyDim();
@@ -5820,6 +5834,7 @@
   }
 
   let boundVideoEl = null;
+  let boundVideoCleanup = null;
   function bindVideoEvents() {
     const v = findVideo();
     if (v && v !== boundVideoEl) {
@@ -5835,9 +5850,14 @@
       };
 
       if ("requestVideoFrameCallback" in v) {
-        v.addEventListener("play", () => {
+        const onPlay = () => {
           v.requestVideoFrameCallback(onFrame);
-        }, { passive: true });
+        };
+        v.addEventListener("play", onPlay, { passive: true });
+        // A new video element replaces the old one: drop the old listener so
+        // it cannot keep a frame-callback chain alive.
+        boundVideoCleanup?.();
+        boundVideoCleanup = () => v.removeEventListener("play", onPlay);
         if (!v.paused) {
           v.requestVideoFrameCallback(onFrame);
         }

@@ -8,11 +8,13 @@ Requires bridge on 127.0.0.1:8765 (or starts tokenize in-process).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-BRIDGE = "http://127.0.0.1:8765"
+# CI starts the bridge on a random port and exports BRIDGE_URL.
+BRIDGE = os.environ.get("BRIDGE_URL", "http://127.0.0.1:8765")
 KANJI_RE = __import__("re").compile(r"[\u3400-\u9fff]")
 
 

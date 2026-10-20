@@ -1,6 +1,7 @@
 """Unit tests for Saved Items SQLite database (WAL mode, trigram FTS5, tombstone sync)."""
 
 import sqlite3
+import threading
 import time
 from pathlib import Path
 import pytest
@@ -225,3 +226,46 @@ def test_saved_items_api_routes():
     res_del = client.delete("/saved/items/api_test_cue")
     assert res_del.status_code == 200
     assert res_del.json()["ok"] is True
+
+
+def test_connection_is_usable_from_another_thread(test_db: sqlite3.Connection):
+    """A request served by another worker thread must not raise ProgrammingError.
+
+    sqlite3 connections are bound to their creating thread unless
+    check_same_thread=False; the API hands out one connection per thread.
+    """
+    errors: list[Exception] = []
+
+    def worker() -> None:
+        try:
+            test_db.execute("SELECT 1").fetchone()
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+    assert not errors, f"cross-thread use failed: {errors}"
+
+
+def test_sync_response_is_capped(test_db: sqlite3.Connection):
+    """A sync response must not ship the whole table (iOS sync would download GB)."""
+    with test_db:
+        for i in range(5100):
+            test_db.execute(
+                "INSERT INTO saved_items(id, type, source, created_at, updated_at)"
+                " VALUES(?,?,?,?,?)",
+                (f"cap_{i}", "cue", "s", 1.0, 1.0 + i),
+            )
+    result = sync_items(test_db, [], since_timestamp=0.0)
+    assert len(result["server_items"]) == 5000
+
+
+def test_sync_endpoint_rejects_oversized_payload():
+    """A payload beyond the cap is refused instead of being written row by row."""
+    client = TestClient(app)
+    res = client.post("/saved/sync", json={
+        "items": [{"id": f"too_many_{i}", "type": "word", "source": "w"} for i in range(5001)],
+        "since": 0.0,
+    })
+    assert res.status_code == 413

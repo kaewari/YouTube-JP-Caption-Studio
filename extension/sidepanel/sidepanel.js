@@ -13,6 +13,14 @@
     renderLevelPreviewHtml: () => "",
   };
 
+  const Pure = globalThis.HardsubSidepanelPure || {
+    rowsNeedReorder: () => false,
+    collectWords: () => new Map(),
+    wordsSignature: () => "",
+    savedSignature: () => "",
+    buildSavedWordHtml: (lemma) => `<span class="lr-saved-word-box">${lemma}</span>`,
+  };
+
   const statusEl = document.getElementById("sp-status");
   const driveStatusEl = document.getElementById("sp-drive-status");
   const driveConnectBtn = document.getElementById("sp-drive-connect");
@@ -88,16 +96,30 @@
     toggleFuriBtn?.classList.toggle("active", !!state.showFurigana);
   }
 
+  /** Keys of the shared `hardsubSettings` blob that this panel owns. */
+  const SUB_VIS_KEYS = ["sidepanelShowJa", "sidepanelShowVi", "sidepanelShowEn", "sidepanelShowFurigana"];
+
   async function persistSubVisibility() {
     try {
-      if (chrome?.storage?.local) {
+      if (!chrome?.storage?.local) return;
+      const mine = {
+        sidepanelShowJa: state.showJa,
+        sidepanelShowVi: state.showVi,
+        sidepanelShowEn: state.showEn,
+        sidepanelShowFurigana: state.showFurigana,
+      };
+      // content.js and the service worker write the same `hardsubSettings` blob,
+      // so re-read it right before the write and merge ONLY the 4 keys owned by
+      // this panel. If a competing writer lands in between, merge again: their
+      // update is kept and our toggle is re-applied.
+      for (let attempt = 0; attempt < 3; attempt++) {
         const data = await chrome.storage.local.get("hardsubSettings");
-        const s = data?.hardsubSettings || {};
-        s.sidepanelShowJa = state.showJa;
-        s.sidepanelShowVi = state.showVi;
-        s.sidepanelShowEn = state.showEn;
-        s.sidepanelShowFurigana = state.showFurigana;
+        const s = { ...(data?.hardsubSettings || {}) };
+        Object.assign(s, mine);
         await chrome.storage.local.set({ hardsubSettings: s });
+        const after = await chrome.storage.local.get("hardsubSettings");
+        const cur = after?.hardsubSettings || {};
+        if (SUB_VIS_KEYS.every((k) => cur[k] === mine[k])) return;
       }
     } catch (_) {}
   }
@@ -170,6 +192,8 @@
   let tabId = null;
   let currentActiveTabId = null;
   const tabStates = new Map(); // tabId -> cachedState for 0ms instant tab switching
+  /** Cap for the per-tab state cache (the panel lives for the whole browser session). */
+  const TAB_STATES_MAX = 20;
   let listDirty = true;
   /** Last accepted SP_STATE cue-list sequence (drop stale full payloads). */
   let lastCueSeq = 0;
@@ -1770,6 +1794,20 @@
       listEl.appendChild(el);
     });
 
+    // Rows are only patched in place, so a timeline edit / import that reorders
+    // the cues would leave the DOM in the old order until a page reload.
+    // Re-append the rows in cue order when the order drifted.
+    const domIds = Array.from(listEl.querySelectorAll(".sp-sentence")).map((row) => row.dataset.id);
+    const cueIdOrder = cues.map((c) => c.id);
+    if (Pure.rowsNeedReorder(domIds, cueIdOrder)) {
+      const rows = new Map();
+      for (const row of listEl.querySelectorAll(".sp-sentence")) rows.set(row.dataset.id, row);
+      for (const id of cueIdOrder) {
+        const row = rows.get(id);
+        if (row) listEl.appendChild(row);
+      }
+    }
+
     ignoreScrollEvent = true;
     listEl.scrollTop = scrollKeep;
     requestAnimationFrame(() => {
@@ -1903,36 +1941,33 @@
     }
   }
 
+  /** Signatures of the data behind the Words / Saved tabs (null = never rendered). */
+  let wordsTabSig = null;
+  let savedTabSig = null;
+
+  function wordsDataSig() {
+    const words = Array.from(
+      Pure.collectWords(state.cues || [], (pos) => Vocab.isSkipPos(pos)).values()
+    );
+    return Pure.wordsSignature(words, state.userVocab || {});
+  }
+
   function renderWordsTab() {
     const wordsListEl = document.getElementById("sp-words-list");
     const wordsCountEl = document.getElementById("sp-words-count");
     if (!wordsListEl) return;
 
     const cues = state.cues || [];
-    const wordMap = new Map();
-
-    for (const c of cues) {
-      if (!c.tokens) continue;
-      for (const t of c.tokens) {
-        if (!t.surface || Vocab.isSkipPos(t.pos)) continue;
-        const key = t.lemma || t.surface;
-        if (!wordMap.has(key)) {
-          wordMap.set(key, {
-            lemma: key,
-            surface: t.surface,
-            reading: t.reading || "",
-            jlpt: t.jlpt || "",
-            freq_rank: t.freq_rank != null ? Number(t.freq_rank) : null,
-            count: 0,
-            cue: c,
-          });
-        }
-        const item = wordMap.get(key);
-        item.count++;
-      }
-    }
-
+    const wordMap = Pure.collectWords(cues, (pos) => Vocab.isSkipPos(pos));
     const allWords = Array.from(wordMap.values());
+
+    // Rebuilding the whole tab on every SP_STATE wipes the scroll position,
+    // the keyboard focus and rebinds every chip listener. Only re-render when
+    // the data behind the tab actually changed.
+    const sig = Pure.wordsSignature(allWords, state.userVocab || {});
+    if (sig === wordsTabSig) return;
+    wordsTabSig = sig;
+
     if (wordsCountEl) wordsCountEl.textContent = `${allWords.length} từ`;
 
     if (!allWords.length) {
@@ -2020,22 +2055,45 @@
         if (nextStatus) state.userVocab[lemma] = nextStatus;
         else delete state.userVocab[lemma];
         btn.classList.toggle("saved", !current);
+        // Keep the signature in sync so the state push that follows does not
+        // re-render (and wipe) the tab.
+        wordsTabSig = wordsDataSig();
       });
     });
   }
 
-  function renderSavedTab() {
-    const savedListEl = document.getElementById("sp-saved-list");
+  /** Data behind the Saved tab: saved words (with their context) + saved cues. */
+  function savedTabModel() {
     const showContextEl = document.getElementById("sp-saved-show-context");
-    if (!savedListEl) return;
-
     const showContext = showContextEl ? showContextEl.checked : true;
     const userVocabEntries = Object.entries(state.userVocab || {}).filter(
       ([, v]) => v && (v === "learning" || v === "special" || v?.status === "learning" || v?.status === "special")
     );
     const savedCues = normalizeSavedCues(state.savedCues);
+    const words = userVocabEntries.map(([lemma]) => {
+      const sampleCue =
+        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
+        savedCues.find((c) => c.source && c.source.includes(lemma));
+      return { lemma, context: sampleCue ? sampleCue.source : "" };
+    });
+    return { showContext, practice: savedPracticeMode, words, cues: savedCues };
+  }
 
-    if (!userVocabEntries.length && !savedCues.length) {
+  function renderSavedTab() {
+    const savedListEl = document.getElementById("sp-saved-list");
+    if (!savedListEl) return;
+
+    const model = savedTabModel();
+    // Rebuilding the whole tab on every SP_STATE wipes the scroll position,
+    // the keyboard focus and the "flip" state of the practice cards. Only
+    // re-render when the data behind the tab actually changed.
+    const sig = Pure.savedSignature(model);
+    if (sig === savedTabSig) return;
+    savedTabSig = sig;
+
+    const { showContext, words, cues: savedCues } = model;
+
+    if (!words.length && !savedCues.length) {
       savedListEl.innerHTML = '<div class="sp-saved-empty">Chưa có từ hoặc câu nào được đánh dấu sao lưu trữ.</div>';
       return;
     }
@@ -2043,23 +2101,11 @@
     let html = "";
 
     // Saved Words
-    for (const [lemma] of userVocabEntries) {
-      const sampleCue =
-        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
-        (savedCues || []).find((c) => c.source && c.source.includes(lemma));
-      const sampleCtx = sampleCue ? sampleCue.source : "";
-
-      let displayHtml = "";
-      if (showContext && sampleCtx) {
-        const escLemma = escapeHtml(lemma);
-        const escCtx = escapeHtml(sampleCtx);
-        const boxed = `<span class="lr-saved-word-box">${escLemma}</span>`;
-        displayHtml = escCtx.includes(escLemma)
-          ? escCtx.replace(escLemma, boxed)
-          : `${boxed} · ${escCtx}`;
-      } else {
-        displayHtml = `<span class="lr-saved-word-box">${escapeHtml(lemma)}</span>`;
-      }
+    for (const { lemma, context: sampleCtx } of words) {
+      const displayHtml =
+        showContext && sampleCtx
+          ? Pure.buildSavedWordHtml(lemma, sampleCtx, escapeHtml)
+          : `<span class="lr-saved-word-box">${escapeHtml(lemma)}</span>`;
 
       html += `
         <div class="lr-saved-row" data-lemma="${escapeAttr(lemma)}">
@@ -2581,6 +2627,12 @@
       if (msg.tabId == null) return;
       // Cache state for that tab
       tabStates.set(msg.tabId, { ...(msg.payload || {}), tabId: msg.tabId });
+      // Keep the cache bounded — the panel lives for the whole browser session.
+      while (tabStates.size > TAB_STATES_MAX) {
+        const oldest = tabStates.keys().next().value;
+        if (oldest === undefined) break;
+        tabStates.delete(oldest);
+      }
 
       // If we don't know the active video tab yet, resolve it
       if (currentActiveTabId == null) {
@@ -2662,6 +2714,16 @@
   chrome.tabs?.onUpdated?.addListener?.(async (updatedTabId, changeInfo) => {
     if (updatedTabId === currentActiveTabId && changeInfo.url) {
       await syncActiveTab();
+    }
+  });
+
+  // Drop the cached state of a closed tab — the panel would otherwise keep one
+  // full state snapshot per video for the whole browser session.
+  chrome.tabs?.onRemoved?.addListener?.((removedTabId) => {
+    tabStates.delete(removedTabId);
+    if (currentActiveTabId === removedTabId) {
+      currentActiveTabId = null;
+      tabId = null;
     }
   });
 
@@ -2917,6 +2979,7 @@
       getActiveDictTok: () => spActiveDictTok,
       getPinnedTok: () => spPinnedTok,
       getHoverIntentTimer: () => spHoverIntentTimer,
+      getTabStateCount: () => tabStates.size,
       showDict,
     };
   }

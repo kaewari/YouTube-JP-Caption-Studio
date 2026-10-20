@@ -208,6 +208,7 @@
     }
     // If conversion left a trailing consonant that wasn't converted, ok.
     const next = v.slice(0, start) + kana + v.slice(c);
+    const nextCursor = start + kana.length;
     if (next === v && nextCursor === c) return null;
     return { value: next, cursor: nextCursor };
   }

@@ -89,6 +89,24 @@ export function mergeUserVocabMap(
   return next;
 }
 
+/** Lemmas deleted here whose removal upstream (chrome.storage / bridge) has not
+ *  applied yet. Without them the ~1.5s bridge poll re-adds the just-deleted word. */
+const pendingDeletes = new Set<string>();
+
+/** Merge an upstream map, honouring deletes that upstream has not applied yet.
+ *  A tombstone is dropped as soon as the upstream map no longer holds the lemma. */
+function mergeUpstreamMap(prev: SavedWord[], map: UserVocabMap): SavedWord[] {
+  for (const lemma of pendingDeletes) {
+    if (!(lemma in map)) pendingDeletes.delete(lemma);
+  }
+  const visible: UserVocabMap = {};
+  for (const [lemma, status] of Object.entries(map)) {
+    if (pendingDeletes.has(lemma)) continue;
+    visible[lemma] = status;
+  }
+  return mergeUserVocabMap(prev, visible);
+}
+
 async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
   try {
     await fetch(`${BRIDGE_BASE}/extension_state`, {
@@ -161,7 +179,7 @@ export async function loadWordsAsync(): Promise<LoadResult> {
       const raw = data[CHROME_USER_VOCAB_KEY];
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
         const map = raw as UserVocabMap;
-        const words = mergeUserVocabMap(localRich, map);
+        const words = mergeUpstreamMap(localRich, map);
         return {
           words,
           source: "chrome.storage",
@@ -190,7 +208,7 @@ export async function loadWordsAsync(): Promise<LoadResult> {
 
   const bridgeMap = await fetchVocabFromBridge();
   if (bridgeMap && Object.keys(bridgeMap).length) {
-    const words = mergeUserVocabMap(localRich, bridgeMap);
+    const words = mergeUpstreamMap(localRich, bridgeMap);
     return {
       words,
       source: "bridge",
@@ -245,14 +263,17 @@ export function loadWords(): LoadResult {
   };
 }
 
+/** Persist the word list. Rejects when the target store could not be written —
+ *  callers must surface that instead of reporting "Đã lưu". */
 export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource> {
   if (typeof window === "undefined") return "mock";
   const map = toUserVocabMap(words);
 
+  let localError: unknown = null;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
-  } catch {
-    /* ignore */
+  } catch (error) {
+    localError = error;
   }
 
   if (hasChromeStorage()) {
@@ -260,9 +281,18 @@ export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource>
       await getChromeStorage()!.set({ [CHROME_USER_VOCAB_KEY]: map });
       void pushVocabToBridge(map);
       return "chrome.storage";
-    } catch {
-      /* fall through */
+    } catch (error) {
+      // chrome.storage is the extension's source of truth — never report success.
+      throw new Error(
+        `chrome.storage: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
+  }
+
+  if (localError) {
+    throw new Error(
+      `localStorage: ${localError instanceof Error ? localError.message : String(localError)}`,
+    );
   }
 
   void pushVocabToBridge(map);
@@ -270,9 +300,13 @@ export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource>
 }
 
 export function persistWords(words: SavedWord[]): void {
-  void persistWordsAsync(words);
+  void persistWordsAsync(words).catch((error: unknown) => {
+    console.error("persistWords failed", error);
+  });
 }
 
+/** Change a word status. `status = null` deletes the word — the delete is
+ *  tombstoned so the upstream poll cannot resurrect it. */
 export function setWordStatus(
   words: SavedWord[],
   lemma: string,
@@ -281,8 +315,10 @@ export function setWordStatus(
   const key = lemma.trim();
   if (!key) return words;
   if (!status) {
+    pendingDeletes.add(key);
     return words.filter((w) => w.lemma !== key);
   }
+  pendingDeletes.delete(key);
   const idx = words.findIndex((w) => w.lemma === key);
   if (idx === -1) {
     return [
@@ -301,6 +337,7 @@ export function setWordStatus(
 
 export function resetToMock(): SavedWord[] {
   const words = MOCK_SAVED_WORDS.map((w) => ({ ...w }));
+  pendingDeletes.clear();
   // Demo-only: fill the localhost UI, never pollute chrome.storage/bridge
   // (extension pull would otherwise replace real words with demo words).
   try {
@@ -330,7 +367,7 @@ export function subscribeVocab(
         raw && typeof raw === "object" && !Array.isArray(raw)
           ? (raw as UserVocabMap)
           : {};
-      onChange(mergeUserVocabMap(getPrev(), map), "chrome.storage");
+      onChange(mergeUpstreamMap(getPrev(), map), "chrome.storage");
     };
     onChanged.addListener(listener);
     return () => onChanged.removeListener(listener);
@@ -348,7 +385,7 @@ export function subscribeVocab(
         const j = JSON.stringify(map);
         if (j === lastJson) return;
         lastJson = j;
-        onChange(mergeUserVocabMap(getPrev(), map), "bridge");
+        onChange(mergeUpstreamMap(getPrev(), map), "bridge");
       } finally {
         isPolling = false;
       }

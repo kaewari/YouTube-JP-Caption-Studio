@@ -223,8 +223,14 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   } catch (_) {}
 });
 
+/** Set while the offscreen document is closing — a start must wait for it. */
+let _offscreenClosing = null;
+
 async function ensureOffscreenDocument() {
   if (!chrome.offscreen?.createDocument) return;
+  // A stop closes the document; wait for that close so createDocument cannot
+  // race the teardown.
+  if (_offscreenClosing) await _offscreenClosing;
   const offscreenUrl = chrome.runtime.getURL("offscreen/audio_capture.html");
   if (chrome.runtime.getContexts) {
     const existing = (await chrome.runtime.getContexts({
@@ -240,10 +246,20 @@ async function ensureOffscreenDocument() {
       justification: "Capture tab audio for local speech recognition",
     });
   } catch (err) {
-    if (!String(err).includes("already exists")) {
+    const msg = String(err);
+    if (!msg.includes("already exists") && !msg.includes("single offscreen document")) {
       throw err;
     }
   }
+}
+
+/** Release the offscreen document: it holds the AudioContext and the tab stream. */
+async function closeOffscreenDocument() {
+  if (!chrome.offscreen?.closeDocument) return;
+  const closing = chrome.offscreen.closeDocument().catch(() => {});
+  _offscreenClosing = closing;
+  await closing;
+  if (_offscreenClosing === closing) _offscreenClosing = null;
 }
 
 async function handleAudioStartCapture(msg, sender) {
@@ -254,7 +270,7 @@ async function handleAudioStartCapture(msg, sender) {
     throw new Error("chrome.tabCapture.getMediaStreamId not available");
   }
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-  await chrome.runtime.sendMessage({
+  const res = await chrome.runtime.sendMessage({
     target: "offscreen",
     type: "START_CAPTURE",
     streamId,
@@ -262,6 +278,11 @@ async function handleAudioStartCapture(msg, sender) {
     videoId: msg.videoId,
     playhead: msg.playhead || 0,
   });
+  // The offscreen document reports its own failures (getUserMedia denied, …):
+  // a silent {ok:true} left the overlay "listening" with no recorder.
+  if (!res?.ok) {
+    throw new Error(res?.error || "Audio capture failed to start");
+  }
   return { ok: true };
 }
 
@@ -272,6 +293,9 @@ async function handleAudioStopCapture() {
       type: "STOP_CAPTURE",
     });
   } catch (_) {}
+  // Only after the stop is acknowledged — otherwise the recorder would keep
+  // running inside a document that is about to disappear.
+  await closeOffscreenDocument();
   return { ok: true };
 }
 
@@ -328,7 +352,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "AUDIO_START_CAPTURE") {
     handleAudioStartCapture(msg, sender)
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
     return true;
   }
   if (msg?.type === "AUDIO_STOP_CAPTURE") {
@@ -338,6 +362,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg?.type === "ASR_CANDIDATE_RECEIVED") {
+    if (msg.tabId) {
+      chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
+    }
+    return false;
+  }
+  if (msg?.type === "ASR_CAPTURE_ERROR") {
+    // Offscreen capture failed — forward it to the tab that asked for capture.
     if (msg.tabId) {
       chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
     }
@@ -684,9 +715,10 @@ if (chrome.alarms?.onAlarm) {
         if (!ids.length) return;
         try {
           const res = await driveQueued(() => mirrorToDrive(ids));
-          if (res && res.ok) {
-            storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+          // Only a real mirror clears the queue — "not_connected" is not an upload.
+          if (res && res.ok && !res.skipped) {
             for (const id of ids) _pendingMirror.delete(id);
+            void clearPendingMirror(ids);
           }
         } catch (e) {
           console.warn("[drive] alarm mirror failed, keeping pending IDs:", e);
@@ -1964,29 +1996,100 @@ async function pullDriveIfNewer() {
 
 /** videoIds seen since the last flush — one save burst must not mirror the whole library. */
 const _pendingMirror = new Set();
+/** Serializes pending-list writes so a read-modify-write cannot interleave. */
+let _pendingMirrorWrite = Promise.resolve();
+
+/** Union of the persisted and the in-memory pending IDs (order preserved). */
+function mergePendingIds(stored, incoming) {
+  const out = [];
+  const seen = new Set();
+  for (const id of [...(Array.isArray(stored) ? stored : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    const key = String(id);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+/** Pending IDs minus the ones whose mirror succeeded. */
+function removePendingIds(ids, done) {
+  const drop = new Set((Array.isArray(done) ? done : []).map(String));
+  return (Array.isArray(ids) ? ids : []).map(String).filter((id) => !drop.has(id));
+}
+
+function pendingMirrorStorage() {
+  return chrome.storage.session || chrome.storage.local;
+}
+
+/**
+ * Persist pending IDs. The stored list is the source of truth across an SW
+ * idle-kill: it is unioned with the in-memory set, so a restart (empty Set)
+ * can never overwrite IDs that are still queued.
+ */
+function persistPendingMirror() {
+  const storage = pendingMirrorStorage();
+  _pendingMirrorWrite = _pendingMirrorWrite
+    .then(async () => {
+      try {
+        const raw = (await storage.get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+        await storage.set({
+          [DRIVE_PENDING_MIRROR_KEY]: mergePendingIds(raw, Array.from(_pendingMirror)),
+        });
+      } catch (_) {}
+    })
+    .catch(() => {});
+  return _pendingMirrorWrite;
+}
+
+/** Drop only the IDs whose mirror really ran — queued work survives every failure. */
+function clearPendingMirror(ids) {
+  const storage = pendingMirrorStorage();
+  _pendingMirrorWrite = _pendingMirrorWrite
+    .then(async () => {
+      try {
+        const raw = (await storage.get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+        const rest = removePendingIds(raw, ids);
+        if (rest.length) {
+          await storage.set({ [DRIVE_PENDING_MIRROR_KEY]: rest });
+        } else {
+          await storage.remove([DRIVE_PENDING_MIRROR_KEY]);
+        }
+      } catch (_) {}
+    })
+    .catch(() => {});
+  return _pendingMirrorWrite;
+}
+
+/** Restore IDs queued before an SW idle-kill (the in-memory Set starts empty). */
+async function restorePendingMirror() {
+  try {
+    const raw = (await pendingMirrorStorage().get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+    for (const id of Array.isArray(raw) ? raw : []) {
+      if (id) _pendingMirror.add(String(id));
+    }
+  } catch (_) {}
+}
+void restorePendingMirror();
 
 function scheduleDriveUpload(videoId) {
   if (videoId) _pendingMirror.add(String(videoId));
   if (_driveUploadTimer) clearTimeout(_driveUploadTimer);
   // Persist pending IDs for crash-recovery alarm (MV3 may kill SW between timer and fire).
-  const storage = chrome.storage.session || chrome.storage.local;
-  storage.set({ [DRIVE_PENDING_MIRROR_KEY]: Array.from(_pendingMirror) }).catch(() => {});
+  void persistPendingMirror();
   // Alarm is the crash-recovery path; timer preserves the existing 5s UI debounce.
-  void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1 }).catch?.(() => {});
+  // Periodic, so a mirror that failed (Drive offline) is retried until it lands.
+  void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1, periodInMinutes: 1 }).catch?.(() => {});
   _driveUploadTimer = setTimeout(async () => {
     _driveUploadTimer = null;
     const ids = Array.from(_pendingMirror);
     if (!ids.length) return;
     try {
       const res = await driveQueued(() => mirrorToDrive(ids));
-      if (res && res.ok) {
+      // Only a real mirror clears the queue — "not_connected" is not an upload.
+      if (res && res.ok && !res.skipped) {
         for (const id of ids) _pendingMirror.delete(id);
-        const remaining = Array.from(_pendingMirror);
-        if (remaining.length) {
-          storage.set({ [DRIVE_PENDING_MIRROR_KEY]: remaining }).catch(() => {});
-        } else {
-          storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
-        }
+        void clearPendingMirror(ids);
       }
     } catch (e) {
       console.warn("[drive] debounced mirror failed, keeping pending IDs:", e);
@@ -2000,7 +2103,8 @@ async function uploadDriveNow() {
     clearTimeout(_driveUploadTimer);
     _driveUploadTimer = null;
   }
-  _pendingMirror.clear();
+  // IDs queued before this full mirror — the mirror covers exactly these.
+  const covered = Array.from(_pendingMirror);
   if (!(await driveConnected())) {
     // No pull before push — pull of empty/stale Drive would wipe local then upload the wipe.
     const c = await connectDrive({ pull: false });
@@ -2013,10 +2117,11 @@ async function uploadDriveNow() {
     console.warn("[drive] bridge snapshot skipped:", e);
   }
   const res = await driveQueued(() => mirrorToDrive());
-  if (res && res.ok) {
-    _pendingMirror.clear();
-    const storage = chrome.storage.session || chrome.storage.local;
-    storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+  // Only a real mirror clears the queue — "not_connected" is not an upload.
+  // IDs queued during the mirror stay pending (the mirror may predate them).
+  if (res && res.ok && !res.skipped) {
+    for (const id of covered) _pendingMirror.delete(id);
+    void clearPendingMirror(covered);
   }
   return res;
 }

@@ -94,6 +94,11 @@ def _format_time_plain(sec: float) -> str:
     return f"{minutes}:{seconds:02d}" + (f".{fraction}" if fraction else "")
 
 
+def _one_line(value: str) -> str:
+    """Collapse a caller-supplied value onto one line (no newline injection)."""
+    return " ".join(str(value or "").split())
+
+
 def render_script_txt(
     cues: list[dict[str, Any]],
     *,
@@ -110,9 +115,11 @@ def render_script_txt(
         f"video_id: {video_id}",
     ]
     if title:
-        lines.append(f"title: {title}")
+        # Metadata is caller-supplied: a newline would let a title inject a
+        # "JA: ..." cue into the next parse of this file.
+        lines.append(f"title: {_one_line(title)}")
     if url:
-        lines.append(f"URL: {url}")
+        lines.append(f"URL: {_one_line(url)}")
     lines.append(f"Updated: {time.strftime('%Y-%m-%d %H:%M')}")
     lines.append("# ----------------------------------------")
     lines.append("")

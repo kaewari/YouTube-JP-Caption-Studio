@@ -119,7 +119,6 @@ class DictResponse(BaseModel):
     glosses_vi: list[str] = Field(default_factory=list)
     senses: list[DictSense] = Field(default_factory=list)
     message: str = ""
-    hanviet: str = ""
     jlpt: str = ""
     source: str = "Mazii JA-VI"
     examples: list[DictExample] = Field(default_factory=list)
