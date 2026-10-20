@@ -71,17 +71,32 @@ tests fail for environment reasons.
 | `318298cd5` | The review round and the green CI simulation |
 | `817ed65fd` | Dropped the redundant `awaitDisk` option |
 | `141387fd3` | The capture error is scoped to the tab that asked for it and reported once |
+| `6127faf08` | Every saved-items request opens its own connection (no stale handle to a replaced file) |
+| `4a6b64b2f` | Third and fourth review: the dictionary uses one process-wide connection under a lock (closing it from another thread segfaults), the WAL pragma only runs for a new file, and the vacuous tests became meaningful |
+| `aeaf8ed8b` | The `/saved/sync` cursor contract in the plan |
 
 ## Review rounds
 
-Two independent read-only reviews ran against the change set. The first found a blocking
-defect (the per-thread connection still ran `PRAGMA journal_mode=WAL`, so a fresh database
-raced into "database is locked" → HTTP 500) plus four partial gaps; the second found that
-`close_dictionary()` was a no-op (sqlite3 forbids `close()` from a non-owning thread and
-the bare `except` hid it), that the sync cursor still dropped rows sharing a timestamp, and
-that the required CI job stayed red (the handshake script asserted `sudachi` before the
-`/tokenize` call that loads it). All were fixed, and every fix has a test that fails on the
-old code.
+Four independent read-only reviews ran against the change set. They found, and every fix
+has a test that fails on the old code:
+
+1. The per-thread connection still ran `PRAGMA journal_mode=WAL`, so a fresh database raced
+   into "database is locked" → HTTP 500; the sync cursor was missing; the mlx-only ASR
+   tests skipped instead of running; the capture error had no receiver; the bridge write
+   error was swallowed; `close_dictionary()` did nothing.
+2. `close_dictionary()` was a no-op (sqlite3 forbids `close()` from a non-owning thread
+   and the bare `except` hid it); the sync cursor still dropped rows sharing a timestamp;
+   the required CI job stayed red (the handshake script asserted `sudachi` before the
+   `/tokenize` call that loads it).
+3. Closing a sqlite3 connection from another thread **segfaults** the interpreter - the
+   per-thread dictionary handle was unfixable that way. The dictionary now uses one
+   process-wide connection under a lock.
+4. Two new tests were vacuous (they passed with the fix reverted) and the headline fix
+   (one connection per request) had no behavioural test. Both are fixed.
+
+The reviews also confirmed: no scope creep, no weakened assertions, no machine-specific
+paths, and the 25 `scripts/*sanity*.js` suites behave identically on the base and on the
+branch.
 
 ## Open gaps
 
