@@ -729,6 +729,12 @@
     if (msg?.type === "ASR_CAPTURE_ERROR") {
       // The offscreen document could not capture the tab audio. Without this
       // the overlay would keep showing "listening" while no recorder runs.
+      // The message is broadcast, so only the tab that asked for the capture
+      // may act on it.
+      if (msg?.tabId != null && contentTabId != null && msg.tabId !== contentTabId) {
+        sendResponse({ ok: false, error: "not_this_tab" });
+        return true;
+      }
       audioListeningActive = false;
       publishSidePanelState({ forceList: true });
       toast("Không bật được nghe audio: " + (msg?.error || "Lỗi capture"));
@@ -2205,7 +2211,7 @@
             (res?.status === 409 || res?.skipped === "stale_revision")) {
           toast("Bản lưu mới hơn đã có. Xuất backup JSON trước khi Reload để giữ chỉnh sửa ở tab này.");
         }
-        return;
+        return { ok: false, skipped: res?.skipped === "stale_revision" || res?.status === 409 };
       }
       // Bridge answers with the Lamport rev it just wrote — adopt it, never guess.
       const rev = Number(res?.data?.rev) || 0;
@@ -2219,8 +2225,10 @@
           .sendMessage({ type: "DRIVE_UPLOAD_SCHEDULE", videoId })
           .catch(() => {});
       } catch (_) {}
+      return { ok: true, skipped: false };
     } catch (_) {
       /* bridge offline — chrome.storage still holds a copy */
+      return { ok: false, skipped: false };
     }
   }
 
@@ -2231,9 +2239,12 @@
     return result;
   }
   async function saveTranscript(opts = {}) {
-    if (!currentVideoId) return;
+    if (!currentVideoId) return { saved: false, skipped: false, diskWritten: false };
     const gen = navigateGen, videoId = currentVideoId, input = cues;
     const current = () => gen === navigateGen && videoId === currentVideoId && input === cues;
+    // awaitDisk: the caller needs the disk copy to be up to date, so a failed
+    // disk write must be reported instead of being silently accepted.
+    const awaitDisk = !!opts.awaitDisk;
     return withTranscriptWrite(async () => {
       if (!current()) return;
       const force = !!opts.force;
@@ -2269,7 +2280,9 @@
         meta: { owned: !!transcriptMeta.owned, rev, deviceId: String(transcriptMeta.deviceId || ""),
           updatedAt: new Date().toISOString(), tombstones: Array.from(new Set(transcriptMeta.tombstones || [])) },
         cues: payload.map(({ tokens, ...rest }) => rest) });
-      if (!result?.ok) throw new Error(result?.error || "Script save failed");
+      if (!result?.ok) {
+        throw new Error(result?.error || "Script save failed");
+      }
       if (result.skipped) {
         toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp");
         return { saved: false, skipped: true, diskWritten: false };
@@ -2285,8 +2298,12 @@
         } catch (_) {}
       }
       // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
-      if (current()) await saveTranscriptToDisk(payload);
-      return { saved: true, skipped: false, diskWritten: true };
+      const disk = current() ? await saveTranscriptToDisk(payload) : { ok: false };
+      const diskWritten = !!(disk && disk.ok);
+      if (awaitDisk && !diskWritten) {
+        return { saved: true, skipped: false, diskWritten: false };
+      }
+      return { saved: true, skipped: false, diskWritten };
     });
   }
 
@@ -5341,9 +5358,14 @@
     updateBar(active || null);
     updateCaptionStatusLine();
     publishSidePanelState();
-    // The write can be skipped when another tab holds a newer script - the
-    // disk copy then still holds the old EN/VI, so do not claim success.
+    // The write can be skipped (another tab holds a newer script) or the disk
+    // copy can fail (bridge offline) - in both cases the disk still holds the
+    // old EN/VI, so do not claim success.
     if (res && res.skipped) return;
+    if (res && res.diskWritten === false) {
+      toast("Đã xóa bản dịch trong trình duyệt, nhưng chưa ghi được xuống bridge");
+      return;
+    }
     toast("Đã xóa bản dịch");
   }
 

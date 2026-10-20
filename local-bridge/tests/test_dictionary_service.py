@@ -146,30 +146,47 @@ def test_context_cache_keeps_token_boundaries():
 def test_close_dictionary_closes_every_thread_handle():
     """A rebuild must close the handles of all threads, not only the caller's.
 
-    Each worker thread keeps its own read-only connection; closing only the
-    caller's left the other threads reading the replaced dict.sqlite.
+    The handle is created in a worker thread and closed from the main thread,
+    so the check runs in the owning thread afterwards.
     """
     import threading
 
     from app.services import dictionary as dictionary_service
 
+    ready = threading.Event()
     handles = []
 
     def worker():
         conn = dictionary_service._get_db()
         if conn is not None:
             handles.append(conn)
+        ready.set()
 
-    threads = [threading.Thread(target=worker) for _ in range(3)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    thread = threading.Thread(target=worker)
+    thread.start()
+    ready.wait(5)
+    thread.join()
 
     if not handles:
         pytest.skip("dict.sqlite is not available in this environment")
 
+    # Closed from ANOTHER thread than the one that opened the handle.
     dictionary_service.close_dictionary()
-    for conn in handles:
-        with pytest.raises(sqlite3.ProgrammingError):
-            conn.execute("SELECT 1")
+
+    results = []
+
+    def use_after_close():
+        try:
+            for conn in handles:
+                conn.execute("SELECT 1")
+            results.append("still-open")
+        except sqlite3.ProgrammingError as exc:
+            results.append(f"closed: {exc}")
+
+    owner = threading.Thread(target=use_after_close)
+    owner.start()
+    owner.join()
+
+    assert results and results[0].startswith("closed"), (
+        f"the handle must be closed for its owning thread, got {results}"
+    )

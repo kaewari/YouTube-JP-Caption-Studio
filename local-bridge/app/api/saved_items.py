@@ -43,11 +43,28 @@ def _ensure_schema() -> None:
         _schema_ready = True
 
 
+def _has_table(conn) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='saved_items'"
+    ).fetchone()
+    return row is not None
+
+
 def db_conn():
     conn = getattr(_local, "conn", None)
     if conn is None:
         _ensure_schema()
         conn = connect_db()
+        # The database file can be replaced while the bridge runs (a restore,
+        # a wipe). A connection to the old file would then lack the schema.
+        if not _has_table(conn):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            with _schema_lock:
+                init_db().close()
+            conn = connect_db()
         _local.conn = conn
     return conn
 
@@ -71,17 +88,23 @@ class SavedItemPayload(BaseModel):
 class SyncRequest(BaseModel):
     items: list[dict[str, Any]] = Field(default_factory=list)
     since: float = 0.0
+    # Second half of the keyset cursor: the rowid of the last row of the
+    # previous page. Without it rows sharing a timestamp would be skipped.
+    since_rowid: int = 0
 
 
 class SyncResponse(BaseModel):
     applied: int
     server_items: list[dict[str, Any]]
     sync_timestamp: float
-    # True when more rows are waiting; the client continues with next_since.
+    # True when more rows are waiting; the client continues with
+    # (next_since, next_rowid).
     has_more: bool = False
     next_since: float = 0.0
+    next_rowid: int = 0
 
 
+# Max items one sync request may carry (the client's payload).
 MAX_SYNC_ITEMS = 5000
 
 
@@ -94,7 +117,12 @@ def api_sync_saved(body: SyncRequest) -> SyncResponse:
         )
     try:
         conn = db_conn()
-        res = sync_items(conn, body.items, since_timestamp=body.since)
+        res = sync_items(
+            conn,
+            body.items,
+            since_timestamp=body.since,
+            since_rowid=body.since_rowid,
+        )
         return SyncResponse(**res)
     except Exception as exc:
         logger.exception("api_sync_saved error")

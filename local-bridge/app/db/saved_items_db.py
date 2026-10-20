@@ -33,6 +33,7 @@ def connect_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
     conn = sqlite3.connect(path, timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
@@ -108,6 +109,8 @@ def init_db(db_path: Optional[Path | str] = None) -> sqlite3.Connection:
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
+    # The rowid is an internal cursor column, not part of the item.
+    d.pop("rowid", None)
     if "metadata_json" in d and isinstance(d["metadata_json"], str):
         try:
             d["metadata"] = json.loads(d["metadata_json"])
@@ -283,6 +286,7 @@ def sync_items(
     conn: sqlite3.Connection,
     client_items: list[dict[str, Any]],
     since_timestamp: float = 0.0,
+    since_rowid: int = 0,
 ) -> dict[str, Any]:
     """Two-way sync: upsert client items using Last-Write-Wins, and return all updates since given timestamp."""
     applied_count = 0
@@ -292,19 +296,25 @@ def sync_items(
         upsert_item(conn, item)
         applied_count += 1
 
-    # Fetch updates from server since timestamp (including deleted items as tombstones).
-    # One row more than the limit tells us whether more rows are waiting.
+    # Fetch updates from server since the cursor (including deleted items as
+    # tombstones). The cursor is the pair (updated_at, rowid): a bare
+    # timestamp drops every row that shares the timestamp of the last row of a
+    # page, because "updated_at > ?" skips them.
     cur = conn.execute(
-        "SELECT * FROM saved_items WHERE updated_at > ? ORDER BY updated_at ASC LIMIT ?",
-        (since_timestamp, SYNC_PAGE_LIMIT + 1),
+        "SELECT rowid, * FROM saved_items"
+        " WHERE updated_at > ? OR (updated_at = ? AND rowid > ?)"
+        " ORDER BY updated_at ASC, rowid ASC LIMIT ?",
+        (since_timestamp, since_timestamp, since_rowid, SYNC_PAGE_LIMIT + 1),
     )
     rows = cur.fetchall()
     has_more = len(rows) > SYNC_PAGE_LIMIT
-    server_updates = [row_to_dict(r) for r in rows[:SYNC_PAGE_LIMIT]]
+    page = rows[:SYNC_PAGE_LIMIT]
+    server_updates = [row_to_dict(r) for r in page]
     now = time.time()
-    # A client paging on `since` must continue from the last row it received,
+    # A client paging on the cursor must continue from the last row it received,
     # not from "now" - otherwise the rows behind the page are never delivered.
-    next_since = server_updates[-1]["updated_at"] if server_updates else since_timestamp
+    next_since = page[-1]["updated_at"] if page else since_timestamp
+    next_rowid = page[-1]["rowid"] if page else since_rowid
 
     return {
         "applied": applied_count,
@@ -312,4 +322,5 @@ def sync_items(
         "sync_timestamp": now,
         "has_more": has_more,
         "next_since": next_since,
+        "next_rowid": next_rowid,
     }

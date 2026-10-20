@@ -139,17 +139,25 @@ def main() -> int:
     except Exception as exc:
         print(f"FAIL: bridge not reachable at {BRIDGE}: {exc}")
         return 1
-    if not health.get("models_loaded", {}).get("sudachi"):
-        print("FAIL: sudachi not loaded")
-        return 1
-
-    # Probe tokenize endpoint (restart bridge if 404)
+    # Probe tokenize endpoint (restart bridge if 404). The tokenizer is loaded
+    # lazily on the first call, so /health reports sudachi=false until then.
     try:
         probe = post("/tokenize", {"text": "日本語"})
     except urllib.error.HTTPError as exc:
         print(f"FAIL: /tokenize HTTP {exc.code} — restart local-bridge to load new route")
         return 1
     assert probe.get("tokens"), "tokenize returned empty"
+
+    # After the probe the tokenizer must be loaded (and reported as such).
+    try:
+        with urllib.request.urlopen(f"{BRIDGE}/health", timeout=5) as resp:
+            health = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        print(f"FAIL: bridge not reachable at {BRIDGE}: {exc}")
+        return 1
+    if not health.get("models_loaded", {}).get("sudachi"):
+        print("FAIL: sudachi not loaded")
+        return 1
 
     sample = [
         {

@@ -269,3 +269,36 @@ def test_sync_endpoint_rejects_oversized_payload():
         "since": 0.0,
     })
     assert res.status_code == 413
+
+
+def test_sync_paging_keeps_rows_that_share_a_timestamp(test_db: sqlite3.Connection):
+    """Rows sharing the page boundary timestamp must not be skipped.
+
+    A bare "updated_at > since" cursor drops every row whose timestamp equals
+    the last row of the previous page.
+    """
+    page_limit = 5000
+    total = page_limit + 10
+    with test_db:
+        # Two timestamps: one for the rows before the boundary, one shared by
+        # the rows on the boundary.
+        for i in range(total):
+            stamp = 1.0 if i < page_limit else 2.0
+            test_db.execute(
+                "INSERT INTO saved_items(id, type, source, created_at, updated_at)"
+                " VALUES(?,?,?,?,?)",
+                (f"tie_{i}", "cue", "s", stamp, stamp),
+            )
+
+    delivered: set[str] = set()
+    since, since_rowid = 0.0, 0
+    for _ in range(10):
+        res = sync_items(test_db, [], since_timestamp=since, since_rowid=since_rowid)
+        delivered.update(item["id"] for item in res["server_items"])
+        if not res["has_more"]:
+            break
+        since, since_rowid = res["next_since"], res["next_rowid"]
+
+    assert len(delivered) == total, (
+        f"paging lost {total - len(delivered)} rows that share a timestamp"
+    )

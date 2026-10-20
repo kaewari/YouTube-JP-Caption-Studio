@@ -322,7 +322,10 @@ def _get_db() -> sqlite3.Connection | None:
         return conn
     if SQLITE_DB.is_file():
         try:
-            conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0)
+            # check_same_thread=False so close_dictionary() can close this
+            # handle from another thread (sqlite3 forbids that otherwise).
+            # The handle is read-only (PRAGMA query_only), so sharing it is safe.
+            conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0, check_same_thread=False)
             conn.execute("PRAGMA query_only = ON;")
             _local.conn = conn
             with _open_conns_lock:
@@ -347,8 +350,8 @@ def close_dictionary() -> None:
     for conn in conns:
         try:
             conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed closing dict.sqlite handle: %s", exc)
     _local.conn = None
     _loaded = False
     _en_vi_cache = None
