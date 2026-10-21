@@ -23,7 +23,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/studio-caption-fixes-and-ux-optimization.md](topics/studio-caption-fixes-and-ux-optimization.md) | Studio caption fixes, performance & UX optimization — **done** (2026-09-19) |
 | [topics/youtube-sentence-enhancement-mvp.md](topics/youtube-sentence-enhancement-mvp.md) | YouTube sentence MVP — isolated real Chrome restore/Undo/reload/API PASS; main delivered; native activation/Gemini/Drive/full MVP open |
 | [topics/audio-listening-model.md](topics/audio-listening-model.md) | Audio Listening Model — gated M0-M3 implemented; waiting human auditory ground truth review |
-| [topics/p0-remediation-2026-10-20.md](topics/p0-remediation-2026-10-20.md) | P0 remediation of the 2026-10-18 full-codebase audit — **shipped** on `fix/audit-p0-remediation-20261020` (all P0 fixed + verified) |
+| [topics/p0-remediation-2026-10-20.md](topics/p0-remediation-2026-10-20.md) | P0 + P1 + P2 remediation of the 2026-10-18 full-codebase audit — **merged into `master`** (2fff75c48, all rows fixed + verified) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work

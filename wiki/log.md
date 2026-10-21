@@ -537,3 +537,35 @@ in `769f501a6` and a second review was run.
 Open: the audit's P1/P2 lists, 5 pre-existing `scripts/*sanity*.js` failures (identical on a
 pristine base tree), and the `bridgeJson()` 5xx blind spot that keeps a failed Drive mirror in
 the queue.
+
+## [2026-10-21] ingest | P1/P2 remediation of the full-codebase audit and the merge into master
+
+The P0 remediation topic now also covers the P1 and P2 rows of the same audit
+(2026-10-18) and the merge into `master` (2fff75c48, `git merge --no-ff`, no
+conflicts: master's tree was identical to the branch base 378e2aeb6).
+
+Closed in the branch (19 commits): the Gemini API key moved out of
+`chrome.storage.sync` into `chrome.storage.local` (sync replicated it to every
+signed-in Google account); `/asr/transcribe` accepts only allowlisted models and
+takes a governor slot; the error bodies no longer echo ffmpeg/MLX internals;
+`tokenize_ja` emits no sentence-wide token when Sudachi is missing (the repo's
+anti-clumping invariant); `vocab_freq` reports "loaded" only after a successful
+read; `script_store` fsyncs before the atomic replace; the dictionary queries the
+Han-Viet characters in one go and holds one connection under a lock; the content
+script only rebuilds the sentence engine when the cues changed; the web app got
+a schema version and a first `node --test` suite; the launchd plists were fixed
+(a quoted `$HOME` path - `bash -lc "~/Documents/YouTube JP Caption Studio/…"`
+was word-split and could never run); the anti-fake gate now scans the worker and
+the content script; CI runs the new worker/content/web tests.
+
+Found while repairing the stale sanity harnesses: a failed translation was
+retried immediately when the revision changed (the 30 s backoff no longer
+depends on the revision), and a bridge 5xx read as "nothing to mirror" so a
+queued Drive upload was dropped (the mirror now reads strictly and fails
+loudly).
+
+Verified on `master` after the merge: 15 extension suites, 133 bridge tests, 30
+repo-root tests, 25 sanity scripts, 7 web tests, the anti-fake gate - all green;
+all four CI jobs simulated green on a clean `git archive master` tree. Seven
+independent read-only reviews ran in total; every finding is closed with a test
+that fails on the old code.
