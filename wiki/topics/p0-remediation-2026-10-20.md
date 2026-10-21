@@ -62,6 +62,39 @@ were simulated on a clean `git archive` of the branch: all green. The base commi
 `local-bridge` needs the gitignored `data/dict/dict.sqlite` — without it 19 dictionary
 tests fail for environment reasons.
 
+## P1 / P2 (same branch)
+
+The remaining audit rows were closed in `63f514f72`:
+
+- **local-bridge**: the ASR model is allowlisted (an arbitrary HF repo or local
+  path could trigger an unauthenticated download), the heavy ASR path takes a governor
+  slot, the error bodies no longer echo ffmpeg/MLX internals, `vocab_freq` only
+  reports "loaded" after a successful read, `tokenize_ja` creates the tokenizer under a
+  lock and emits no sentence-wide token when Sudachi is missing (the repo forbids
+  clumping), `script_store` fsyncs before the atomic replace and no longer rewrites
+  `cues.json` on every GET, the dictionary queries the Han-Viet characters in one go
+  and probes a half-built dictionary once, and the app uses a lifespan context manager.
+- **extension**: the Gemini API key moved from `chrome.storage.sync` to
+  `chrome.storage.local` (sync replicated it to every signed-in Google account) and the
+  legacy copy is migrated and purged once; the model chain uses models that exist; the
+  entity decoders share one correct implementation; the worker aborts its fetches,
+  evicts its maps, filters the cookies it sends and allowlists the proxied commands;
+  the manifest pins the Chrome version; the content script rejects invalid cue indices,
+  reports the caption mode it applied and only rebuilds the sentence engine when the
+  cues changed; the side panel has one source for the JLPT colours and accessible
+  header/toast.
+- **web companion**: the settings write no longer happens inside a state updater, the
+  local records survive a merge, the stored payload carries a schema version, an
+  unknown version is never overwritten, the unused dependencies are gone and a first
+  `node --test` suite covers the store.
+- **docs / tools**: the ASR test case names the model in use, the test plan matrix
+  covers the shipped apps, the README makes no unverifiable claim, the launchd plists
+  resolve their path through the shell, and the machine-specific paths are gone.
+- **tests**: the stale sanity harnesses now assert the behaviour the product has, the
+  drivers skip with a clear message, and the scheduler harness found that a failed
+  translation was retried immediately when the revision changed (the 30 s backoff no
+  longer depends on the revision).
+
 ## Commits
 
 | Commit | Content |
