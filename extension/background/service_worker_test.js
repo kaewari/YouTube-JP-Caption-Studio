@@ -36,7 +36,10 @@ function makeResponse({ status = 200, body = "", headers = {} } = {}) {
 function loadServiceWorker({ route, cookies = [] } = {}) {
   const fetches = [];
   const tabMessages = [];
+  const sessionStore = {};
+  const localStore = {};
   let listener = null;
+  let alarmListener = null;
   let context = null;
 
   const fetchImpl = async (url, options = {}) => {
@@ -61,11 +64,29 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
     alarms: {
       create: async () => {},
       get: async () => null,
-      onAlarm: { addListener: () => {} },
+      onAlarm: { addListener: (fn) => { alarmListener = fn; } },
     },
     storage: {
-      local: { get: async () => ({}), set: async () => {}, remove: async () => {} },
-      session: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+      local: {
+        get: async (keys) => {
+          const list = Array.isArray(keys) ? keys : [keys];
+          return Object.fromEntries(list.map((k) => [k, localStore[k]]));
+        },
+        set: async (patch) => { Object.assign(localStore, structuredClone(patch)); },
+        remove: async (keys) => {
+          for (const k of Array.isArray(keys) ? keys : [keys]) delete localStore[k];
+        },
+      },
+      session: {
+        get: async (keys) => {
+          const list = Array.isArray(keys) ? keys : [keys];
+          return Object.fromEntries(list.map((k) => [k, sessionStore[k]]));
+        },
+        set: async (patch) => { Object.assign(sessionStore, structuredClone(patch)); },
+        remove: async (keys) => {
+          for (const k of Array.isArray(keys) ? keys : [keys]) delete sessionStore[k];
+        },
+      },
     },
     tabs: {
       sendMessage: async (tabId, msg) => { tabMessages.push({ tabId, msg }); return { ok: true }; },
@@ -136,7 +157,7 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       listener(msg, sender, resolve);
     });
 
-  return { fetches, tabMessages, send, chromeStub };
+  return { fetches, tabMessages, send, chromeStub, sessionStore, localStore, fireAlarm: (name) => alarmListener?.({ name }) };
 }
 
 const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fmt=json3";
@@ -269,6 +290,26 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
     assert.ok(!cookieHeader.includes("PREF"), "the tracking cookie PREF must not be sent");
     assert.ok(!cookieHeader.includes("YSC"), "the tracking cookie YSC must not be sent");
     console.log("PASS: the watch-HTML request only carries the SAPISID/CONSENT/VISITOR_INFO cookies");
+  }
+
+  // 5. A failed bridge read must not drop the queued Drive mirror.
+  {
+    const sw = loadServiceWorker({
+      route: (url) => (url.includes("127.0.0.1:8765")
+        ? makeResponse({ status: 500, body: "bridge down" })
+        : makeResponse({ status: 404, body: "" })),
+    });
+    sw.sessionStore.drivePendingMirror = ["vid-1"];
+    // Drive is connected, so the mirror really tries to read the bridge.
+    sw.localStore.driveConnected = true;
+    await sw.fireAlarm("drive_upload_retry");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(
+      sw.sessionStore.drivePendingMirror,
+      ["vid-1"],
+      "a bridge failure must keep the video in the Drive mirror queue",
+    );
+    console.log("PASS: a failed bridge read keeps the video queued for the Drive mirror");
   }
 
   console.log("ALL SERVICE WORKER TESTS PASSED!");

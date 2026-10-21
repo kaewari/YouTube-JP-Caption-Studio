@@ -1638,10 +1638,25 @@ async function driveConnected() {
   return !!(s.driveConnected || s.driveFileId);
 }
 
-async function bridgeJson(path) {
+/**
+ * Read JSON from the local bridge.
+ *
+ * `strict: true` turns a failed read into an error instead of null: the Drive
+ * mirror must not mistake "the bridge said 500" for "there is nothing to
+ * mirror", or the video would leave the queue although the mirror never ran.
+ */
+async function bridgeJson(path, opts = {}) {
   const res = await fetch(`${BRIDGE}${path}`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
+  if (!res.ok) {
+    if (opts.strict) throw new Error(`bridge GET ${path} -> HTTP ${res.status}`);
+    return null;
+  }
+  try {
+    return await res.json();
+  } catch (err) {
+    if (opts.strict) throw new Error(`bridge GET ${path} -> invalid JSON`);
+    return null;
+  }
 }
 
 async function driveList(q) {
@@ -1731,14 +1746,14 @@ async function mirrorToDrive(videoIds) {
   if (!(await driveConnected())) return { ok: true, skipped: "not_connected" };
   const ids = videoIds?.length
     ? videoIds
-    : ((await bridgeJson("/scripts")) || []).map((s) => s.video_id);
+    : ((await bridgeJson("/scripts", { strict: true })) || []).map((s) => s.video_id);
   const { lastMirroredRev = {} } = await chrome.storage.local.get(["lastMirroredRev"]);
   const mirrored = [];
   for (const id of ids) {
-    const meta = await bridgeJson(`/scripts/${encodeURIComponent(id)}/meta`);
+    const meta = await bridgeJson(`/scripts/${encodeURIComponent(id)}/meta`, { strict: true });
     if (!meta) continue;
     if (lastMirroredRev[id] === meta.rev) continue;
-    const files = (await bridgeJson(`/scripts/${encodeURIComponent(id)}/files`))?.files;
+    const files = (await bridgeJson(`/scripts/${encodeURIComponent(id)}/files`, { strict: true }))?.files;
     if (!files) continue;
     const folderId = await ensureVideoFolder(id);
     const existing = await driveChildren(folderId);
