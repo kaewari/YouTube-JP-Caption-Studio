@@ -112,7 +112,7 @@ jobs:
       - name: Run extension test suites
         run: |
           set -euo pipefail
-          for suite in extension/shared/*_test.js extension/offscreen/audio_capture_test.js extension/sidepanel/sidepanel_pure_test.js; do
+          for suite in extension/shared/*_test.js extension/offscreen/audio_capture_test.js extension/sidepanel/sidepanel_pure_test.js extension/background/service_worker_test.js extension/content/content_test.js; do
             echo "::group::$suite"
             node "$suite"
             echo "::endgroup::"
@@ -135,4 +135,5 @@ jobs:
           cache: npm
           cache-dependency-path: web/saved-items/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run check

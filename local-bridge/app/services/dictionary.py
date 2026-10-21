@@ -365,8 +365,10 @@ def close_dictionary() -> None:
                 conn.close()
             except Exception as exc:
                 logger.warning("Failed closing dict.sqlite handle: %s", exc)
-    _loaded = False
-    _db_tables = frozenset()
+        # The table probe belongs to the handle: reset it under the same lock,
+        # otherwise a concurrent reopen could wipe it mid-lookup.
+        _loaded = False
+        _db_tables = frozenset()
     _en_vi_cache = None
     dict_cache.clear()
 

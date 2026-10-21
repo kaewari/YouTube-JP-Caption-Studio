@@ -471,7 +471,7 @@ Nhật ký ngắn (không phải transcript). Runtime bridge: `local-bridge/erro
 ### 2026-10-12 — Tái hiện Phụ đề Chuẩn Âm thanh Tuyệt đối & Karaoke Word Highlight (Phase 4 ASR)
 
 1. **Kotoba-Whisper v2.2 MLX & Silero VAD trên Apple Silicon Metal GPU (`local-bridge`)**
-   - **Bóc băng chuẩn xác tiếng Nhật**: Tích hợp model chuyên sâu `kotoba-tech/kotoba-whisper-v2.2-mlx` chạy trực tiếp qua MLX framework trên Metal GPU (24GB Unified Memory), đạt tốc độ xử lý nhanh gấp 10 lần thời gian thực (RTF < 0.1x).
+   - **Bóc băng chuẩn xác tiếng Nhật**: Tích hợp model chuyên sâu `kaiinui/kotoba-whisper-v2.0-mlx` chạy trực tiếp qua MLX framework trên Metal GPU (24GB Unified Memory), đạt tốc độ xử lý nhanh gấp 10 lần thời gian thực (RTF < 0.1x).
    - **Khử 100% ảo giác lặp từ (VAD Filter)**: Tích hợp `Silero VAD` lọc sạch các đoạn chỉ có nhạc nền (BGM) hoặc khoảng lặng trước khi đưa vào Whisper, giải quyết dứt điểm hiện tượng lặp từ vô hạn của các model ASR.
    - **Tải audio ngầm & Rolling Lookahead**: Sử dụng `yt-dlp` tải stream audio ngầm lưu vào `data/audio_cache/`, hỗ trợ trích xuất nhanh 5–10 phút đầu của video dài để người dùng có phụ đề chuẩn sớm nhất.
 

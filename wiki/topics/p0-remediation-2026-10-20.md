@@ -137,11 +137,13 @@ branch.
 
 ## Open gaps
 
-- The audit's P1/P2 lists are untouched (they are not P0).
-- `scripts/*sanity*.js`: 5 suites fail — `sentence_drive_mirror`, `sentence_native_backup`,
-  `sentence_saved_state`, `sentence_scheduler`, `sidepanel_open`. They fail identically on a
-  pristine `git archive 378e2aeb6` tree, so they are pre-existing, not regressions.
 - The `bridgeJson()` helper still reports success on a 5xx, so a failed Drive mirror leaves
   its ID in the queue (needs a status-aware helper).
 - The extension suites run under `file://` with a `chrome.*` stub in the local browser
   harness; the extension-origin context was not exercised here.
+- The dictionary corpus (JMdict / Mazii) is downloaded by `POST /bootstrap` and is not
+  committed, so the 10 corpus-backed dictionary tests skip in a clean CI checkout. The two
+  dictionary concurrency tests that guard the P0 connection fix DO run there.
+- The 61% duplication between the iPad and iPhone apps is documented, not removed: a shared
+  Swift package is a large refactor and the mirrored files stay byte-identical so the next
+  fix is one diff.

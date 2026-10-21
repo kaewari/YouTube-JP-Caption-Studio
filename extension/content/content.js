@@ -6197,10 +6197,15 @@
     startLoop();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
+  // The Node harness (extension/content/content_test.js) opts in through the
+  // seam below and only exercises the pure helpers - it must not boot the
+  // browser UI.
+  if (!globalThis.__JP_CAP_CONTENT_TEST__) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
