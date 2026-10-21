@@ -136,6 +136,20 @@ The reviews also confirmed: no scope creep, no weakened assertions, no machine-s
 paths, and the 25 `scripts/*sanity*.js` suites behave identically on the base and on the
 branch.
 
+## Corrections to the filed plan
+
+`plan/p0-remediation-2026-10-20.md` is immutable once filed (AGENTS.md §4), so the two facts
+learned while executing it live here instead:
+
+- **`/saved/sync` cursor**: the response carries `has_more` / `next_since` / `next_rowid`; the
+  cursor is the pair `(updated_at, rowid)`, so rows that share a timestamp are never skipped.
+  A client pages with `since` + `since_rowid` (the contract is documented on the endpoint);
+  `sync_timestamp` is the server clock, not a cursor.
+- **Verification commands**: the bridge suite is `cd local-bridge && python -m pytest -q tests/`
+  (123 passed / 15 skipped on a clean checkout - the skips need the dictionary corpus), and the
+  CI handshake step is `cd local-bridge && BRIDGE_URL=… python tests/test_tokenize_import_enrich.py`
+  (needs a running bridge).
+
 ## Merge
 
 Merged into `master` with `git merge --no-ff` (2fff75c48, no conflicts: master's tree was

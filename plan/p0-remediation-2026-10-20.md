@@ -17,9 +17,8 @@ based on `fix/audit-p0-20261020` (378e2aeb6). `master` is never a base of this b
 | Area | Command |
 |---|---|
 | Extension unit suites | `node extension/shared/*_test.js`, `node extension/offscreen/audio_capture_test.js`, `node extension/sidepanel/sidepanel_pure_test.js` |
-| Bridge | `cd local-bridge && python -m pytest -q tests/ -k "not test_live_ja_android and not test_live_en_watch_html"` (79 passed / 15 skipped on a clean checkout; the skips need the dictionary corpus) |
+| Bridge | `cd local-bridge && python -m pytest -q tests/ -k "not test_live_ja_android and not test_live_en_watch_html"` |
 | Repo root | `python -m pytest -q tests/` |
-| CI handshake step | `cd local-bridge && BRIDGE_URL=… python tests/test_tokenize_import_enrich.py` (needs a running bridge) |
 | Web | `cd web/saved-items && npm run check` |
 | Anti-fake gate | `node scripts/verify_no_fake_tests.js` |
 
@@ -33,7 +32,7 @@ without it 19 dictionary tests fail for environment reasons, not code reasons.
 | P0 | Fix |
 |---|---|
 | Shared SQLite connection across threads → intermittent HTTP 500 | One connection per worker thread; the schema is created once per process (a `PRAGMA journal_mode=WAL` needs an exclusive lock) |
-| `/saved/sync` response unbounded | `LIMIT 5000` plus `has_more` / `next_since` / `next_rowid`; the cursor is the pair `(updated_at, rowid)`, so rows sharing a timestamp are never skipped. A client pages with `since` + `since_rowid` (the contract is documented on the endpoint); `sync_timestamp` is the server clock, not a cursor |
+| `/saved/sync` response unbounded | `LIMIT 5000` plus `has_more` / `next_since` so every row stays reachable |
 | `/saved/sync` payload unbounded | 413 above 5000 items |
 | `DictResponse.hanviet` declared twice | Second declaration removed |
 | `Any` used but never imported in `dictionary.py` | Import added |
