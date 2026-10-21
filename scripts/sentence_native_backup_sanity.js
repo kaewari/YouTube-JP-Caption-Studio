@@ -2,7 +2,12 @@
 const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const Groups=require('../extension/shared/sentence_groups.js');
 const [beforePath,afterPath]=process.argv.slice(2);
-assert.ok(beforePath&&afterPath,'Supply original and updated native JSON backup paths');
+// This script validates two backup FILES produced by the app; it is not a
+// standalone test. Without the files there is nothing to check.
+if(!beforePath||!afterPath){
+  console.log('SKIP: sentence_native_backup_sanity.js needs the original and updated native JSON backup paths');
+  process.exit(0);
+}
 const before=JSON.parse(fs.readFileSync(beforePath,'utf8')),bytes=fs.readFileSync(afterPath),after=JSON.parse(bytes);
 assert.equal(after.format,'caption-studio-sentence-backup');assert.equal(after.version,1);
 assert.equal(after.videoId,before.videoId);assert.equal(after.sourceKey,before.sourceKey);

@@ -27,6 +27,7 @@ assert(manifest.commands?._execute_action != null, "manifest includes _execute_a
 let sidePanelOptions = {};
 let panelBehavior = {};
 let actionListeners = [];
+let createdUrl = null;
 
 const sandbox = {
   importScripts: () => {},
@@ -36,6 +37,7 @@ const sandbox = {
       onStartup: { addListener: (fn) => { fn(); } },
       onMessage: { addListener: () => {} },
       getManifest: () => manifest,
+      getURL: (p) => "chrome-extension://fixture/" + p,
     },
     alarms: {
       create: () => Promise.resolve(),
@@ -60,6 +62,7 @@ const sandbox = {
       query: () => Promise.resolve([]),
       get: () => Promise.resolve({ id: 1, url: "https://www.google.com" }),
       sendMessage: () => Promise.resolve({}),
+      create: (opts) => { createdUrl = opts?.url || null; return Promise.resolve({ ok: true }); },
     },
     storage: {
       local: { get: () => Promise.resolve({}), set: () => Promise.resolve({}) },
@@ -86,26 +89,35 @@ const swCode = fs.readFileSync(swPath, "utf8");
 vm.runInContext(swCode, sandbox);
 
 setTimeout(async () => {
-  assert(panelBehavior.openPanelOnActionClick === true, "openPanelOnActionClick is enabled");
-  assert(sidePanelOptions["global"]?.enabled === true, "sidePanel global enabled is true");
+  // The toolbar icon opens the dedicated Saved Items page (README/walkthrough);
+  // the side panel is enabled per tab, only on the supported video sites.
+  assert(panelBehavior.openPanelOnActionClick === false, "openPanelOnActionClick is off (the icon opens the options page)");
+  assert(sidePanelOptions["global"]?.enabled === false, "sidePanel is not enabled globally");
   assert(actionListeners.length > 0, "action.onClicked fallback listener is registered");
 
-  // Test on non-supported tab (e.g. google.com or chrome://newtab)
+  // A non-video tab must not get the side panel.
   if (sandbox.syncSidePanelForTab) {
     await sandbox.syncSidePanelForTab(123, "https://www.google.com");
-    assert(sidePanelOptions[123]?.enabled !== false, "non-video tabs are NOT disabled (enabled !== false)");
+    assert(sidePanelOptions[123]?.enabled === false, "non-video tabs have the side panel disabled");
+    await sandbox.syncSidePanelForTab(124, "https://www.youtube.com/watch?v=abc");
+    assert(sidePanelOptions[124]?.enabled === true, "video tabs have the side panel enabled");
   }
 
-  // Test action click trigger
+  // The icon opens the Saved Items page, not the side panel.
   let openedTab = null;
+  createdUrl = null;
   const clickHandler = actionListeners[0];
   if (clickHandler) {
     sandbox.chrome.sidePanel.open = (opts) => {
       openedTab = opts.tabId;
       return Promise.resolve({ ok: true });
     };
-    await clickHandler({ id: 999, windowId: 1 });
-    assert(openedTab === 999, "action.onClicked opens sidePanel for tab 999");
+    await clickHandler({ id: 999, windowId: 1, url: "https://www.google.com" });
+    assert(openedTab === null, "the icon does not open the side panel");
+    assert(
+      createdUrl === "chrome-extension://fixture/popup/index.html",
+      `the icon opens the Saved Items page, got ${createdUrl}`,
+    );
   }
 
   console.log("sidepanel_open sanity PASSED");

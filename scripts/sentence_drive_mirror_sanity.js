@@ -1,6 +1,14 @@
 /** Production worker mirror/pull functions + real disposable bridge HTTP; cloud adapters are isolated fixtures. */
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
-const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+// This script is a DRIVER: it is fed a JSON payload on stdin by
+// scripts/sentence_script_store_sanity.py (address, videoId, folder, files).
+let rawInput = '';
+try { rawInput = fs.readFileSync(0, 'utf8'); } catch (_) { rawInput = ''; }
+if (!rawInput.trim()) {
+  console.log('SKIP: sentence_drive_mirror_sanity.js needs the JSON payload on stdin (see scripts/sentence_script_store_sanity.py)');
+  process.exit(0);
+}
+const input = JSON.parse(rawInput);
 const source = fs.readFileSync(require.resolve('../extension/background/service_worker.js'), 'utf8');
 const mirror = source.slice(source.indexOf('async function mirrorFromDrive('), source.indexOf('/** Content scripts need tabs.sendMessage'));
 const pull = source.slice(source.indexOf('async function pullDriveIfNewer('), source.indexOf('/** videoIds seen since the last flush'));
@@ -15,13 +23,23 @@ async function bridgeJson(path) {
   assert.equal(response.status, 200);
   return response.json();
 }
+// The sliced worker code uses the bridge fetch timeout; take the real value
+// from the source so the harness cannot drift from the production constant.
+const bridgeFetchTimeoutMs = Number(
+  (source.match(/const BRIDGE_FETCH_TIMEOUT_MS = (\d+)/) || [0, 20000])[1],
+);
 const context = vm.createContext({
-  fetch, Date, Map, encodeURIComponent, console,
+  fetch, Date, Map, encodeURIComponent, console, AbortSignal,
+  BRIDGE_FETCH_TIMEOUT_MS: bridgeFetchTimeoutMs,
   chrome: { storage: { local: {
     get: async () => structuredClone(storage),
     set: async patch => Object.assign(storage, structuredClone(patch)),
   } } },
   driveConnected: async () => true,
+  // The cloud adapter is isolated as a fixture; these two are the production
+  // helpers the mirrored code calls (they live outside the sliced region).
+  getDriveFolderId: async () => 'fixture-folder',
+  markFreshChecked: () => {},
   driveList: async () => [{ id: 'fixture-folder', name: input.videoId }],
   driveChildren: async () => new Map(Object.keys(input.files).map(name => [name, name])),
   driveGetText: async name => {
