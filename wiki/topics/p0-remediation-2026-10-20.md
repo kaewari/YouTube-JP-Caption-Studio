@@ -1,8 +1,9 @@
 # P0 remediation — 2026-10-20
 
-Status: **shipped** on `fix/audit-p0-remediation-20261020` (worktree
-`.claude/worktrees/audit-p0-remediation-20261020`, base `fix/audit-p0-20261020` @ 378e2aeb6).
-`master` was never a base of this branch.
+Status: **shipped and merged into `master`** (merge commit 2fff75c48). Developed on
+`fix/audit-p0-remediation-20261020` (worktree `.claude/worktrees/audit-p0-remediation-20261020`,
+base `fix/audit-p0-20261020` @ 378e2aeb6) - `master` was never a base of that branch, it only
+received the finished result.
 
 Raw: [plan/p0-remediation-2026-10-20.md](../../plan/p0-remediation-2026-10-20.md) ·
 [review/full-codebase-improvement-audit-2026-10-18.md](../../review/full-codebase-improvement-audit-2026-10-18.md)
@@ -134,6 +135,13 @@ has a test that fails on the old code:
 The reviews also confirmed: no scope creep, no weakened assertions, no machine-specific
 paths, and the 25 `scripts/*sanity*.js` suites behave identically on the base and on the
 branch.
+
+## Merge
+
+Merged into `master` with `git merge --no-ff` (2fff75c48, no conflicts: master's tree was
+identical to the branch base). After the merge the whole suite was re-run **on master**:
+15 extension suites, 133 bridge tests, 30 repo-root tests, 25 sanity scripts, the web suite
+and all four CI jobs simulated on a clean `git archive master` tree - all green.
 
 ## Open gaps
 
