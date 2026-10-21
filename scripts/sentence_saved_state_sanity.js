@@ -34,6 +34,7 @@ let cues=[{id:'a',source:'どこ',start_media_time:0,end_media_time:1,tokens:[]}
  captionMode='original',sentenceSourceKey='',sentenceProjection=null,sentenceProjectionCues=null,enhancedCues=[],sentenceTranslations={},sentenceTokens={},
  sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
  sentenceBenchmark=null,sentenceRawTrack=null,sentenceRestorePending=false,listDirty=true,currentMediaTime=0,savedCues={},navigateGen=1,settings={sourceLang:'ja'},
+ audioListeningActive=false,
  transcriptMeta={owned:true,rev:2,tombstones:['deleted']},saveTimer=null;
 const tabPrefix=()=>'',metaStorageKey=id=>'transcriptMeta:'+id,loadDiskMeta=async()=>null;
 const saveTranscriptToDisk=async payload=>disk.push(structuredClone(payload));

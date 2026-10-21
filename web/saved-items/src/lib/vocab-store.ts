@@ -7,9 +7,10 @@ import {
   type ChromeStorageChange,
 } from "@/lib/chrome-env";
 import { IS_DEV, MOCK_SAVED_WORDS } from "@/lib/mock-data";
+import { readEnvelope, writeEnvelope } from "@/lib/storage-version";
 import type { SavedCue, SavedWord, UserVocabMap, VocabStatus } from "@/types/vocab";
 
-const STORAGE_KEY = "ytcaption.savedWords.v1";
+export const LOCAL_SAVED_WORDS_KEY = "ytcaption.savedWords.v1";
 export const CHROME_USER_VOCAB_KEY = "userVocab";
 
 export type DataSource =
@@ -89,7 +90,78 @@ export function mergeUserVocabMap(
   return next;
 }
 
-async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
+/** Lemmas deleted here whose removal upstream (chrome.storage / bridge) has not
+ *  applied yet. Without them the ~1.5s bridge poll re-adds the just-deleted word. */
+const pendingDeletes = new Set<string>();
+
+/** Detail fields of a saved word — they exist in the local mirror only. */
+function withLocalDetails(next: SavedWord, prev: SavedWord): SavedWord {
+  return {
+    ...prev,
+    ...next,
+    reading: next.reading ?? prev.reading,
+    glossVi: next.glossVi ?? prev.glossVi,
+    glossEn: next.glossEn ?? prev.glossEn,
+    jlpt: next.jlpt || prev.jlpt || "",
+    contextJa: next.contextJa ?? prev.contextJa,
+    videoTitle: next.videoTitle ?? prev.videoTitle,
+  };
+}
+
+/** Merge the words being written with the records already in the local mirror.
+ *  The upstream map only carries lemma → status, so the gloss/context live in
+ *  the mirror alone: a write that replaced the mirror with the upstream set
+ *  dropped them for good. The upstream set still decides what is shown, the
+ *  mirror keeps every record so the details come back if it does. */
+export function mergeLocalRecords(
+  local: SavedWord[],
+  words: SavedWord[],
+): SavedWord[] {
+  const byLemma = new Map(local.map((w) => [w.lemma, w]));
+  const merged = words.map((w) => {
+    const prev = byLemma.get(w.lemma);
+    return prev ? withLocalDetails(w, prev) : w;
+  });
+  const known = new Set(words.map((w) => w.lemma));
+  for (const w of local) {
+    if (!known.has(w.lemma) && !pendingDeletes.has(w.lemma)) merged.push(w);
+  }
+  return merged;
+}
+
+/** True when the stored payload was written by a newer build. Writing this
+ *  build's payload over it would destroy data this build cannot read. */
+function hasUnsupportedPayload(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return false;
+    return readEnvelope(JSON.parse(raw)).kind === "unsupported";
+  } catch {
+    return false;
+  }
+}
+
+/** Shown when the local mirror comes from a newer build. */
+const LOCAL_NEWER_NOTE = " · Dữ liệu local mới hơn app — không ghi đè";
+
+/** Merge an upstream map, honouring deletes that upstream has not applied yet.
+ *  A tombstone is dropped as soon as the upstream map no longer holds the lemma. */
+function mergeUpstreamMap(prev: SavedWord[], map: UserVocabMap): SavedWord[] {
+  for (const lemma of pendingDeletes) {
+    if (!(lemma in map)) pendingDeletes.delete(lemma);
+  }
+  const visible: UserVocabMap = {};
+  for (const [lemma, status] of Object.entries(map)) {
+    if (pendingDeletes.has(lemma)) continue;
+    visible[lemma] = status;
+  }
+  return mergeUserVocabMap(prev, visible);
+}
+
+/** Push the vocab map to the local bridge. Returns the failure (if any) so
+ *  the caller can report what really happened instead of claiming success. */
+async function pushVocabToBridge(map: UserVocabMap): Promise<string | null> {
   try {
     await fetch(`${BRIDGE_BASE}/extension_state`, {
       method: "POST",
@@ -100,8 +172,9 @@ async function pushVocabToBridge(map: UserVocabMap): Promise<void> {
       }),
       signal: AbortSignal.timeout(2000),
     });
-  } catch {
-    /* optional */
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 
@@ -127,11 +200,12 @@ export async function fetchVocabFromBridge(): Promise<UserVocabMap | null> {
 function loadLocalWords(): SavedWord[] | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(LOCAL_SAVED_WORDS_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const words = parsed
+    const read = readEnvelope<unknown>(JSON.parse(raw));
+    if (read.kind === "unsupported") return null;
+    const list = Array.isArray(read.data) ? read.data : [];
+    const words = list
       .map(normalizeWord)
       .filter((w): w is SavedWord => !!w);
     return words.length ? words : null;
@@ -153,6 +227,10 @@ export async function loadWordsAsync(): Promise<LoadResult> {
   }
 
   const localRich = loadLocalWords() || [];
+  // The mirror was written by a newer build: it is neither read nor overwritten.
+  const localNewer = hasUnsupportedPayload(LOCAL_SAVED_WORDS_KEY)
+    ? LOCAL_NEWER_NOTE
+    : "";
 
   if (hasChromeStorage()) {
     try {
@@ -161,21 +239,21 @@ export async function loadWordsAsync(): Promise<LoadResult> {
       const raw = data[CHROME_USER_VOCAB_KEY];
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
         const map = raw as UserVocabMap;
-        const words = mergeUserVocabMap(localRich, map);
+        const words = mergeUpstreamMap(localRich, map);
         return {
           words,
           source: "chrome.storage",
           note:
-            words.length && Object.keys(map).length
+            (words.length && Object.keys(map).length
               ? "chrome.storage.local · userVocab (live sync với dict / side panel)"
-              : "Chưa có từ thật — đánh dấu trong dict popup trên YouTube.",
+              : "Chưa có từ thật — đánh dấu trong dict popup trên YouTube.") + localNewer,
         };
       }
       if (localRich.length) {
         return {
           words: localRich,
           source: "localStorage",
-          note: "userVocab trống — hiện gloss localStorage.",
+          note: "userVocab trống — hiện gloss localStorage." + localNewer,
         };
       }
       return {
@@ -190,7 +268,7 @@ export async function loadWordsAsync(): Promise<LoadResult> {
 
   const bridgeMap = await fetchVocabFromBridge();
   if (bridgeMap && Object.keys(bridgeMap).length) {
-    const words = mergeUserVocabMap(localRich, bridgeMap);
+    const words = mergeUpstreamMap(localRich, bridgeMap);
     return {
       words,
       source: "bridge",
@@ -245,34 +323,63 @@ export function loadWords(): LoadResult {
   };
 }
 
-export async function persistWordsAsync(words: SavedWord[]): Promise<DataSource> {
-  if (typeof window === "undefined") return "mock";
+export type PersistResult = {
+  source: DataSource;
+  /** Set when the local store was written but the bridge mirror failed. */
+  bridgeError: string | null;
+};
+
+/** Persist the word list. Rejects when the target store could not be written —
+ *  callers must surface that instead of reporting "Đã lưu". */
+export async function persistWordsAsync(words: SavedWord[]): Promise<PersistResult> {
+  if (typeof window === "undefined") return { source: "mock", bridgeError: null };
   const map = toUserVocabMap(words);
 
+  let localError: unknown = null;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
-  } catch {
-    /* ignore */
+    // Merge with the records already in the mirror: the detail fields
+    // (gloss, context) live here only — replacing the mirror with the
+    // upstream set would drop them for good.
+    const merged = mergeLocalRecords(loadLocalWords() || [], words);
+    if (!hasUnsupportedPayload(LOCAL_SAVED_WORDS_KEY)) {
+      window.localStorage.setItem(
+        LOCAL_SAVED_WORDS_KEY,
+        JSON.stringify(writeEnvelope(merged)),
+      );
+    }
+  } catch (error) {
+    localError = error;
   }
 
   if (hasChromeStorage()) {
     try {
       await getChromeStorage()!.set({ [CHROME_USER_VOCAB_KEY]: map });
-      void pushVocabToBridge(map);
-      return "chrome.storage";
-    } catch {
-      /* fall through */
+      return { source: "chrome.storage", bridgeError: await pushVocabToBridge(map) };
+    } catch (error) {
+      // chrome.storage is the extension's source of truth — never report success.
+      throw new Error(
+        `chrome.storage: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
-  void pushVocabToBridge(map);
-  return "localStorage";
+  if (localError) {
+    throw new Error(
+      `localStorage: ${localError instanceof Error ? localError.message : String(localError)}`,
+    );
+  }
+
+  return { source: "localStorage", bridgeError: await pushVocabToBridge(map) };
 }
 
 export function persistWords(words: SavedWord[]): void {
-  void persistWordsAsync(words);
+  void persistWordsAsync(words).catch((error: unknown) => {
+    console.error("persistWords failed", error);
+  });
 }
 
+/** Change a word status. `status = null` deletes the word — the delete is
+ *  tombstoned so the upstream poll cannot resurrect it. */
 export function setWordStatus(
   words: SavedWord[],
   lemma: string,
@@ -281,8 +388,10 @@ export function setWordStatus(
   const key = lemma.trim();
   if (!key) return words;
   if (!status) {
+    pendingDeletes.add(key);
     return words.filter((w) => w.lemma !== key);
   }
+  pendingDeletes.delete(key);
   const idx = words.findIndex((w) => w.lemma === key);
   if (idx === -1) {
     return [
@@ -301,10 +410,14 @@ export function setWordStatus(
 
 export function resetToMock(): SavedWord[] {
   const words = MOCK_SAVED_WORDS.map((w) => ({ ...w }));
+  pendingDeletes.clear();
   // Demo-only: fill the localhost UI, never pollute chrome.storage/bridge
   // (extension pull would otherwise replace real words with demo words).
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+    window.localStorage.setItem(
+      LOCAL_SAVED_WORDS_KEY,
+      JSON.stringify(writeEnvelope(words)),
+    );
   } catch {
     /* ignore */
   }
@@ -330,7 +443,7 @@ export function subscribeVocab(
         raw && typeof raw === "object" && !Array.isArray(raw)
           ? (raw as UserVocabMap)
           : {};
-      onChange(mergeUserVocabMap(getPrev(), map), "chrome.storage");
+      onChange(mergeUpstreamMap(getPrev(), map), "chrome.storage");
     };
     onChanged.addListener(listener);
     return () => onChanged.removeListener(listener);
@@ -348,7 +461,7 @@ export function subscribeVocab(
         const j = JSON.stringify(map);
         if (j === lastJson) return;
         lastJson = j;
-        onChange(mergeUserVocabMap(getPrev(), map), "bridge");
+        onChange(mergeUpstreamMap(getPrev(), map), "bridge");
       } finally {
         isPolling = false;
       }
@@ -411,8 +524,11 @@ export async function loadSavedCuesAsync(): Promise<{ cues: SavedCue[]; source: 
   try {
     const raw = window.localStorage.getItem(LOCAL_SAVED_CUES_KEY);
     if (raw) {
-      const cues = normalizeSavedCuesList(JSON.parse(raw));
-      return { cues, source: "localStorage", note: `Local · ${cues.length} câu` };
+      const read = readEnvelope<unknown>(JSON.parse(raw));
+      if (read.kind !== "unsupported") {
+        const cues = normalizeSavedCuesList(read.data);
+        return { cues, source: "localStorage", note: `Local · ${cues.length} câu` };
+      }
     }
   } catch {
     /* ignore */
@@ -430,12 +546,19 @@ export async function deleteSavedCueAsync(cueId: string): Promise<void> {
     if (!result?.ok) throw new Error(result?.error || "Saved state update failed");
   }
 
-  // Also update localStorage
+  // Also update localStorage — never over a payload from a newer build.
   try {
+    if (hasUnsupportedPayload(LOCAL_SAVED_CUES_KEY)) return;
     const raw = window.localStorage.getItem(LOCAL_SAVED_CUES_KEY);
     if (raw) {
-      const cues = normalizeSavedCuesList(JSON.parse(raw)).filter((c) => c.id !== cueId);
-      window.localStorage.setItem(LOCAL_SAVED_CUES_KEY, JSON.stringify(cues));
+      const read = readEnvelope<unknown>(JSON.parse(raw));
+      const cues = normalizeSavedCuesList(
+        read.kind === "unsupported" ? [] : read.data,
+      ).filter((c) => c.id !== cueId);
+      window.localStorage.setItem(
+        LOCAL_SAVED_CUES_KEY,
+        JSON.stringify(writeEnvelope(cues)),
+      );
     }
   } catch {
     /* ignore */

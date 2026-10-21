@@ -10,7 +10,9 @@ const projectionFunctions = source.slice(source.indexOf("  let sortedCuesCache =
 const commandFunction = source.slice(source.indexOf("  async function handleSidePanelCmd"),
   source.indexOf("  function bridgeFetch"));
 const originalTokens = source.slice(source.indexOf('  function originalTokensMatch'), source.indexOf('  /** cues.json'));
-const starFunctions = source.slice(source.indexOf("  function isCueStarred"), source.indexOf("  function getSortedCues"));
+// The star helpers are a small block; anchor the end on the next helper so the
+// slice cannot swallow unrelated production code (the trigger lives further down).
+const starFunctions = source.slice(source.indexOf("  function isCueStarred"), source.indexOf("  function findVideo()"));
 const metadata = source.slice(source.indexOf("  function cachedSourceMetadata("), source.indexOf("  function cacheCueScore("));
 const cacheWrapper = source.slice(source.indexOf("  async function loadCachedCues"), source.indexOf("  async function loadLegacyCachedCues"));
 const writes = source.slice(source.indexOf("  let transcriptWritePending"), source.indexOf("  async function saveTranscript(opts"));

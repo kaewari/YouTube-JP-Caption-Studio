@@ -2,6 +2,12 @@
 import json
 import sys
 
+# This script checks receipts collected from the production renderer in a real
+# browser, so it needs that JSON file as an argument.
+if len(sys.argv) < 2:
+    print('SKIP: sentence_bilingual_dom_sanity.py needs the receipts JSON file as argument')
+    raise SystemExit(0)
+
 rows = {row['id']: row for row in json.load(open(sys.argv[1], encoding='utf-8'))}
 failures = []
 check_ids = {'self', 'surprise', 'start', 'missing', 'unrelated', 'wish', 'gap', 'cluster', 'simple', 'range'}

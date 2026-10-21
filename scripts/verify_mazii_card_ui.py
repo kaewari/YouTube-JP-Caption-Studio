@@ -11,6 +11,7 @@ Verifies:
 
 import json
 import os
+import tempfile
 import subprocess
 import sys
 import time
@@ -188,7 +189,7 @@ def main():
 
     # 5. Capture native screenshot
     print("\n5. Capturing real macOS browser screenshot...")
-    screenshot_path = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/mazii_card_verified_ui.png"
+    screenshot_path = os.path.join(tempfile.gettempdir(), "mazii_card_verified_ui.png")
     subprocess.run(["screencapture", "-x", screenshot_path], check=True)
     size = os.path.getsize(screenshot_path) if os.path.exists(screenshot_path) else 0
     print(f"  Screenshot saved: {screenshot_path} ({size} bytes)")

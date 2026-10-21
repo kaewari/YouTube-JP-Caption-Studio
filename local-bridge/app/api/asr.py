@@ -8,11 +8,13 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
+from app.core.governor import governor
 from app.services.asr import (
     DEFAULT_INITIAL_PROMPT,
     DEFAULT_MODEL_NAME,
     MAX_AUDIO_BYTES,
     get_asr_status,
+    resolve_model_name,
     transcribe_audio,
 )
 
@@ -31,7 +33,7 @@ def asr_status() -> Dict[str, Any]:
 async def transcribe(
     request: Request,
     file: Optional[UploadFile] = File(None),
-    model: str = Query(DEFAULT_MODEL_NAME, description="Model repository or local path"),
+    model: str = Query(DEFAULT_MODEL_NAME, description="Allowlisted model repository"),
     language: str = Query("ja", description="Target language code"),
     temperature: float = Query(0.0, description="Decoding temperature"),
     condition_on_previous_text: bool = Query(False, description="Condition on previous text"),
@@ -47,20 +49,30 @@ async def transcribe(
     - Multipart form upload with field `file`.
     - Raw binary body payload (e.g., audio/webm, audio/wav, application/octet-stream).
     """
+    # Check the model before reading the body: an unknown repo must not cost a
+    # 50 MB upload, and it must never reach `path_or_hf_repo`.
+    try:
+        model_name = resolve_model_name(model)
+    except ValueError as exc:
+        logger.warning("Rejected ASR request for an unsupported model: %s", model)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     audio_bytes: bytes = b""
 
     # 1. Read from uploaded file if present
     if file is not None:
         try:
             audio_bytes = await file.read()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to read audio file: {e}")
+        except Exception:
+            logger.exception("Failed reading the uploaded audio file")
+            raise HTTPException(status_code=400, detail="Failed to read audio file")
     else:
         # 2. Otherwise read raw request body
         try:
             audio_bytes = await request.body()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to read request body: {e}")
+        except Exception:
+            logger.exception("Failed reading the ASR request body")
+            raise HTTPException(status_code=400, detail="Failed to read request body")
 
     # Validate non-empty payload
     if not audio_bytes or len(audio_bytes) == 0:
@@ -73,11 +85,16 @@ async def transcribe(
             detail=f"Audio payload exceeds maximum size limit ({MAX_AUDIO_BYTES // (1024 * 1024)} MB)",
         )
 
+    # Heavy path: take a governor slot like /tokenize does, otherwise several
+    # MLX transcriptions can pile up on the Metal allocator.
+    if not governor.try_acquire():
+        raise HTTPException(status_code=503, detail="bridge busy")
+
     try:
         result = await asyncio.to_thread(
             transcribe_audio,
             audio_input=audio_bytes,
-            model_name=model,
+            model_name=model_name,
             language=language,
             temperature=temperature,
             condition_on_previous_text=condition_on_previous_text,
@@ -90,11 +107,15 @@ async def transcribe(
         return result
 
     except ValueError as e:
+        # Service-authored validation messages only: decode failures are
+        # sanitized in the service so no ffmpeg internals reach the caller.
         logger.warning("Invalid audio payload for ASR: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        logger.error("ASR runtime failure: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.exception("Unexpected ASR error: %s", e)
-        raise HTTPException(status_code=500, detail=f"ASR transcription failed: {e}")
+    except RuntimeError:
+        logger.exception("ASR runtime failure")
+        raise HTTPException(status_code=500, detail="ASR transcription failed")
+    except Exception:
+        logger.exception("Unexpected ASR error")
+        raise HTTPException(status_code=500, detail="ASR transcription failed")
+    finally:
+        governor.release()

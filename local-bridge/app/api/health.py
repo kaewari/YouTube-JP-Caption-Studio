@@ -18,6 +18,9 @@ from app.utils.metrics import p50_latency, p95_latency
 
 router = APIRouter()
 
+# A client log line is a one-liner; longer payloads are truncated, not rejected.
+MAX_LOG_MESSAGE_CHARS = 2000
+
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -58,5 +61,6 @@ def client_log(body: dict[str, Any]) -> dict[str, bool]:
     if level not in ("ERROR", "WARNING", "INFO"):
         level = "WARNING"
     msg = str(body.get("message") or "").strip() or "empty"
-    append_errors_log(level, msg)
+    # One line per call: an unbounded message floods errors.log.
+    append_errors_log(level, msg[:MAX_LOG_MESSAGE_CHARS])
     return {"ok": True}

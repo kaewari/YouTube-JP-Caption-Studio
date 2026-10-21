@@ -13,6 +13,21 @@
     renderLevelPreviewHtml: () => "",
   };
 
+  // sidepanel_pure.js must be loaded (sidepanel.html). A silent fallback would
+  // disable the row-order, re-render-gating and escaping fixes unnoticed, so
+  // the degraded path logs loudly.
+  const Pure = globalThis.HardsubSidepanelPure || (() => {
+    console.error("[sidepanel] sidepanel_pure.js is missing - order/gating/escaping fixes are disabled");
+    return {
+      rowsNeedReorder: () => false,
+      collectWords: () => new Map(),
+      wordsSignature: () => "",
+      savedSignature: () => "",
+      buildSavedWordHtml: (lemma) => `<span class="lr-saved-word-box">${lemma}</span>`,
+      captionModeDowngrade: () => "",
+    };
+  })();
+
   const statusEl = document.getElementById("sp-status");
   const driveStatusEl = document.getElementById("sp-drive-status");
   const driveConnectBtn = document.getElementById("sp-drive-connect");
@@ -56,7 +71,11 @@
 
   captionModeBtn?.addEventListener("click", async () => {
     if (isEditingAny()) { toast("Nhấn Enter hoặc Escape để kết thúc sửa câu trước"); return; }
-    await sendCmd("set_caption_mode", { mode: state.captionMode === "enhanced" ? "original" : "enhanced" });
+    const requested = state.captionMode === "enhanced" ? "original" : "enhanced";
+    const res = await sendCmd("set_caption_mode", { mode: requested });
+    // The content script may downgrade to Original (Enhanced off) — say it.
+    const note = Pure.captionModeDowngrade(requested, res);
+    if (note) toast(note);
   });
 
   audioModeBtn?.addEventListener("click", async () => {
@@ -88,16 +107,30 @@
     toggleFuriBtn?.classList.toggle("active", !!state.showFurigana);
   }
 
+  /** Keys of the shared `hardsubSettings` blob that this panel owns. */
+  const SUB_VIS_KEYS = ["sidepanelShowJa", "sidepanelShowVi", "sidepanelShowEn", "sidepanelShowFurigana"];
+
   async function persistSubVisibility() {
     try {
-      if (chrome?.storage?.local) {
+      if (!chrome?.storage?.local) return;
+      const mine = {
+        sidepanelShowJa: state.showJa,
+        sidepanelShowVi: state.showVi,
+        sidepanelShowEn: state.showEn,
+        sidepanelShowFurigana: state.showFurigana,
+      };
+      // content.js and the service worker write the same `hardsubSettings` blob,
+      // so re-read it right before the write and merge ONLY the 4 keys owned by
+      // this panel. If a competing writer lands in between, merge again: their
+      // update is kept and our toggle is re-applied.
+      for (let attempt = 0; attempt < 3; attempt++) {
         const data = await chrome.storage.local.get("hardsubSettings");
-        const s = data?.hardsubSettings || {};
-        s.sidepanelShowJa = state.showJa;
-        s.sidepanelShowVi = state.showVi;
-        s.sidepanelShowEn = state.showEn;
-        s.sidepanelShowFurigana = state.showFurigana;
+        const s = { ...(data?.hardsubSettings || {}) };
+        Object.assign(s, mine);
         await chrome.storage.local.set({ hardsubSettings: s });
+        const after = await chrome.storage.local.get("hardsubSettings");
+        const cur = after?.hardsubSettings || {};
+        if (SUB_VIS_KEYS.every((k) => cur[k] === mine[k])) return;
       }
     } catch (_) {}
   }
@@ -170,55 +203,12 @@
   let tabId = null;
   let currentActiveTabId = null;
   const tabStates = new Map(); // tabId -> cachedState for 0ms instant tab switching
+  /** Cap for the per-tab state cache (the panel lives for the whole browser session). */
+  const TAB_STATES_MAX = 20;
   let listDirty = true;
   /** Last accepted SP_STATE cue-list sequence (drop stale full payloads). */
   let lastCueSeq = 0;
   let lastCueSession = "";
-
-  /** Cache /health response (5s) */
-  let _healthCache = { data: null, expiresAt: 0 };
-  async function fetchBridgeHealth(maxAgeMs = 5000) {
-    const now = Date.now();
-    if (_healthCache.data && now < _healthCache.expiresAt) {
-      return _healthCache.data;
-    }
-    try {
-      const res = await chrome.runtime.sendMessage({
-        type: "BRIDGE_FETCH",
-        path: "/health",
-        method: "GET",
-      });
-      _healthCache = { data: res, expiresAt: now + maxAgeMs };
-      return res;
-    } catch (err) {
-      return { ok: false, error: String(err) };
-    }
-  }
-  let lastGetStateAt = 0;
-  let getStatePendingTimer = null;
-  function throttledGetState(targetTabId) {
-    if (targetTabId == null) return;
-    const now = Date.now();
-    const elapsed = now - lastGetStateAt;
-    if (elapsed >= 200) {
-      lastGetStateAt = now;
-      if (getStatePendingTimer) {
-        clearTimeout(getStatePendingTimer);
-        getStatePendingTimer = null;
-      }
-      try {
-        chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
-      } catch (_) {}
-    } else if (!getStatePendingTimer) {
-      getStatePendingTimer = setTimeout(() => {
-        getStatePendingTimer = null;
-        lastGetStateAt = Date.now();
-        try {
-          chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
-        } catch (_) {}
-      }, 200 - elapsed);
-    }
-  }
 
   /**
    * Edit session for JA / EN / VI / timeline. While set, skip full renderList.
@@ -238,7 +228,6 @@
    */
   let editPrevLang = null;
   let imeActivating = false;
-  let imeNudgeEl = null;
   let osImeActive = false;
 
   const Timing = globalThis.HardsubCueTiming || {
@@ -805,21 +794,6 @@
     pendingListRender = false;
     listDirty = true;
     renderList(true);
-  }
-
-  function ensureImeNudge() {
-    if (imeNudgeEl) return imeNudgeEl;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.lang = "ja-JP";
-    input.setAttribute("inputmode", "text");
-    input.setAttribute("autocomplete", "off");
-    input.setAttribute("aria-hidden", "true");
-    input.tabIndex = -1;
-    input.className = "sp-ime-nudge";
-    document.body.appendChild(input);
-    imeNudgeEl = input;
-    return input;
   }
 
   /**
@@ -1770,6 +1744,20 @@
       listEl.appendChild(el);
     });
 
+    // Rows are only patched in place, so a timeline edit / import that reorders
+    // the cues would leave the DOM in the old order until a page reload.
+    // Re-append the rows in cue order when the order drifted.
+    const domIds = Array.from(listEl.querySelectorAll(".sp-sentence")).map((row) => row.dataset.id);
+    const cueIdOrder = cues.map((c) => c.id);
+    if (Pure.rowsNeedReorder(domIds, cueIdOrder)) {
+      const rows = new Map();
+      for (const row of listEl.querySelectorAll(".sp-sentence")) rows.set(row.dataset.id, row);
+      for (const id of cueIdOrder) {
+        const row = rows.get(id);
+        if (row) listEl.appendChild(row);
+      }
+    }
+
     ignoreScrollEvent = true;
     listEl.scrollTop = scrollKeep;
     requestAnimationFrame(() => {
@@ -1903,36 +1891,33 @@
     }
   }
 
+  /** Signatures of the data behind the Words / Saved tabs (null = never rendered). */
+  let wordsTabSig = null;
+  let savedTabSig = null;
+
+  function wordsDataSig() {
+    const words = Array.from(
+      Pure.collectWords(state.cues || [], (pos) => Vocab.isSkipPos(pos)).values()
+    );
+    return Pure.wordsSignature(words, state.userVocab || {});
+  }
+
   function renderWordsTab() {
     const wordsListEl = document.getElementById("sp-words-list");
     const wordsCountEl = document.getElementById("sp-words-count");
     if (!wordsListEl) return;
 
     const cues = state.cues || [];
-    const wordMap = new Map();
-
-    for (const c of cues) {
-      if (!c.tokens) continue;
-      for (const t of c.tokens) {
-        if (!t.surface || Vocab.isSkipPos(t.pos)) continue;
-        const key = t.lemma || t.surface;
-        if (!wordMap.has(key)) {
-          wordMap.set(key, {
-            lemma: key,
-            surface: t.surface,
-            reading: t.reading || "",
-            jlpt: t.jlpt || "",
-            freq_rank: t.freq_rank != null ? Number(t.freq_rank) : null,
-            count: 0,
-            cue: c,
-          });
-        }
-        const item = wordMap.get(key);
-        item.count++;
-      }
-    }
-
+    const wordMap = Pure.collectWords(cues, (pos) => Vocab.isSkipPos(pos));
     const allWords = Array.from(wordMap.values());
+
+    // Rebuilding the whole tab on every SP_STATE wipes the scroll position,
+    // the keyboard focus and rebinds every chip listener. Only re-render when
+    // the data behind the tab actually changed.
+    const sig = Pure.wordsSignature(allWords, state.userVocab || {});
+    if (sig === wordsTabSig) return;
+    wordsTabSig = sig;
+
     if (wordsCountEl) wordsCountEl.textContent = `${allWords.length} từ`;
 
     if (!allWords.length) {
@@ -2020,22 +2005,45 @@
         if (nextStatus) state.userVocab[lemma] = nextStatus;
         else delete state.userVocab[lemma];
         btn.classList.toggle("saved", !current);
+        // Keep the signature in sync so the state push that follows does not
+        // re-render (and wipe) the tab.
+        wordsTabSig = wordsDataSig();
       });
     });
   }
 
-  function renderSavedTab() {
-    const savedListEl = document.getElementById("sp-saved-list");
+  /** Data behind the Saved tab: saved words (with their context) + saved cues. */
+  function savedTabModel() {
     const showContextEl = document.getElementById("sp-saved-show-context");
-    if (!savedListEl) return;
-
     const showContext = showContextEl ? showContextEl.checked : true;
     const userVocabEntries = Object.entries(state.userVocab || {}).filter(
       ([, v]) => v && (v === "learning" || v === "special" || v?.status === "learning" || v?.status === "special")
     );
     const savedCues = normalizeSavedCues(state.savedCues);
+    const words = userVocabEntries.map(([lemma]) => {
+      const sampleCue =
+        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
+        savedCues.find((c) => c.source && c.source.includes(lemma));
+      return { lemma, context: sampleCue ? sampleCue.source : "" };
+    });
+    return { showContext, practice: savedPracticeMode, words, cues: savedCues };
+  }
 
-    if (!userVocabEntries.length && !savedCues.length) {
+  function renderSavedTab() {
+    const savedListEl = document.getElementById("sp-saved-list");
+    if (!savedListEl) return;
+
+    const model = savedTabModel();
+    // Rebuilding the whole tab on every SP_STATE wipes the scroll position,
+    // the keyboard focus and the "flip" state of the practice cards. Only
+    // re-render when the data behind the tab actually changed.
+    const sig = Pure.savedSignature(model);
+    if (sig === savedTabSig) return;
+    savedTabSig = sig;
+
+    const { showContext, words, cues: savedCues } = model;
+
+    if (!words.length && !savedCues.length) {
       savedListEl.innerHTML = '<div class="sp-saved-empty">Chưa có từ hoặc câu nào được đánh dấu sao lưu trữ.</div>';
       return;
     }
@@ -2043,23 +2051,11 @@
     let html = "";
 
     // Saved Words
-    for (const [lemma] of userVocabEntries) {
-      const sampleCue =
-        (state.cues || []).find((c) => c.source && c.source.includes(lemma)) ||
-        (savedCues || []).find((c) => c.source && c.source.includes(lemma));
-      const sampleCtx = sampleCue ? sampleCue.source : "";
-
-      let displayHtml = "";
-      if (showContext && sampleCtx) {
-        const escLemma = escapeHtml(lemma);
-        const escCtx = escapeHtml(sampleCtx);
-        const boxed = `<span class="lr-saved-word-box">${escLemma}</span>`;
-        displayHtml = escCtx.includes(escLemma)
-          ? escCtx.replace(escLemma, boxed)
-          : `${boxed} · ${escCtx}`;
-      } else {
-        displayHtml = `<span class="lr-saved-word-box">${escapeHtml(lemma)}</span>`;
-      }
+    for (const { lemma, context: sampleCtx } of words) {
+      const displayHtml =
+        showContext && sampleCtx
+          ? Pure.buildSavedWordHtml(lemma, sampleCtx, escapeHtml)
+          : `<span class="lr-saved-word-box">${escapeHtml(lemma)}</span>`;
 
       html += `
         <div class="lr-saved-row" data-lemma="${escapeAttr(lemma)}">
@@ -2071,7 +2067,6 @@
           </div>
           <div class="lr-saved-row-actions">
             <button type="button" class="lr-saved-del-btn" data-del-word="${escapeAttr(lemma)}" title="Xóa khỏi từ đã lưu">🗑</button>
-            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
           </div>
         </div>
       `;
@@ -2092,7 +2087,6 @@
           </div>
           <div class="lr-saved-row-actions">
             <button type="button" class="lr-saved-del-btn" data-del-cue="${escapeAttr(sc.id)}" title="Bỏ lưu câu">🗑</button>
-            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
           </div>
         </div>
       `;
@@ -2581,6 +2575,12 @@
       if (msg.tabId == null) return;
       // Cache state for that tab
       tabStates.set(msg.tabId, { ...(msg.payload || {}), tabId: msg.tabId });
+      // Keep the cache bounded — the panel lives for the whole browser session.
+      while (tabStates.size > TAB_STATES_MAX) {
+        const oldest = tabStates.keys().next().value;
+        if (oldest === undefined) break;
+        tabStates.delete(oldest);
+      }
 
       // If we don't know the active video tab yet, resolve it
       if (currentActiveTabId == null) {
@@ -2662,6 +2662,16 @@
   chrome.tabs?.onUpdated?.addListener?.(async (updatedTabId, changeInfo) => {
     if (updatedTabId === currentActiveTabId && changeInfo.url) {
       await syncActiveTab();
+    }
+  });
+
+  // Drop the cached state of a closed tab — the panel would otherwise keep one
+  // full state snapshot per video for the whole browser session.
+  chrome.tabs?.onRemoved?.addListener?.((removedTabId) => {
+    tabStates.delete(removedTabId);
+    if (currentActiveTabId === removedTabId) {
+      currentActiveTabId = null;
+      tabId = null;
     }
   });
 
@@ -2917,6 +2927,7 @@
       getActiveDictTok: () => spActiveDictTok,
       getPinnedTok: () => spPinnedTok,
       getHoverIntentTimer: () => spHoverIntentTimer,
+      getTabStateCount: () => tabStates.size,
       showDict,
     };
   }

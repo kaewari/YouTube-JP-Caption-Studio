@@ -5,7 +5,9 @@ from __future__ import annotations
 import io
 import json
 import sys
+import types
 from pathlib import Path
+
 import numpy as np
 import pytest
 import soundfile as sf
@@ -128,6 +130,7 @@ def test_decode_audio_bytes_preprocess_toggle():
 
 def test_transcribe_audio_parameters():
     """transcribe_audio should accept all Tier 2 parameters without error."""
+    pytest.importorskip("mlx_whisper")
     wav_bytes = make_sine_wav(freq=440.0, duration_sec=1.0, sr=16000, amplitude=0.2)
     res = transcribe_audio(
         wav_bytes,
@@ -144,6 +147,7 @@ def test_transcribe_audio_parameters():
 
 def test_asr_api_transcribe_with_tuning_params():
     """POST /asr/transcribe should accept query parameters for DSP and decoding."""
+    pytest.importorskip("mlx_whisper")
     wav_bytes = make_sine_wav(freq=440.0, duration_sec=1.0, sr=16000, amplitude=0.2)
     response = client.post(
         "/asr/transcribe",
@@ -310,9 +314,22 @@ def test_is_valid_speech_text():
     assert is_valid_speech_text("報道フロア")
 
 
+def fake_mlx_whisper(monkeypatch):
+    """Install a stub mlx_whisper module.
+
+    mlx-whisper only installs on darwin/arm64, but asr.py imports it lazily
+    inside transcribe_audio(), so a stub in sys.modules lets these pure-logic
+    regressions run on every platform (the audit asked for exactly this).
+    """
+    module = types.ModuleType("mlx_whisper")
+    module.transcribe = lambda *a, **k: {"text": "", "segments": []}
+    monkeypatch.setitem(sys.modules, "mlx_whisper", module)
+    return module
+
+
 def test_transcribe_audio_fp16_and_kotoba_prompt_handling(monkeypatch):
     """transcribe_audio must default to fp16=False, suppress default initial_prompt for Kotoba, and sanitize audio."""
-    import mlx_whisper
+    mlx_whisper = fake_mlx_whisper(monkeypatch)
     from app.services.asr import DEFAULT_INITIAL_PROMPT
 
     captured_kwargs = {}
@@ -364,7 +381,7 @@ def test_transcribe_audio_fp16_and_kotoba_prompt_handling(monkeypatch):
 
 def test_transcribe_audio_audio_nan_sanitization(monkeypatch):
     """Input audio with NaN / Inf or out-of-range values must be sanitized to finite float32 in [-1.0, 1.0]."""
-    import mlx_whisper
+    mlx_whisper = fake_mlx_whisper(monkeypatch)
 
     passed_audio = None
 
@@ -387,7 +404,7 @@ def test_transcribe_audio_audio_nan_sanitization(monkeypatch):
 
 def test_transcribe_audio_suppresses_token0_collapse(monkeypatch):
     """When mlx_whisper produces pure punctuation/token 0 collapse (e.g. '!'), transcribe_audio must suppress it."""
-    import mlx_whisper
+    mlx_whisper = fake_mlx_whisper(monkeypatch)
 
     def mock_transcribe_collapse(audio, **kwargs):
         return {

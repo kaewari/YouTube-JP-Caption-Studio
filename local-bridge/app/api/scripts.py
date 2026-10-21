@@ -24,12 +24,22 @@ from app.services.script_store import (
     read_files,
     save_script,
     scripts_root,
+    validate_video_id,
     write_files,
 )
 from app.utils.logging_utils import append_errors_log
 
 logger = logging.getLogger("bridge")
 router = APIRouter()
+
+
+def _checked_video_id(video_id: str) -> str:
+    """A malformed video id is a client error: every /scripts/* endpoint
+    answers 400 for it instead of a mix of 200/404."""
+    try:
+        return validate_video_id(video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/scripts/save", response_model=ScriptSaveResponse)
@@ -54,7 +64,7 @@ def scripts_save(body: ScriptSaveRequest) -> ScriptSaveResponse:
     except Exception as exc:
         logger.exception("scripts/save failed")
         append_errors_log("ERROR", f"scripts/save failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="scripts request failed") from exc
 
 
 @router.get("/scripts")
@@ -75,12 +85,13 @@ def scripts_list() -> list[dict[str, Any]]:
     except Exception as exc:
         logger.exception("scripts list failed")
         append_errors_log("ERROR", f"scripts list failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="scripts request failed") from exc
 
 
 @router.get("/scripts/{video_id}/meta")
 def scripts_meta(video_id: str) -> dict[str, Any]:
     """Few-hundred-byte freshness probe — compare rev before fetching a body."""
+    video_id = _checked_video_id(video_id)
     try:
         meta = load_meta(video_id)
     except ValueError as exc:
@@ -96,12 +107,14 @@ def scripts_meta(video_id: str) -> dict[str, Any]:
 @router.get("/scripts/{video_id}/tokens")
 def scripts_tokens(video_id: str) -> dict[str, Any]:
     """{cueId: [token, ...]} — Sudachi output, loaded after cues render."""
+    video_id = _checked_video_id(video_id)
     return load_tokens(video_id)
 
 
 @router.get("/scripts/{video_id}/files")
 def scripts_files_get(video_id: str) -> dict[str, Any]:
     """The 3 mirrorable files as text (script.txt rendered here, not on save)."""
+    video_id = _checked_video_id(video_id)
     try:
         files = read_files(video_id)
     except ValueError as exc:
@@ -109,7 +122,7 @@ def scripts_files_get(video_id: str) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("scripts/files GET failed")
         append_errors_log("ERROR", f"scripts/files GET failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="scripts request failed") from exc
     if files is None:
         raise HTTPException(status_code=404, detail="not found")
     return {"video_id": video_id, "files": files}
@@ -118,6 +131,7 @@ def scripts_files_get(video_id: str) -> dict[str, Any]:
 @router.post("/scripts/{video_id}/files")
 def scripts_files_post(video_id: str, body: ScriptFilesRequest) -> dict[str, Any]:
     """Drive → disk, straight file write (no lossy snapshot path)."""
+    video_id = _checked_video_id(video_id)
     try:
         return write_files(video_id, body.files or {})
     except ScriptRevisionConflict as exc:
@@ -131,11 +145,12 @@ def scripts_files_post(video_id: str, body: ScriptFilesRequest) -> dict[str, Any
     except Exception as exc:
         logger.exception("scripts/files POST failed")
         append_errors_log("ERROR", f"scripts/files POST failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="scripts request failed") from exc
 
 
 @router.get("/scripts/{video_id}", response_model=ScriptLoadResponse)
 def scripts_load(video_id: str) -> ScriptLoadResponse:
+    video_id = _checked_video_id(video_id)
     try:
         scripts_root()
         data = load_script(video_id)
@@ -168,10 +183,11 @@ def scripts_load(video_id: str) -> ScriptLoadResponse:
 @router.delete("/scripts/{video_id}")
 def scripts_delete(video_id: str) -> dict[str, Any]:
     """Wipe saved script folder for a video (cues.json / script.txt / meta)."""
+    video_id = _checked_video_id(video_id)
     try:
         return delete_script(video_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("scripts/delete failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="scripts request failed") from exc

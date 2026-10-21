@@ -1,6 +1,7 @@
 """Unit tests for Saved Items SQLite database (WAL mode, trigram FTS5, tombstone sync)."""
 
 import sqlite3
+import threading
 import time
 from pathlib import Path
 import pytest
@@ -183,7 +184,14 @@ def test_two_way_sync_last_write_wins(test_db: sqlite3.Connection):
     assert current["source"] == "新しい情報"
 
 
-def test_saved_items_api_routes():
+def test_saved_items_api_routes(tmp_path, monkeypatch):
+    # The API must not write into the developer's real data/saved_items.db.
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
     client = TestClient(app)
 
     # Create item via API
@@ -225,3 +233,265 @@ def test_saved_items_api_routes():
     res_del = client.delete("/saved/items/api_test_cue")
     assert res_del.status_code == 200
     assert res_del.json()["ok"] is True
+
+
+def test_a_request_connection_stays_with_its_own_thread(tmp_path, monkeypatch):
+    """The connection of a request must not be usable by another thread.
+
+    The API hands out one connection per request, so it belongs to the thread
+    that opened it - a shared connection would raise "SQLite objects created
+    in a thread can only be used in that same thread".
+    """
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    opened = []
+    real_connect = saved_items_api.connect_db
+
+    def counting_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(saved_items_api, "connect_db", counting_connect)
+
+    with saved_items_api.db_conn() as conn:
+        pass
+    assert opened, "the request must open a connection"
+
+    errors = []
+
+    def worker() -> None:
+        try:
+            opened[0].execute("SELECT 1").fetchone()
+        except sqlite3.ProgrammingError:
+            return  # expected: the handle belongs to the request thread
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+            return
+        errors.append(RuntimeError("the connection was used from another thread"))
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+    assert not errors, f"cross-thread use must not succeed: {errors}"
+
+
+def test_sync_response_is_capped(test_db: sqlite3.Connection):
+    """A sync response must not ship the whole table (iOS sync would download GB)."""
+    with test_db:
+        for i in range(5100):
+            test_db.execute(
+                "INSERT INTO saved_items(id, type, source, created_at, updated_at)"
+                " VALUES(?,?,?,?,?)",
+                (f"cap_{i}", "cue", "s", 1.0, 1.0 + i),
+            )
+    result = sync_items(test_db, [], since_timestamp=0.0)
+    assert len(result["server_items"]) == 5000
+
+
+def test_sync_endpoint_rejects_oversized_payload(tmp_path, monkeypatch):
+    """A payload beyond the cap is refused instead of being written row by row."""
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    client = TestClient(app)
+    res = client.post("/saved/sync", json={
+        "items": [{"id": f"too_many_{i}", "type": "word", "source": "w"} for i in range(5001)],
+        "since": 0.0,
+    })
+    assert res.status_code == 413
+
+
+def test_sync_paging_keeps_rows_that_share_a_timestamp(test_db: sqlite3.Connection):
+    """Rows sharing the page boundary timestamp must not be skipped.
+
+    A bare "updated_at > since" cursor drops every row whose timestamp equals
+    the last row of the previous page.
+    """
+    page_limit = 5000
+    total = page_limit + 10
+    with test_db:
+        # ALL rows share one timestamp: a cursor of "updated_at > since" would
+        # deliver the first page and then never the rest.
+        for i in range(total):
+            test_db.execute(
+                "INSERT INTO saved_items(id, type, source, created_at, updated_at)"
+                " VALUES(?,?,?,?,?)",
+                (f"tie_{i}", "cue", "s", 1.0, 1.0),
+            )
+
+    delivered: set[str] = set()
+    since, since_rowid = 0.0, 0
+    for _ in range(10):
+        res = sync_items(test_db, [], since_timestamp=since, since_rowid=since_rowid)
+        delivered.update(item["id"] for item in res["server_items"])
+        if not res["has_more"]:
+            break
+        since, since_rowid = res["next_since"], res["next_rowid"]
+
+    assert len(delivered) == total, (
+        f"paging lost {total - len(delivered)} rows that share a timestamp"
+    )
+
+
+def test_connection_recovers_when_the_database_file_is_replaced(tmp_path, monkeypatch):
+    """A replaced database file must not break the next request.
+
+    The stale connection keeps a lock on the old file, so the new one has to
+    be opened after the old handles are released.
+    """
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    # A worker thread holds a connection to the current file.
+    def worker():
+        with saved_items_api.db_conn() as conn:
+            upsert_item(conn, {"id": "before", "type": "cue", "source": "s"})
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    # Replace the file (a restore or a wipe).
+    db_file = saved_items_db.get_db_path()
+    assert db_file.exists(), f"the database must exist before the wipe: {db_file}"
+    for path in db_file.parent.glob("saved_items.db*"):
+        path.unlink()
+
+    result = []
+
+    def second_worker():
+        try:
+            with saved_items_api.db_conn() as conn:
+                upsert_item(conn, {"id": "after", "type": "cue", "source": "s"})
+            result.append("ok")
+        except Exception as exc:
+            result.append(f"{type(exc).__name__}: {exc}")
+
+    thread2 = threading.Thread(target=second_worker)
+    thread2.start()
+    thread2.join()
+    assert result == ["ok"], f"the next request must recover, got {result}"
+
+
+def test_each_request_uses_its_own_connection(tmp_path, monkeypatch):
+    """Every request opens its own connection.
+
+    A connection shared between requests breaks as soon as a second request is
+    served by another worker thread ("SQLite objects created in a thread can
+    only be used in that same thread").
+    """
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    opened = []
+    real_connect = saved_items_api.connect_db
+
+    def counting_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(saved_items_api, "connect_db", counting_connect)
+
+    # The requests run in different threads, like the FastAPI thread pool does:
+    # a connection shared between them fails with "SQLite objects created in a
+    # thread can only be used in that same thread".
+    statuses = []
+    errors = []
+
+    def request():
+        client = TestClient(app)
+        try:
+            statuses.append(client.get("/saved/items?limit=5").status_code)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=request) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors, errors
+    assert statuses == [200] * 4, f"every request must succeed, got {statuses}"
+
+    # A sequential request opens its own connection as well - a connection
+    # cached between requests would break the next request served by another
+    # worker thread.
+    assert TestClient(app).get("/saved/items?limit=5").status_code == 200
+    assert len(opened) == 5, f"every request needs its own connection, got {len(opened)}"
+    # Every connection was released when the request ended.
+    for conn in opened:
+        try:
+            conn.execute("SELECT 1")
+        except sqlite3.ProgrammingError:
+            continue
+        raise AssertionError("the connection of a finished request is still open")
+
+
+def test_the_schema_is_created_only_once(tmp_path, monkeypatch):
+    """Concurrent first requests must not create the schema at the same time.
+
+    journal_mode=WAL needs an exclusive lock, so two threads running it at
+    once make the request fail with "database is locked".
+    """
+    import threading
+
+    import app.api.saved_items as saved_items_api
+    import app.db.saved_items_db as saved_items_db
+
+    monkeypatch.setattr(saved_items_db, "ROOT", tmp_path)
+    monkeypatch.setattr(saved_items_api, "_schema_ready", False)
+
+    calls = []
+    concurrent = 0
+    peak = 0
+    lock = threading.Lock()
+    real_init = saved_items_api.init_db
+
+    def counting_init(*args, **kwargs):
+        nonlocal concurrent, peak
+        with lock:
+            concurrent += 1
+            peak = max(peak, concurrent)
+            calls.append(1)
+        try:
+            return real_init(*args, **kwargs)
+        finally:
+            with lock:
+                concurrent -= 1
+
+    monkeypatch.setattr(saved_items_api, "init_db", counting_init)
+
+    errors = []
+
+    def worker():
+        try:
+            with saved_items_api.db_conn() as conn:
+                conn.execute("SELECT 1")
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors, errors
+    assert len(calls) == 1, f"the schema must be created once, got {len(calls)}"
+    assert peak == 1, f"the schema creation must not overlap, peak was {peak}"

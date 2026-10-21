@@ -1,6 +1,9 @@
 import Foundation
 import SwiftData
 
+// MIRRORED FILE — an identical copy lives in the sibling app (ipad-app/ ⇄ iphone-app/).
+// No shared Swift package yet: apply every change to BOTH copies and keep them byte-identical.
+
 @Model
 class VideoScript {
     @Attribute(.unique) var videoId: String
@@ -111,6 +114,9 @@ extension ScriptCue {
             } else {
                 let newCue = ScriptCue(id: yCue.id, startTime: yCue.startTime, duration: yCue.duration, textJA: yCue.text)
                 newCue.video = script
+                // Write the relationship the same way the import path does: the
+                // inverse alone can leave `script.cues` empty until the next fetch.
+                if let script { script.cues.append(newCue) }
                 context.insert(newCue)
                 merged.append(newCue)
             }
@@ -258,7 +264,7 @@ extension ScriptCue {
         var vi: String?
     }
 
-    enum ImportMode {
+    enum ImportMode: Hashable {
         case merge
         case replace
     }

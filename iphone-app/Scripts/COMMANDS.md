@@ -15,7 +15,7 @@ Làm **một lần** trên Mac + iPhone (manual):
 1. Mở `iphone-app/YouTubeJPCaptionStudioiPhone.xcodeproj` trong Xcode.
 2. Chọn iPhone làm destination → **Automatic Signing** + **Team** (Apple ID). Giữ nguyên Bundle ID `com.example.YouTubeJPCaptionStudio.iPhone`.
 3. ⌘R. Trên iPhone: **Settings → General → VPN & Device Management → Trust** developer cert.
-4. Smoke: xoay portrait ↔ landscape (layout đổi); Overlay / Side panel. Trong app: **Thư mục** → Connect Drive (OAuth). Cần iOS `client_id` trong `Services/DriveOAuthConfig.swift` (cùng client với iPad nếu GCP đã đăng ký; hoặc thêm iOS client cho Bundle ID iPhone).
+4. Smoke: xoay portrait ↔ landscape (layout đổi); Overlay / Side panel. Trong app: **Thư mục** → Connect Drive (OAuth). Cần iOS `client_id` trong `Info.plist` (`DRIVE_OAUTH_CLIENT_ID`) (cùng client với iPad nếu GCP đã đăng ký; hoặc thêm iOS client cho Bundle ID iPhone).
 
 Free account: chữ ký ~7 ngày. Renew từ Mac — **không xoá app**.
 
@@ -75,17 +75,20 @@ launchctl start com.youtubejpcaptionstudio.iphone.renew
 
 Logs: `~/Library/Logs/YouTubeJPCaptionStudio-iPhone-renew.log` (+ `.launchd.out/err.log`).
 
+> The plist runs `~/Documents/YouTube JP Caption Studio/...` — keep the repo in
+> that folder (or edit the path in the plist before loading it).
+
 Paid Developer Program: bỏ qua chu kỳ ~7 ngày free.
 
 ---
 
 ## OAuth Drive API (iPhone)
 
-Cùng flow iPad: `ASWebAuthenticationSession` + PKCE + reverse-client-id redirect. URL scheme giữ nguyên với iPad (cùng `DriveOAuthConfig.swift`).
+Cùng flow iPad: `ASWebAuthenticationSession` + PKCE + reverse-client-id redirect. URL scheme giữ nguyên với iPad (cùng `DRIVE_OAUTH_CLIENT_ID` trong `Info.plist`).
 
 Nếu GCP iOS client chỉ gắn Bundle ID iPad, tạo thêm client iOS cho `com.example.YouTubeJPCaptionStudio.iPhone` (hoặc thêm Bundle ID nếu console cho phép).
 
-Chi tiết: mirror `ipad-app/Scripts/COMMANDS.md` mục OAuth. Folder Drive cố định: `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`.
+Chi tiết: mirror `ipad-app/Scripts/COMMANDS.md` mục OAuth. Folder Drive cố định: khai báo ở `DRIVE_FOLDER_ID` (`Info.plist`).
 
 ---
 

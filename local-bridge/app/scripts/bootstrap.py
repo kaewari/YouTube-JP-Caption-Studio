@@ -181,8 +181,8 @@ def _bootstrap_worker() -> None:
         from app.services.vocab_freq import load_freq
 
         load_dictionary()
-        load_freq()
-        load_tokenizer()
+        load_freq(force=True)
+        load_tokenizer(force=True)
 
         _set("done", 100, "Bootstrap complete", done=True)
     except Exception as exc:

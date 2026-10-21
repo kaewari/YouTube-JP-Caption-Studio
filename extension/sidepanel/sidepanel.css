@@ -10,6 +10,14 @@
   --en: #b8bdd0;
   --vi: #e8e8f0;
   --furi: #7fd6a8;
+  /* JLPT palette — one source (shared/vocab_style.js DEFAULT_LEVEL_COLORS).
+   * The live values are re-applied as inline vars from the settings. */
+  --jlpt-n5: #7fd6a8;
+  --jlpt-n4: #8fd3ff;
+  --jlpt-n3: #f5d76e;
+  --jlpt-n2: #e08a4a;
+  --jlpt-n1: #e74c5c;
+  --jlpt-unknown: #94a3b8;
 }
 
 * {
@@ -1049,20 +1057,6 @@ textarea.sp-ja {
   -webkit-ime-mode: active;
 }
 
-/* Off-screen lang=ja-JP focus nudge — cannot force OS IME alone; helps Chromium. */
-.sp-ime-nudge {
-  position: fixed;
-  left: -9999px;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-
 .sp-ja-view ruby,
 .sp-ja ruby {
   ruby-position: over;
@@ -1223,37 +1217,37 @@ textarea.sp-ja {
 .sp-ja-view ruby.jlpt-n5,
 .sp-ja .jlpt-n5,
 .sp-ja ruby.jlpt-n5 {
-  color: var(--jlpt-n5, #7fd6a8);
+  color: var(--jlpt-n5);
 }
 .sp-ja-view .jlpt-n4,
 .sp-ja-view ruby.jlpt-n4,
 .sp-ja .jlpt-n4,
 .sp-ja ruby.jlpt-n4 {
-  color: var(--jlpt-n4, #8fd3ff);
+  color: var(--jlpt-n4);
 }
 .sp-ja-view .jlpt-n3,
 .sp-ja-view ruby.jlpt-n3,
 .sp-ja .jlpt-n3,
 .sp-ja ruby.jlpt-n3 {
-  color: var(--jlpt-n3, #f5d76e);
+  color: var(--jlpt-n3);
 }
 .sp-ja-view .jlpt-n2,
 .sp-ja-view ruby.jlpt-n2,
 .sp-ja .jlpt-n2,
 .sp-ja ruby.jlpt-n2 {
-  color: var(--jlpt-n2, #e08a4a);
+  color: var(--jlpt-n2);
 }
 .sp-ja-view .jlpt-n1,
 .sp-ja-view ruby.jlpt-n1,
 .sp-ja .jlpt-n1,
 .sp-ja ruby.jlpt-n1 {
-  color: var(--jlpt-n1, #e74c5c);
+  color: var(--jlpt-n1);
 }
 .sp-ja-view .level-unknown,
 .sp-ja-view ruby.level-unknown,
 .sp-ja .level-unknown,
 .sp-ja ruby.level-unknown {
-  color: var(--jlpt-unknown, #e2e8f0);
+  color: var(--jlpt-unknown);
   opacity: 0.85;
 }
 .tok-karaoke-active {
@@ -1663,7 +1657,23 @@ textarea.sp-ja {
 }
 
 .sp-toggle-input {
-  display: none;
+  /* Visually hidden but still focusable — display:none would remove the
+   * checkbox from the keyboard tab order entirely. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sp-toggle-input:focus-visible + .sp-toggle-slider {
+  outline: 2px solid #0984e3;
+  outline-offset: 2px;
 }
 
 .sp-toggle-slider {
@@ -1794,8 +1804,7 @@ textarea.sp-ja {
   flex-shrink: 0;
 }
 
-.lr-saved-del-btn,
-.lr-saved-menu-btn {
+.lr-saved-del-btn {
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.45);
@@ -1809,11 +1818,6 @@ textarea.sp-ja {
 .lr-saved-del-btn:hover {
   color: #ff7675;
   background: rgba(255, 118, 117, 0.15);
-}
-
-.lr-saved-menu-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Bilingual Subtitle JLPT Highlights (VI/EN) */
@@ -1830,8 +1834,8 @@ textarea.sp-ja {
   background: rgba(255, 255, 255, 0.14);
   text-decoration: underline dotted rgba(255, 255, 255, 0.5);
 }
-.tok-trans.jlpt-n5 { color: var(--jlpt-n5, #7fd6a8) !important; font-weight: 700; }
-.tok-trans.jlpt-n4 { color: var(--jlpt-n4, #8fd3ff) !important; font-weight: 700; }
-.tok-trans.jlpt-n3 { color: var(--jlpt-n3, #f5d76e) !important; font-weight: 700; }
-.tok-trans.jlpt-n2 { color: var(--jlpt-n2, #e08a4a) !important; font-weight: 700; }
-.tok-trans.jlpt-n1 { color: var(--jlpt-n1, #e74c5c) !important; font-weight: 700; }
+.tok-trans.jlpt-n5 { color: var(--jlpt-n5) !important; font-weight: 700; }
+.tok-trans.jlpt-n4 { color: var(--jlpt-n4) !important; font-weight: 700; }
+.tok-trans.jlpt-n3 { color: var(--jlpt-n3) !important; font-weight: 700; }
+.tok-trans.jlpt-n2 { color: var(--jlpt-n2) !important; font-weight: 700; }
+.tok-trans.jlpt-n1 { color: var(--jlpt-n1) !important; font-weight: 700; }

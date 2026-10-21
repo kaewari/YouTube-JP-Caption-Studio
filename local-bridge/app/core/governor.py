@@ -93,11 +93,13 @@ class Governor:
             self.state.pressure = "high" if high else "low"
             base = self.state._base_caps
             if high:
+                # Memory pressure may only ever lower the worker counts:
+                # max(1, base.w_ocr - 1) raised a 0-worker budget to 1.
                 self.state.caps = Caps(
                     max_in_flight=max(1, base.max_in_flight - 1),
                     max_fps=max(6, base.max_fps - 2),
-                    w_ocr=max(1, base.w_ocr - 1),
-                    w_mt=max(1, base.w_mt - 1),
+                    w_ocr=max(0, base.w_ocr - 1),
+                    w_mt=max(0, base.w_mt - 1),
                 )
             else:
                 self.state.caps = Caps(**base.model_dump())

@@ -125,7 +125,11 @@ final class BridgeController: ObservableObject {
         proc.currentDirectoryURL = root
         proc.standardOutput = logHandle
         proc.standardError = logHandle
-        // Fresh process group so we can SIGTERM the whole tree (uvicorn + saved-items).
+        // Process() does NOT create a new process group: the child inherits
+        // this app's group, so there is no group to signal. stop() kills the
+        // direct children (`pkill -P`), the bash pid, the saved-items pid
+        // file and — only when this app started the bridge — sweeps the
+        // ports 8765/3000.
         proc.qualityOfService = .userInitiated
 
         do {
@@ -147,8 +151,9 @@ final class BridgeController: ObservableObject {
 
         if let proc = process, proc.isRunning {
             let pid = proc.processIdentifier
-            // Kill the bash process AND its children (uvicorn, saved-items) — plain
-            // kill(pid) leaves the tree running.
+            // `pkill -P` kills the direct children (uvicorn, saved-items) — a
+            // plain kill(pid) would leave them running. Grandchildren are not
+            // covered; the port sweep below is the backstop.
             let tree = Process()
             tree.executableURL = URL(fileURLWithPath: "/bin/pkill")
             tree.arguments = ["-TERM", "-P", String(pid)]

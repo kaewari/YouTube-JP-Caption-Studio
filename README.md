@@ -10,49 +10,16 @@
 
 [English](#english) | [日本語](#日本語) | [Tiếng Việt](#tiếng-việt)
 
-**YouTube sentence MVP (experimental preview):** Original/Enhanced share source
-mapping and authentic cue windows. Enhanced opens Original for edits, persists
-revision-bound Undo in a disposable local sidecar, and saves sentence snapshots
-with provenance. Sentence translation uses one worker queue; sentence NLP keeps
-validated UTF16 spans. The sidepanel offers **Xuất số đo** for a local trace of
-foreground playback readiness bounds, JP paint, HTTP attempts and latency; absent
-observations/account billing remain unverified. Native Reload and a fresh YouTube
-document exported the trace and selected track fingerprint on one Parako video.
-The latest export code also retains per-attempt token usage, including thinking, and
-reports a dated standard list-price estimate with missing attempts marked partial.
-Account billing remains unverified. A subsequent native Reload and fresh document
-on video TJ2zrbH0BB4 confirmed the estimate schema and visible TXT warning. Its
-short trace has six distinct Original JA onsets and zero discontinuities; no
-translation attempt was observed, so estimated and actual cost remain null.
-Reviewed clock code was loaded, but this different video/session and lack of raw
-samples do not establish causality or a complete playback baseline.
-Readiness bounds reflect sampled state; intervening clear/restore is unobserved,
-so the trace does not certify a release gate. Source fingerprints invalidate sentence
-cache identities when raw source changes. The sidepanel offers explicit JSON backup, restore and
-return to the state before restore. TXT export now warns that locks, Enhanced and
-saved items require JSON backup; the note was verified in native Chrome.
-Three rollback flags in existing settings independently gate Enhanced, grouping
-and automatic translation prefetch. Disabling Enhanced/grouping returns to Original
-while preserving sidecar metadata; manual translation remains available when only
-automatic prefetch is disabled. Their bounded runtime review passed and the code
-is now loaded in native Chrome; individual native flag-toggle checks remain open.
-The worktree trace now records logical group preparation, filtered translation
-submissions and accepted/cache/error/discarded outcomes for Original and Enhanced.
-It exports trace-local ordinals rather than dialogue-bearing IDs. After independent
-runtime review, these three files were copied with hash receipts. Submission and
-accepted results do not establish HTTP dispatch or readiness at playback. A fresh
-native export confirms group-preparation lifecycle activation; translation lifecycle
-and individual native flag-toggle checks remain unverified.
-Shared writes protect concurrent stars and
-restores. Native Chrome toggle/export was checked on one Parako video after updating
-the installed extension. Cache IDs stay unique and deleted/locked/edited rows have
-behavioral regressions. Drive, audio gold, native protected-data round trips and
-measured translation readiness remain open. Current worktree and main source default
-eligible new YouTube tracks to Enhanced; same-track Original choices and explicit
-restore remain Original. Post-copy native activation is pending. See the
-[default-mode review](review/youtube-sentence-mvp-enhanced-default-2026-10-11.md),
-[current status](wiki/topics/youtube-sentence-enhancement-mvp.md)
-and [how to try it](walkthrough.md#youtube-sentence-preview).
+**YouTube sentence MVP (experimental preview):** Original/Enhanced share source mapping and
+authentic cue windows; Enhanced opens Original for edits, persists revision-bound Undo in a
+disposable local sidecar, and saves sentence snapshots with provenance. One worker queue
+translates; the sidepanel exports a local trace (readiness bounds, JP paint, HTTP attempts,
+latency) and a JSON backup/restore. **Not verified end-to-end:** account billing, HTTP
+dispatch/readiness at playback, per-flag native toggle checks and Drive/audio-gold round
+trips — the trace is sampled state, not a release gate. See the
+[current status](wiki/topics/youtube-sentence-enhancement-mvp.md), the
+[default-mode review](review/youtube-sentence-mvp-enhanced-default-2026-10-11.md) and the
+[walkthrough](walkthrough.md).
 
 ---
 
@@ -84,7 +51,7 @@ The project supports two completely different stacks to cover both Desktop and M
 ### 1. Desktop Architecture (Decoupled Client-Server)
 Utilizes a decoupled architecture to bypass Chrome Extension limits and offload heavy NLP tasks.
 * **Chrome Extension (MV3)**: Handles YouTube DOM manipulation, timedtext interception, UI rendering, and state sync.
-* **Local Bridge (FastAPI `:8765`)**: The core engine written in Python. It handles NLP tokenization (Sudachi), dictionary lookups, local file I/O for subtitle storage, and macOS IME control.
+* **Local Bridge (FastAPI `:8765`)**: The core engine written in Python. It handles NLP tokenization (Sudachi), dictionary lookups, local file I/O for subtitle storage, and macOS IME control. The bridge is the **only supported** IME path — `tools/ime-switch/` (Chrome Native Messaging host) is **frozen/legacy**: kept for reference, no new features, not tested.
 * **Next.js Web App (`:3000`)**: A dedicated application for managing saved items and vocabulary, exported as a static popup for the extension. Settings (incl. JLPT level colors) open in a full tab from the side panel ⚙.
 
 ### 2. iPad / iPhone Architecture (Standalone SwiftUI)

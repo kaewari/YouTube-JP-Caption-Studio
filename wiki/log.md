@@ -505,3 +505,35 @@ Read finalized raw plan `plan/audio-listening-model-2026-10-12.md` and review re
 - Milestone M2 (Metal Benchmark): `scripts/asr_benchmark.py` verified Levenshtein CER and normalized CER preserving `々` (\u3005) and `ー`. `mlx-community/whisper-large-v3-turbo` on Apple Silicon Metal measured RTF = 0.0505, RAM RSS = 1.728 GB, Cue 19 aligned CER = 0.00% (corrected `勘無料` -> `感無量`).
 - Milestone M3 (Candidate Integration): Backend route `POST /asr/transcribe` in `local-bridge/app/api/asr.py` and `app/services/asr.py`. Offscreen audio capture via WebM Opus in `extension/offscreen/audio_capture.js`. Strict data protection invariant `canReceiveAsrCandidate(cue)` protecting locked/edited/owned cues. Sidepanel candidate UI with Accept / Revert and Undo revision creation.
 - Audited entire branch diff: verified 100% test pass on candidate lifecycle, sentence groups, ASR API (14/14), root benchmark tests (30/30), and clean `git diff --check` with exit code 0.
+
+## [2026-10-20] ingest | P0 remediation of the full-codebase audit
+
+Read the finalized raw audit `review/full-codebase-improvement-audit-2026-10-18.md` and filed
+`plan/p0-remediation-2026-10-20.md`; topic `topics/p0-remediation-2026-10-20.md`.
+Every P0 was re-verified against the code before patching (the audit itself contains two wrong
+findings and one half-right finding, so it was treated as a hypothesis list). Shipped on
+`fix/audit-p0-remediation-20261020`, based on `fix/audit-p0-20261020` @ 378e2aeb6 — `master`
+was never a base of the branch.
+
+Fixed: local-bridge (per-thread SQLite connections + once-per-process schema creation, sync
+cap with a `has_more`/`next_since` cursor, 413 on oversized payloads, duplicate `hanviet`
+field, missing `Any` import, `close_dictionary` over all threads, ffmpeg timeouts, title/url
+injection), extension (`nextCursor` ReferenceError, JLPT levels lost to duplicate map keys,
+Drive mirror queue across an SW idle-kill, offscreen capture error propagation, MediaRecorder
+timeslice slicing, offscreen document close, layout interval leak, `ev.data` primitive guard,
+`play` listener leak, fail-closed tab id, `awaitDisk` promise), side panel (row order, shared
+settings blob, slider write storm, modal nesting, tab re-render, `tabStates` leak, entity
+injection), web companion (hydration mismatch, vocab resurrection, swallowed write errors),
+CI (`bridge-test-suite` honestly green on Linux, `BRIDGE_URL` honoured, new `extension-tests`
+and `root-tests` jobs, anti-fake gate scope) and housekeeping (no machine-specific paths,
+valid walkthrough evidence, 0-byte capture removed, TTML fixture moved to `testdata/`).
+
+Verified: 11/11 extension suites exit 0; local-bridge 84 passed / 5 skipped (mlx-only);
+repo-root 30 passed; `npm run check` exit 0; anti-fake gate PASSED; `git diff --check` clean.
+An independent read-only review flagged one blocking defect (a cold-start SQLite
+"database is locked" race introduced by the first fix) and four partial gaps; all were fixed
+in `769f501a6` and a second review was run.
+
+Open: the audit's P1/P2 lists, 5 pre-existing `scripts/*sanity*.js` failures (identical on a
+pristine base tree), and the `bridgeJson()` 5xx blind spot that keeps a failed Drive mirror in
+the queue.

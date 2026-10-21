@@ -7,6 +7,8 @@
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+// Screenshots/artifacts go to the OS temp dir - not a personal machine folder.
+const ARTIFACT_DIR = require("os").tmpdir();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,7 +30,7 @@ async function main() {
   await sleep(2000);
 
   // Take screenshot of window
-  const outPathSub = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/sidepanel_subtitles_responsive.png";
+  const outPathSub = path.join(ARTIFACT_DIR, "sidepanel_subtitles_responsive.png");
   execFileSync("screencapture", ["-x", outPathSub]);
   console.log("Captured Subtitles view screenshot to:", outPathSub);
 
@@ -41,7 +43,7 @@ async function main() {
   execFileSync("osascript", ["-e", switchWordsScript]);
   await sleep(1000);
 
-  const outPathWords = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/sidepanel_words_responsive.png";
+  const outPathWords = path.join(ARTIFACT_DIR, "sidepanel_words_responsive.png");
   execFileSync("screencapture", ["-x", outPathWords]);
   console.log("Captured Words view screenshot to:", outPathWords);
 
@@ -54,7 +56,7 @@ async function main() {
   execFileSync("osascript", ["-e", switchSavedScript]);
   await sleep(1000);
 
-  const outPathSaved = "/Users/hoangson/.gemini/antigravity-ide/brain/2f76f313-60e2-4254-97b4-ea3f59db94b6/sidepanel_saved_responsive.png";
+  const outPathSaved = path.join(ARTIFACT_DIR, "sidepanel_saved_responsive.png");
   execFileSync("screencapture", ["-x", outPathSaved]);
   console.log("Captured Saved view screenshot to:", outPathSaved);
 

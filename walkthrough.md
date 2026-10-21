@@ -233,8 +233,8 @@ Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
   - `scripts/cue_timing_sanity.js`: PASSED.
   - `rtk node -c`: Toàn bộ 7 file JS biên dịch exit code 0 không có lỗi cú pháp.
 - **Headless Chrome Pixel Verification:**
-  - `scripts/verify_overlay_saved.png`: Đạt chuẩn thiết kế Language Reactor 5.1.8.
-  - `scripts/verify_words_tab.png`: Hiển thị đúng dải banner 500-increment và romaji trên từng token.
+  - `scripts/chrome_live_test_qa.png`: overlay phụ đề đạt chuẩn thiết kế Language Reactor 5.1.8.
+  - `scripts/chrome_live_mouse_qa.png`: hiển thị đúng dải banner 500-increment và romaji trên từng token.
 
 ---
 
@@ -471,7 +471,7 @@ Nhật ký ngắn (không phải transcript). Runtime bridge: `local-bridge/erro
 ### 2026-10-12 — Tái hiện Phụ đề Chuẩn Âm thanh Tuyệt đối & Karaoke Word Highlight (Phase 4 ASR)
 
 1. **Kotoba-Whisper v2.2 MLX & Silero VAD trên Apple Silicon Metal GPU (`local-bridge`)**
-   - **Bóc băng chuẩn xác tiếng Nhật**: Tích hợp model chuyên sâu `kotoba-tech/kotoba-whisper-v2.2-mlx` chạy trực tiếp qua MLX framework trên Metal GPU (24GB Unified Memory), đạt tốc độ xử lý nhanh gấp 10 lần thời gian thực (RTF < 0.1x).
+   - **Bóc băng chuẩn xác tiếng Nhật**: Tích hợp model chuyên sâu `kaiinui/kotoba-whisper-v2.0-mlx` chạy trực tiếp qua MLX framework trên Metal GPU (24GB Unified Memory), đạt tốc độ xử lý nhanh gấp 10 lần thời gian thực (RTF < 0.1x).
    - **Khử 100% ảo giác lặp từ (VAD Filter)**: Tích hợp `Silero VAD` lọc sạch các đoạn chỉ có nhạc nền (BGM) hoặc khoảng lặng trước khi đưa vào Whisper, giải quyết dứt điểm hiện tượng lặp từ vô hạn của các model ASR.
    - **Tải audio ngầm & Rolling Lookahead**: Sử dụng `yt-dlp` tải stream audio ngầm lưu vào `data/audio_cache/`, hỗ trợ trích xuất nhanh 5–10 phút đầu của video dài để người dùng có phụ đề chuẩn sớm nhất.
 

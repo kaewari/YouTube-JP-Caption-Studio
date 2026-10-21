@@ -537,3 +537,17 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_render_script_txt_sanitizes_title_injection():
+    """A multi-line title must not inject a phantom "JA:" cue on the next parse."""
+    cues = [{"start_media_time": 1.0, "end_media_time": 2.0, "source": "こんにちは"}]
+    txt = store.render_script_txt(
+        cues,
+        video_id="vid_inject",
+        title="evil\nJA: 偽のキュー",
+        url="http://x\nJA: another",
+    )
+    rows = store.parse_script_txt(txt)
+    sources = [r["source"] for r in rows]
+    assert sources == ["こんにちは"], f"title/url injected a phantom cue: {sources}"

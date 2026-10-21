@@ -9,21 +9,27 @@
   }
   root.HardsubTimedtextParse = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  // Single-pass entity decoder: each entity is decoded exactly once, so an
+  // escaped entity stays literal ("&amp;#39;" → "&#39;", never "'"). The old
+  // chain decoded "&amp;" first and then re-decoded the "&#39;" it produced.
+  const NAMED_ENTITIES = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+  const ENTITY_RE = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
   function decodeEntities(s) {
-    return String(s || "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&#39;/g, "'")
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_, h) {
-        return String.fromCharCode(parseInt(h, 16));
-      })
-      .replace(/&#(\d+);/g, function (_, n) {
-        return String.fromCharCode(Number(n));
-      });
+    return String(s || "").replace(ENTITY_RE, function (match, body) {
+      if (body[0] === "#") {
+        const code = body[1] === "x" || body[1] === "X"
+          ? parseInt(body.slice(2), 16)
+          : parseInt(body.slice(1), 10);
+        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return match;
+        try {
+          return String.fromCodePoint(code);
+        } catch (_) {
+          return match;
+        }
+      }
+      const named = NAMED_ENTITIES[body];
+      return named === undefined ? match : named;
+    });
   }
 
   function parseJson3Cues(data, opts = {}) {

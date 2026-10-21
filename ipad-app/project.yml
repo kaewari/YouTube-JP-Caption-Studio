@@ -51,3 +51,6 @@ targets:
           - CFBundleURLName: com.example.YouTubeJPCaptionStudio.drive-oauth
             CFBundleURLSchemes:
               - com.googleusercontent.apps.886146342458-ik5d09sgushl9itr8csk6mj1ordv8ii2
+        # Drive OAuth config lives in the bundle, not in Swift source.
+        DRIVE_OAUTH_CLIENT_ID: 886146342458-ik5d09sgushl9itr8csk6mj1ordv8ii2.apps.googleusercontent.com
+        DRIVE_FOLDER_ID: 1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA

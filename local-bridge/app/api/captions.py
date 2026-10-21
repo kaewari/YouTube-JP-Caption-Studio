@@ -8,6 +8,7 @@ Strategy (stdlib urllib only):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import ssl
@@ -21,6 +22,8 @@ from fastapi.responses import JSONResponse
 
 from app.core.cache import LRUCache
 from app.utils.logging_utils import append_errors_log
+
+logger = logging.getLogger("bridge.captions")
 
 router = APIRouter()
 
@@ -164,8 +167,12 @@ def _player_response_from_watch_html(video_id: str) -> dict[str, Any]:
     return json.loads(html[start:end])
 
 
+class NoCaptionsError(ValueError):
+    """The video exists but exposes no caption track for this language."""
+
+
 def fetch_captions(video_id: str, lang: str) -> tuple[str, list[dict[str, Any]]]:
-    """Returns (via, cues); raises ValueError with a short reason on failure."""
+    """Returns (via, cues); raises NoCaptionsError when the video has no track."""
     android_body = {
         "context": {
             "client": {
@@ -193,13 +200,14 @@ def fetch_captions(video_id: str, lang: str) -> tuple[str, list[dict[str, Any]]]
             return "android", cues
     except ValueError:
         raise
-    except Exception:
-        pass  # ponytail: any android-path failure silently falls through to watch_html
+    except Exception as exc:
+        # ponytail: any android-path failure falls through to watch_html
+        logger.debug("Android caption path failed: %s", exc)
 
     player = _player_response_from_watch_html(video_id)
     cues = _cues_from_tracks(player, lang)
     if not cues:
-        raise ValueError(f"no captions for {video_id} lang={lang}")
+        raise NoCaptionsError(f"no captions for {video_id} lang={lang}")
     return "watch_html", cues
 
 
@@ -219,10 +227,20 @@ def get_captions(video_id: str, lang: str = "ja") -> Any:
         }
     try:
         via, cues = fetch_captions(video_id, lang)
-    except Exception as exc:
-        detail = f"{type(exc).__name__}: {exc}"
-        append_errors_log("WARNING", f"/captions/{video_id} miss: {detail}")
-        return JSONResponse(status_code=502, content={"ok": False, "detail": detail})
+    except NoCaptionsError:
+        # A miss, not an upstream failure: the video simply has no track here.
+        append_errors_log("WARNING", f"/captions/{video_id} lang={lang}: no captions")
+        return JSONResponse(
+            status_code=404, content={"ok": False, "detail": "no captions available"}
+        )
+    except Exception:
+        # The raw exception text can carry upstream URLs and internals: log it,
+        # answer with a stable message.
+        logger.exception("/captions/%s miss", video_id)
+        append_errors_log("ERROR", f"/captions/{video_id} lang={lang}: upstream failure")
+        return JSONResponse(
+            status_code=502, content={"ok": False, "detail": "caption fetch failed"}
+        )
     _cues_cache.set(cache_key, (time.time(), (via, cues)))
     return {
         "ok": True,

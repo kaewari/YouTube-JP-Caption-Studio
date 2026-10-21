@@ -41,6 +41,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>DRIVE_FOLDER_ID</key>
+	<string>1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA</string>
+	<key>DRIVE_OAUTH_CLIENT_ID</key>
+	<string>886146342458-ik5d09sgushl9itr8csk6mj1ordv8ii2.apps.googleusercontent.com</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

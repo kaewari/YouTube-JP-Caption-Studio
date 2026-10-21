@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ComingSoonPanel } from "@/components/ComingSoonPanel";
 import { PageTabs } from "@/components/PageTabs";
@@ -10,6 +10,7 @@ import { SavedWordsToolbar } from "@/components/SavedWordsToolbar";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SideNav, type NavId } from "@/components/SideNav";
 import { isExtensionPage } from "@/lib/chrome-env";
+import { cn } from "@/lib/utils";
 import {
   deleteSavedCueAsync,
   loadSavedCuesAsync,
@@ -32,25 +33,58 @@ import {
 
 type AppView = Extract<NavId, "saved" | "settings">;
 
+/** The popup ships as a static export → the server renders without window/chrome.
+ *  `useSyncExternalStore` keeps the hydration render identical to the server HTML
+ *  and applies the real client value right after mount (no hydration mismatch). */
+const subscribeEnv = () => () => {};
+
+function getIsExtSnapshot(): boolean {
+  return isExtensionPage();
+}
+
+function getIsExtServerSnapshot(): boolean {
+  return false;
+}
+
+function getUrlViewSnapshot(): AppView {
+  try {
+    return new URLSearchParams(window.location.search).get("v") === "settings"
+      ? "settings"
+      : "saved";
+  } catch {
+    return "saved";
+  }
+}
+
+function getUrlViewServerSnapshot(): AppView {
+  return "saved";
+}
+
 export function SavedItemsApp() {
-  /** Sidebar open (labels visible) by default — collapsed on first render in the popup. */
-  const [collapsed, setCollapsed] = useState(() => isExtensionPage());
-  const isExt = useMemo(() => isExtensionPage(), []);
-  const [view, setView] = useState<AppView>(() => {
-    try {
-      return new URLSearchParams(window.location.search).get("v") === "settings"
-        ? "settings"
-        : "saved";
-    } catch {
-      return "saved";
-    }
-  });
+  const isExt = useSyncExternalStore(
+    subscribeEnv,
+    getIsExtSnapshot,
+    getIsExtServerSnapshot,
+  );
+  const urlView = useSyncExternalStore(
+    subscribeEnv,
+    getUrlViewSnapshot,
+    getUrlViewServerSnapshot,
+  );
+  /** Sidebar open (labels visible) by default — collapsed in the popup. */
+  const [collapsedOverride, setCollapsedOverride] = useState<boolean | null>(
+    null,
+  );
+  const [viewOverride, setViewOverride] = useState<AppView | null>(null);
+  const collapsed = collapsedOverride ?? isExt;
+  const view = viewOverride ?? urlView;
   const [tab, setTab] = useState<SavedItemsTab>("saved-words");
   const [words, setWords] = useState<SavedWord[]>([]);
   const wordsRef = useRef<SavedWord[]>([]);
   const persistChain = useRef<Promise<void>>(Promise.resolve());
   const [source, setSource] = useState<DataSource>("mock");
   const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<VocabStatusFilter>("all");
   const [ready, setReady] = useState(false);
@@ -74,6 +108,7 @@ export function SavedItemsApp() {
       setWords(result.words);
       setSource(result.source);
       setNote(result.note);
+      setNoteError(false);
       setReady(true);
     })();
     return () => {
@@ -103,6 +138,7 @@ export function SavedItemsApp() {
     return subscribeVocab((next, src) => {
       setWords(next);
       setSource(src);
+      setNoteError(false);
       setNote(
         src === "chrome.storage"
           ? "Live · chrome.storage userVocab"
@@ -149,15 +185,26 @@ export function SavedItemsApp() {
       // Serialize writes — rapid clicks must persist in order, never out of date.
       persistChain.current = persistChain.current
         .then(() => persistWordsAsync(next))
-        .then((src) => {
+        .then(({ source: src, bridgeError }) => {
           setSource(src);
+          setNoteError(!!bridgeError);
           setNote(
-            src === "chrome.storage"
-              ? "Đã ghi chrome.storage · userVocab"
-              : "Đã lưu localStorage + bridge",
+            bridgeError
+              ? `Đã lưu ${src === "chrome.storage" ? "chrome.storage" : "localStorage"}, nhưng bridge chưa đồng bộ: ${bridgeError}`
+              : src === "chrome.storage"
+                ? "Đã ghi chrome.storage · userVocab"
+                : "Đã lưu localStorage + bridge",
           );
         })
-        .catch(() => {});
+        .catch((error: unknown) => {
+          // A failed write must never read as "Đã lưu" — flag the note instead.
+          setNoteError(true);
+          setNote(
+            error instanceof Error
+              ? `Không lưu được: ${error.message}`
+              : "Không lưu được dữ liệu",
+          );
+        });
       return next;
     });
   }
@@ -166,13 +213,14 @@ export function SavedItemsApp() {
     const next = resetToMock();
     setWords(next);
     setSource("mock");
+    setNoteError(false);
     setNote("Đã reset về dữ liệu demo.");
     setFilter("all");
     setQuery("");
   }
 
   function handleNavigate(id: NavId) {
-    if (id === "saved" || id === "settings") setView(id);
+    if (id === "saved" || id === "settings") setViewOverride(id);
   }
 
   async function handleDeleteCue(cueId: string) {
@@ -180,6 +228,7 @@ export function SavedItemsApp() {
       await deleteSavedCueAsync(cueId);
       setCues((prev) => prev.filter((c) => c.id !== cueId));
     } catch (error) {
+      setNoteError(true);
       setNote(error instanceof Error ? error.message : "Không xóa được câu đã lưu");
     }
   }
@@ -188,7 +237,7 @@ export function SavedItemsApp() {
     <div className="hs-popup-root flex min-h-screen w-full max-w-none bg-[var(--background)] text-white">
       <SideNav
         collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
+        onToggle={() => setCollapsedOverride(!collapsed)}
         activeId={view}
         onNavigate={handleNavigate}
       />
@@ -208,7 +257,12 @@ export function SavedItemsApp() {
                       Nguồn: <code className="text-white/55">{source}</code>
                     </span>
                     <span className="hidden sm:inline">·</span>
-                    <span className="min-w-0 flex-1 truncate">
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate",
+                        noteError && "text-rose-300",
+                      )}
+                    >
                       {ready ? note : "Đang tải…"}
                     </span>
                     {!isExt && (

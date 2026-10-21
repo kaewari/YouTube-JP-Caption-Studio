@@ -4,6 +4,8 @@
  * 1. navigator.mediaDevices.getUserMedia using streamId from chrome.tabCapture.
  * 2. Audio playback pass-through via AudioContext.destination so tab remains audible.
  * 3. MediaRecorder slicing (audio/webm;codecs=opus) dispatched to local-bridge POST /asr/transcribe.
+ * 4. Slice boundaries ride on the MediaRecorder timeslice event (a page timer is
+ *    throttled/suspended in an offscreen document, the media pipeline is not).
  */
 
 const BRIDGE_ASR_URL = "http://127.0.0.1:8765/asr/transcribe";
@@ -66,11 +68,16 @@ async function startCapture(streamId, tabId, videoId, initialPlayhead = 0) {
   } catch (err) {
     console.error("[AudioCapture] getUserMedia failed:", err);
     isCapturing = false;
+    const message = String(err?.message || err);
+    // Surface the failure to the service worker (it owns the UI hand-off).
     chrome.runtime.sendMessage({
       type: "ASR_CAPTURE_ERROR",
       tabId: activeTabId,
-      error: String(err?.message || err),
-    });
+      error: message,
+    }).catch(() => {});
+    // The caller must see the failure: resolving here left the overlay
+    // "listening" while no recorder was running.
+    throw new Error(message);
   }
 }
 
@@ -96,6 +103,13 @@ function recordNextSlice() {
     if (e.data && e.data.size > 0) {
       chunks.push(e.data);
     }
+    // Slice boundary driven by the media pipeline (timeslice), not by a page
+    // timer: it still fires when the offscreen document's timers are throttled
+    // or suspended. The final dataavailable after stop() sees a non-recording
+    // state and does nothing.
+    if (isCapturing && recorder.state === "recording") {
+      recorder.stop();
+    }
   };
 
   recorder.onstop = async () => {
@@ -110,7 +124,10 @@ function recordNextSlice() {
     }
   };
 
-  recorder.start();
+  // Timeslice: Chrome emits a dataavailable event every SLICE_DURATION_MS even
+  // while page timers are throttled — that event ends the slice (see above).
+  recorder.start(SLICE_DURATION_MS);
+  // Backstop for encoders that never emit a timeslice chunk.
   setTimeout(() => {
     if (recorder.state === "recording") {
       recorder.stop();
@@ -178,7 +195,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "START_CAPTURE") {
     startCapture(msg.streamId, msg.tabId, msg.videoId, msg.playhead)
       .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
     return true;
   }
 

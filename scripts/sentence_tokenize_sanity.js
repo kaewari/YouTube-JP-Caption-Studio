@@ -33,6 +33,16 @@ refreshSentenceProjection(true);captionMode='enhanced';
 `, ctx);
 const run = expression => vm.runInContext(expression, ctx);
 (async () => {
+  // This script talks to the REAL local bridge, so it is an integration check:
+  // skip (instead of failing) when the bridge is not running.
+  const bridgeUrl = process.env.CAPTION_BRIDGE_URL || 'http://127.0.0.1:8765';
+  try {
+    const probe = await fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(2000) });
+    if (!probe.ok) throw new Error(`HTTP ${probe.status}`);
+  } catch (err) {
+    console.log(`SKIP: sentence_tokenize_sanity.js needs the local bridge on ${bridgeUrl} (${err.message})`);
+    process.exit(0);
+  }
   const original = run('JSON.stringify(cues)');
   await run('enrichSentenceGroups()');
   assert.equal(requests, 1); assert.equal(actualRows.length, 1);

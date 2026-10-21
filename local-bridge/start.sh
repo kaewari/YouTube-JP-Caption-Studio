@@ -16,6 +16,15 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
 fi
 
+# --workers 1 is load-bearing: the governor slots, the Sudachi tokenizer, the
+# shared dict.sqlite handle and the per-video save locks are all per-process.
+# A second worker silently breaks them, so refuse to start instead.
+if [[ "${WEB_CONCURRENCY:-1}" != "1" ]]; then
+  echo "ERROR: WEB_CONCURRENCY=${WEB_CONCURRENCY} would break the per-process bridge state." >&2
+  echo "       The bridge must run with a single uvicorn worker (--workers 1)." >&2
+  exit 1
+fi
+
 cleanup_saved_items() {
   if [[ -f "$SAVED_ITEMS_PID_FILE" ]]; then
     local old
@@ -107,5 +116,6 @@ start_saved_items() {
 start_saved_items
 
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
 echo "Starting bridge on http://127.0.0.1:8765"
 exec python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1

@@ -6,6 +6,16 @@ enum PlayerHistoryAction {
     case goForward
 }
 
+#if DEBUG
+/// Autotest driver channel — DEBUG builds only, so the Release webview bridge
+/// carries no arbitrary-JS / page-scroll plumbing.
+final class AutotestBridge {
+    static let shared = AutotestBridge()
+    var evaluateJS: ((String) -> Void)?
+    var scrollPage: ((Double) -> Void)?
+}
+#endif
+
 struct YouTubePlayerView: UIViewRepresentable {
     let videoID: String
     let onCaptionsReceived: (String, String) -> Void
@@ -19,10 +29,6 @@ struct YouTubePlayerView: UIViewRepresentable {
     /// OS/app fullscreen enter/exit from page (`fullscreenHandler`).
     var onFullscreenChange: ((Bool) -> Void)? = nil
     @Binding var seekRequest: Double?
-    /// Set to scroll the watch page (autotest: reproduce scrolled-fullscreen state).
-    @Binding var scrollRequest: Double?
-    /// Set to evaluate arbitrary JS (autotest: drive YT UI, e.g. miniplayer toggle).
-    @Binding var jsEvalRequest: String?
     /// Bump to force a page reload without changing `videoID`.
     @Binding var reloadNonce: Int
     /// Bump to run `window.__csToggleFull()` (app maximize only — OS video FS disabled).
@@ -34,6 +40,13 @@ struct YouTubePlayerView: UIViewRepresentable {
     /// Desktop Safari UA so YouTube serves full header (search / Premium), not mobile chrome.
     private static let desktopUA =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+
+    /// Finite decimal literal for JS interpolation — never `nan`/`inf`/exponent,
+    /// and never a locale decimal comma.
+    static func jsNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        return String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -82,26 +95,24 @@ struct YouTubePlayerView: UIViewRepresentable {
         context.coordinator.parent = self
 
         if let seekTime = seekRequest {
-            let seconds = seekTime / 1000.0
+            let seconds = Self.jsNumber(seekTime / 1000.0)
             uiView.evaluateJavaScript(
                 "(function(){if(window.__csSeek)return window.__csSeek(\(seconds));var v=document.querySelector('#movie_player video.html5-main-video')||document.querySelector('#movie_player video');if(v)v.currentTime=\(seconds);})();"
             )
             DispatchQueue.main.async { seekRequest = nil }
         }
 
-        if let y = scrollRequest {
+        #if DEBUG
+        // Autotest channel (DEBUG only) — the Release bridge has no JS driver.
+        AutotestBridge.shared.evaluateJS = { uiView.evaluateJavaScript($0) }
+        AutotestBridge.shared.scrollPage = { y in
             // Clamp to the page's real scrollable depth — a fixed target fires early
             // (page still loading) and silently bottoms out (scrollY stuck at ~500).
             uiView.evaluateJavaScript(
-                "window.scrollTo(0, Math.min(\(y), Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));"
+                "window.scrollTo(0, Math.min(\(Self.jsNumber(y)), Math.max(0, document.documentElement.scrollHeight - window.innerHeight)));"
             )
-            DispatchQueue.main.async { scrollRequest = nil }
         }
-
-        if let js = jsEvalRequest {
-            uiView.evaluateJavaScript(js)
-            DispatchQueue.main.async { jsEvalRequest = nil }
-        }
+        #endif
 
         if fullscreenToggleNonce != context.coordinator.lastFullscreenToggleNonce {
             context.coordinator.lastFullscreenToggleNonce = fullscreenToggleNonce

@@ -15,13 +15,19 @@ import pytest
 
 from scripts.asr_benchmark import (
     compute_cer,
+    compute_cer_details,
     compute_normalized_cer,
     evaluate_windows,
     get_metal_peak_memory_bytes,
     get_process_rss_bytes,
-    levenshtein_distance,
     normalize_ja_text,
 )
+
+
+def levenshtein_distance(ref: str, hyp: str) -> int:
+    """Edit distance from the production breakdown (subs + dels + insertions)."""
+    details = compute_cer_details(ref, hyp)
+    return details["substitutions"] + details["deletions"] + details["insertions"]
 
 
 def test_normalize_ja_text_empty_and_none():
@@ -160,9 +166,10 @@ def test_evaluate_windows_manifest():
         manifest_path=manifest_path,
         predictions=simulated_preds,
     )
-    assert "modelEvaluation" in summary_with_preds
-    assert summary_with_preds["modelEvaluation"]["evaluatedWindows"] == 1
+    # Production keys the per-model summaries by model name (modelEvaluations).
+    assert "modelEvaluations" in summary_with_preds
+    assert summary_with_preds["modelEvaluations"]["default"]["evaluatedWindows"] == 1
     # On Window #6, simulated prediction exactly matches reference -> norm CER = 0.0
     win6 = [w for w in summary_with_preds["windows"] if w["id"] == "gold-06"][0]
-    assert win6["modelNormCer"] == 0.0
+    assert win6["models"]["default"]["normCer"] == 0.0
     assert win6["ytNormCer"] > 0.0  # YouTube ASR had 勘無料 error

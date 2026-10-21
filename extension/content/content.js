@@ -97,7 +97,6 @@
   let translatingWithGemini = false;
   let lastBackgroundPrefetchTime = 0;
   let lrHotkeysBound = false;
-  let caps = { max_in_flight: 3, max_fps: 10 };
   let translatingIds = new Set();
   let loopTimer = null;
   let healthTimer = null;
@@ -126,8 +125,8 @@
   const sentenceTokenPending = new Set(), sentenceTokenRetryAt = new Map();
   let currentMediaTime = 0;
   let currentVideoId = "";
-  /** Video gần nhất đã reset overlay — mỗi video mới luôn bắt đầu tắt overlay. */
-  let lastOverlayResetVideo = "";
+  /** Video the page last reported a timedtext capture for (empty = none yet). */
+  let pageCaptureVideoId = "";
   /** Which site family loaded cues (youtube / abema / web) — cache key namespace. */
   let currentSource = "youtube";
   /** Bumps on each yt-navigate; stale onNavigate/loadAllCaptions bail out. */
@@ -430,7 +429,7 @@
       publishSidePanelState({ forceList: true });
       if (cues.some((c) => c.tokens?.length)) markFuriganaPainted();
       void triggerGeminiTranslationIfNeeded();
-      await saveTranscript({ force: true, awaitDisk: !!transcriptMeta.owned });
+      await saveTranscript({ force: true });
       return;
     }
     const [cached, meta] = await Promise.all([
@@ -660,7 +659,12 @@
     // Only the page script we inject (same window) may answer — a cross-origin
     // iframe or page-world script could otherwise forge caption results.
     if (ev.source !== window) return;
-    if (!ev.data || ev.data.source !== "hardsub-ocr-page") return;
+    // The page reports a timedtext capture for a video: remember which one so
+    // the page-world poll can stop asking the same question again.
+    if (ev.data?.type === "__HARDSUB_TIMEDTEXT_CAPTURED__") {
+      pageCaptureVideoId = String(ev.data.videoId || "");
+    }
+    if (!ev.data || typeof ev.data !== "object" || ev.data.source !== "hardsub-ocr-page") return;
     const { requestId, result, cap } = ev.data;
     // Capability token gate: check top-level cap or result.cap
     const msgCap = cap || result?.cap;
@@ -726,6 +730,28 @@
       sendResponse({ ok: true });
       return true;
     }
+    if (msg?.type === "ASR_CAPTURE_ERROR") {
+      // The offscreen document could not capture the tab audio. Without this
+      // the overlay would keep showing "listening" while no recorder runs.
+      // The message is broadcast, so only the tab that asked for the capture
+      // may act on it.
+      if (msg?.tabId != null && contentTabId != null && msg.tabId !== contentTabId) {
+        sendResponse({ ok: false, error: "not_this_tab" });
+        return true;
+      }
+      // Only act when this tab thinks it is listening. The error is also
+      // reported through the answer of the AUDIO_START_CAPTURE request, which
+      // is where the user-facing message is shown - here we only make sure the
+      // overlay leaves the "listening" state.
+      if (!audioListeningActive) {
+        sendResponse({ ok: true, error: "not_listening" });
+        return true;
+      }
+      audioListeningActive = false;
+      publishSidePanelState({ forceList: true });
+      sendResponse({ ok: true });
+      return true;
+    }
     if (msg?.type !== "SP_CMD") return;
     handleSidePanelCmd(msg)
       .then((r) => sendResponse(r || { ok: true }))
@@ -748,12 +774,25 @@
       await loadSentenceState();
       cancelSentencePrefetch();
       refreshSentenceProjection(true);
-      captionMode = msg.mode === "enhanced" && sentenceProjection && sentenceEnhancementEnabled() ? "enhanced" : "original";
+      const enhancementAvailable = sentenceEnhancementEnabled();
+      // "enhanced" only applies when the sentence engine is ready AND enabled.
+      // Answer the mode that was really applied so the panel can show the
+      // downgrade instead of a silent "original".
+      const applied =
+        msg.mode === "enhanced" && sentenceProjection && enhancementAvailable
+          ? "enhanced"
+          : "original";
+      captionMode = applied;
       await syncToPlayhead();
       publishSidePanelState({ forceList: true });
       void enrichSentenceGroups();
       void triggerGeminiTranslationIfNeeded();
-      return { ok: true, captionMode };
+      return {
+        ok: true,
+        captionMode: applied,
+        requestedMode: msg.mode === "enhanced" ? "enhanced" : "original",
+        enhancementAvailable,
+      };
     }
     if (cmd === "toggle_audio_listening") {
       return toggleAudioListening(msg.active != null ? msg.active : !audioListeningActive, { auto: false });
@@ -956,24 +995,28 @@
       void seekToTime(Number(msg.mediaTime));
       return { ok: true };
     }
-    if (cmd === "copy") {
-      const ok = await copyCue(resolveCueIndex(msg), msg.format || "full");
-      return { ok: !!ok };
-    }
-    if (cmd === "edit_ja") {
-      await onJaEdit(resolveCueIndex(msg), msg.text);
-      return { ok: true };
-    }
-    if (cmd === "edit_en") {
-      await onEnEdit(resolveCueIndex(msg), msg.text);
-      return { ok: true };
-    }
-    if (cmd === "edit_vi") {
-      await onViEdit(resolveCueIndex(msg), msg.text);
-      return { ok: true };
-    }
-    if (cmd === "edit_timeline") {
-      await onTimelineEdit(resolveCueIndex(msg), msg.start, msg.end);
+    if (cmd === "copy" || cmd === "edit_ja" || cmd === "edit_en" || cmd === "edit_vi" || cmd === "edit_timeline") {
+      const idx = resolveCueIndex(msg);
+      // Out-of-range / unknown cue: nothing was edited — answer an error
+      // instead of {ok:true} (the panel would show a phantom success).
+      if (idx < 0) return { ok: false, error: "Cue not found" };
+      if (cmd === "copy") {
+        const ok = await copyCue(idx, msg.format || "full");
+        return { ok: !!ok };
+      }
+      if (cmd === "edit_ja") {
+        await onJaEdit(idx, msg.text);
+        return { ok: true };
+      }
+      if (cmd === "edit_en") {
+        await onEnEdit(idx, msg.text);
+        return { ok: true };
+      }
+      if (cmd === "edit_vi") {
+        await onViEdit(idx, msg.text);
+        return { ok: true };
+      }
+      await onTimelineEdit(idx, msg.start, msg.end);
       return { ok: true };
     }
     if (cmd === "add_cue") {
@@ -1068,6 +1111,12 @@
     audioListeningActive = nextState;
     const tabId = await getContentTabId();
     if (audioListeningActive) {
+      // Fail closed: without a tab id the capture cannot be routed.
+      if (!tabId) {
+        audioListeningActive = false;
+        if (!opts.auto) toast("Không bật được nghe audio: chưa lấy được tab id");
+        return { ok: false, error: "no_tab_id", audioListeningActive: false };
+      }
       if (!opts.auto) toast("Đang bật nghe audio (Whisper trên Apple Silicon)...");
       try {
         const res = await chrome.runtime.sendMessage({
@@ -1294,6 +1343,10 @@
 
   function teardownUI() {
     stopLoop();
+    if (videoLayoutTimer) {
+      clearInterval(videoLayoutTimer);
+      videoLayoutTimer = null;
+    }
     if (playerToggleObserver) {
       playerToggleObserver.disconnect();
       playerToggleObserver = null;
@@ -1332,44 +1385,54 @@
     void onNavigate();
   }
 
-  async function loadSettings() {
-    const data = await chrome.storage.local.get(["hardsubSettings", "userVocab", "savedCues"]);
-    settings = { ...DEFAULTS, ...(data.hardsubSettings || {}) };
-    if (settings.vocabColors) {
-      settings.vocabColors = {
+  /**
+   * Fill every default exactly once. `loadSettings` and the storage listener
+   * must not drift apart — a default missing in one of them silently drops a
+   * feature (e.g. the bilingual JLPT colours) until the next full reload.
+   */
+  function normalizeSettings(next) {
+    const s = { ...DEFAULTS, ...(next || {}) };
+    if (s.vocabColors) {
+      s.vocabColors = {
         ...(Vocab.DEFAULT_VOCAB_COLORS || {}),
-        ...settings.vocabColors,
+        ...s.vocabColors,
       };
     }
-    settings.levelColors = Vocab.normalizeLevelColors(
-      settings.levelColors || Vocab.DEFAULT_LEVEL_COLORS
+    s.levelColors = Vocab.normalizeLevelColors(
+      s.levelColors || Vocab.DEFAULT_LEVEL_COLORS
     );
-    if (settings.levelHighlightEnabled == null) {
-      settings.levelHighlightEnabled = true;
+    if (s.levelHighlightEnabled == null) {
+      s.levelHighlightEnabled = true;
     }
-    if (settings.dictShowSentence == null) settings.dictShowSentence = true;
-    if (settings.autoOpen == null) settings.autoOpen = DEFAULTS.autoOpen;
-    if (settings.showOnVideo == null) settings.showOnVideo = DEFAULTS.showOnVideo;
-    if (settings.barBgOpacity == null) settings.barBgOpacity = DEFAULTS.barBgOpacity;
-    if (settings.barTextOpacity == null) settings.barTextOpacity = DEFAULTS.barTextOpacity;
-    if (settings.barShowJa == null) settings.barShowJa = true;
-    if (settings.barShowEn == null) settings.barShowEn = true;
-    if (settings.barShowVi == null) settings.barShowVi = false;
+    if (s.dictShowSentence == null) s.dictShowSentence = true;
+    if (s.autoOpen == null) s.autoOpen = DEFAULTS.autoOpen;
+    if (s.showOnVideo == null) s.showOnVideo = DEFAULTS.showOnVideo;
+    if (s.barBgOpacity == null) s.barBgOpacity = DEFAULTS.barBgOpacity;
+    if (s.barTextOpacity == null) s.barTextOpacity = DEFAULTS.barTextOpacity;
+    if (s.barShowJa == null) s.barShowJa = true;
+    if (s.barShowEn == null) s.barShowEn = true;
+    if (s.barShowVi == null) s.barShowVi = false;
+    if (s.enableBilingualJlptColor == null) s.enableBilingualJlptColor = true;
+    if (s.barScale == null || !Number.isFinite(Number(s.barScale))) {
+      s.barScale = DEFAULTS.barScale;
+    }
+    // Migrate legacy uniform barScale → independent W/H when missing.
+    if (s.barScaleW == null || !Number.isFinite(Number(s.barScaleW))) {
+      s.barScaleW = Number(s.barScale) || DEFAULTS.barScaleW;
+    }
+    if (s.barScaleH == null || !Number.isFinite(Number(s.barScaleH))) {
+      s.barScaleH = Number(s.barScale) || DEFAULTS.barScaleH;
+    }
+    return s;
+  }
+
+  async function loadSettings() {
+    const data = await chrome.storage.local.get(["hardsubSettings", "userVocab", "savedCues"]);
+    settings = normalizeSettings(data.hardsubSettings);
     if (!settings.barViDefaultMigratedV2) {
       settings.barShowVi = false;
       settings.barViDefaultMigratedV2 = true;
       void saveSettings();
-    }
-    if (settings.enableBilingualJlptColor == null) settings.enableBilingualJlptColor = true;
-    if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
-      settings.barScale = DEFAULTS.barScale;
-    }
-    // Migrate legacy uniform barScale → independent W/H when missing.
-    if (settings.barScaleW == null || !Number.isFinite(Number(settings.barScaleW))) {
-      settings.barScaleW = Number(settings.barScale) || DEFAULTS.barScaleW;
-    }
-    if (settings.barScaleH == null || !Number.isFinite(Number(settings.barScaleH))) {
-      settings.barScaleH = Number(settings.barScale) || DEFAULTS.barScaleH;
     }
     userVocab = data.userVocab && typeof data.userVocab === "object" ? data.userVocab : {};
     savedCues = data.savedCues && typeof data.savedCues === "object" ? data.savedCues : {};
@@ -1475,15 +1538,6 @@
     return !!savedCues[id];
   }
 
-  function getSortedCues() {
-    return cues
-      .slice()
-      .sort(
-        (a, b) =>
-          (Number(a.start_media_time) || 0) - (Number(b.start_media_time) || 0)
-      );
-  }
-
   function findVideo() {
     return (
       document.querySelector("video.html5-main-video") ||
@@ -1560,10 +1614,19 @@
     if (target) await seekToTime(target.start_media_time);
   }
 
-  const BAR_POS_LEVELS = [0.72, 0.55, 0.82];
+  /**
+   * Overlay bar positions in normalized video coords. `center` keeps the bar
+   * horizontally centred (the transform offsets its own width); without real
+   * nx/ny all three presets collapsed into the centred default.
+   */
+  const BAR_POS_LEVELS = [
+    { nx: 0.5, ny: 0.72, center: true },
+    { nx: 0.5, ny: 0.55, center: true },
+    { nx: 0.5, ny: 0.82, center: true },
+  ];
   async function toggleBarPosition() {
     barPosIndex = (barPosIndex + 1) % BAR_POS_LEVELS.length;
-    settings.barPos = { ny: BAR_POS_LEVELS[barPosIndex] };
+    settings.barPos = { ...BAR_POS_LEVELS[barPosIndex] };
     applyBarPosition();
     await saveSettings();
   }
@@ -1740,8 +1803,11 @@
 
           for (const language of languages) {
             if (!force && sentenceTranslations[group.id]?.revision === group.revision && sentenceTranslations[group.id]?.[language]) continue;
-            if (!force && sentenceTranslations[group.id]?.revision === group.revision &&
-                (sentenceTranslations[group.id]?.retryAt?.[language] || 0) > Date.now()) continue;
+            // A language that just failed must not be retried for 30s, even when
+            // the revision moved on (the group text is the same, only the
+            // context changed) - otherwise every automatic prefetch hammers a
+            // failing service.
+            if (!force && (sentenceTranslations[group.id]?.retryAt?.[language] || 0) > Date.now()) continue;
             jobs.push({ id: group.id, revision: group.revision, source: group.text, sourceKey: projection.sourceKey,
               algorithmVersion: projection.version, context: group.context, language, priority: jobPriority });
             if (isBg) queuedBackgroundCount++;
@@ -2186,7 +2252,7 @@
             (res?.status === 409 || res?.skipped === "stale_revision")) {
           toast("Bản lưu mới hơn đã có. Xuất backup JSON trước khi Reload để giữ chỉnh sửa ở tab này.");
         }
-        return;
+        return { ok: false, skipped: res?.skipped === "stale_revision" || res?.status === 409 };
       }
       // Bridge answers with the Lamport rev it just wrote — adopt it, never guess.
       const rev = Number(res?.data?.rev) || 0;
@@ -2200,8 +2266,10 @@
           .sendMessage({ type: "DRIVE_UPLOAD_SCHEDULE", videoId })
           .catch(() => {});
       } catch (_) {}
+      return { ok: true, skipped: false };
     } catch (_) {
       /* bridge offline — chrome.storage still holds a copy */
+      return { ok: false, skipped: false };
     }
   }
 
@@ -2212,11 +2280,13 @@
     return result;
   }
   async function saveTranscript(opts = {}) {
-    if (!currentVideoId) return;
+    if (!currentVideoId) return { saved: false, skipped: false, diskWritten: false };
     const gen = navigateGen, videoId = currentVideoId, input = cues;
     const current = () => gen === navigateGen && videoId === currentVideoId && input === cues;
     return withTranscriptWrite(async () => {
-      if (!current()) return;
+      // Every path returns a result: the caller (clearTranslations) must be
+      // able to tell "saved" from "nothing was written".
+      if (!current()) return { saved: false, skipped: true, diskWritten: false };
       const force = !!opts.force;
       // Persist the full cue list — display limits (settings.maxSentences) apply at
       // render only, never here (a truncated save would drop owned cues on reload).
@@ -2250,8 +2320,13 @@
         meta: { owned: !!transcriptMeta.owned, rev, deviceId: String(transcriptMeta.deviceId || ""),
           updatedAt: new Date().toISOString(), tombstones: Array.from(new Set(transcriptMeta.tombstones || [])) },
         cues: payload.map(({ tokens, ...rest }) => rest) });
-      if (!result?.ok) throw new Error(result?.error || "Script save failed");
-      if (result.skipped) { toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp"); return; }
+      if (!result?.ok) {
+        throw new Error(result?.error || "Script save failed");
+      }
+      if (result.skipped) {
+        toast("Script mới hơn ở tab khác; Reload trước khi chỉnh tiếp");
+        return { saved: false, skipped: true, diskWritten: false };
+      }
       if (!current()) return;
       await saveSentenceState();
       if (!current()) return;
@@ -2263,7 +2338,8 @@
         } catch (_) {}
       }
       // Persist readable script.txt + cues.json under scripts/{videoId}/ via bridge.
-      if (current()) await saveTranscriptToDisk(payload);
+      const disk = current() ? await saveTranscriptToDisk(payload) : { ok: false };
+      return { saved: true, skipped: false, diskWritten: !!(disk && disk.ok) };
     });
   }
 
@@ -2502,6 +2578,10 @@
   function ensureVideoLayoutSync() {
     if (videoLayoutTimer) return;
     videoLayoutTimer = setInterval(() => {
+      // Hidden tabs do not need layout work, and a disabled platform must not
+      // re-create the overlay the teardown just removed.
+      if (document.hidden) return;
+      if (!isCurrentPlatformEnabled()) return;
       ensureUI();
       applyBarPosition();
       applyDim();
@@ -2575,14 +2655,6 @@
     ensurePlayerToggle();
     applyBarPosition();
     applyBarVisibility();
-  }
-
-  function applyPanelWidth() {
-    /* Side panel width is controlled by Chrome — no page overlay panel. */
-  }
-
-  function setupPanelResize() {
-    /* no-op */
   }
 
   function userBarScale() {
@@ -2699,7 +2771,9 @@
     if (np && np.nx != null && np.ny != null) {
       const left = rect.left + np.nx * rect.width;
       const top = rect.top + np.ny * rect.height;
-      bar.style.transform = "none";
+      // A centred preset keeps the translateX(-50%) offset (the bar is wider
+      // than its anchor); a dragged position is anchored by its left edge.
+      bar.style.transform = np.center ? "translateX(-50%)" : "none";
       bar.style.left = `${Math.max(rect.left + 4, Math.min(rect.right - 40, left))}px`;
       bar.style.top = `${Math.max(rect.top + 4, Math.min(rect.bottom - 24, top))}px`;
     } else {
@@ -3641,7 +3715,9 @@
       `${sourceLabel()} · cached ${st.cached}/${st.n}${bridgeReady ? "" : " · bridge?"}`;
     const seq = ++spPublishSeq;
     const forceCues = !!extra.forceList || listDirty;
-    if (forceCues) refreshSentenceProjection(true);
+    // Rebuild the sentence engine only when the cues actually changed — a
+    // status-only publish must not re-run buildSentenceGroups over every cue.
+    if (forceCues) refreshSentenceProjection(listDirty);
     const payload = {
       videoId: currentVideoId,
       status,
@@ -4303,6 +4379,9 @@
       const raceDeadline = Date.now() + 700;
       while (Date.now() < raceDeadline) {
         if (stale()) return;
+        // The page already reported a capture for this video: the push handler
+        // owns it, so re-issuing the same RPC cannot add anything.
+        if (pageCaptureVideoId && pageCaptureVideoId === currentVideoId) break;
         if (swUsable(swEarly)) {
           // Paint JA ASAP; EN/VI fill async (do not await full pack).
           if (swOk(swEarly)) {
@@ -4497,7 +4576,6 @@
     const h = res.data;
     const wasReady = bridgeReady;
     bridgeReady = !!h.ready;
-    caps = h.caps || caps;
     const boot = h.bootstrap;
     if (boot && !boot.done && boot.stage !== "idle") {
       setStatus(`bootstrap ${Math.round(boot.percent || 0)}%`);
@@ -4540,13 +4618,30 @@
     };
   }
 
+  /**
+   * Cue index for a side-panel command, or -1 when the target does not exist.
+   * An out-of-range index must never reach the edit handlers: they would
+   * silently do nothing while the panel is told the edit succeeded.
+   */
   function resolveCueIndex(msg) {
     if (msg?.id) {
       const i = cues.findIndex((c) => c.id === msg.id);
       if (i >= 0) return i;
     }
     const idx = Number(msg?.idx);
-    return Number.isFinite(idx) ? idx : -1;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= cues.length) return -1;
+    return idx;
+  }
+
+  /**
+   * One text normalization for every write path (manual edit AND import), so
+   * the same EN/VI line can never end up as two variants of one `text_source`.
+   */
+  function normalizeCueText(text) {
+    return String(text || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function findCueIndexById(id) {
@@ -4556,10 +4651,7 @@
   async function onJaEdit(idx, text) {
     const cue = cues[idx];
     if (!cue) return;
-    const next = String(text || "")
-      .replace(/\u00a0/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const next = normalizeCueText(text);
     // Allow empty source for draft cues (persist); skip tokenize when empty.
     if (next === cue.source && cue.tokens?.length) {
       publishSidePanelState();
@@ -4601,10 +4693,7 @@
   async function onEnEdit(idx, text) {
     const cue = cues[idx];
     if (!cue) return;
-    const next = String(text || "")
-      .replace(/\u00a0/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const next = normalizeCueText(text);
     const prev = String(cue.en || "");
     if (next === prev) {
       publishSidePanelState();
@@ -4628,10 +4717,7 @@
   async function onViEdit(idx, text) {
     const cue = cues[idx];
     if (!cue) return;
-    const next = String(text || "")
-      .replace(/\u00a0/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const next = normalizeCueText(text);
     const prev = String(cue.vi || "");
     if (next === prev) {
       publishSidePanelState();
@@ -5307,13 +5393,22 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    // force + awaitDisk: ownership score must not block wipe; disk must not keep old EN/VI.
-    await saveTranscript({ force: true, awaitDisk: true });
+    // force: the ownership score must not block the wipe, and the disk must
+    // not keep the old EN/VI. The result reports whether the disk was written.
+    const res = await saveTranscript({ force: true });
     listDirty = true;
     const active = getActiveDisplayCue();
     updateBar(active || null);
     updateCaptionStatusLine();
     publishSidePanelState();
+    // The write can be skipped (another tab holds a newer script) or the disk
+    // copy can fail (bridge offline) - in both cases the disk still holds the
+    // old EN/VI, so do not claim success.
+    if (res && res.skipped) return;
+    if (res && res.diskWritten === false) {
+      toast("Đã xóa bản dịch trong trình duyệt, nhưng chưa ghi được xuống bridge");
+      return;
+    }
     toast("Đã xóa bản dịch");
   }
 
@@ -5400,9 +5495,10 @@
       id: String(raw.id || "").trim(),
       start_media_time: Number.isFinite(start) ? start : NaN,
       end_media_time: Number.isFinite(end) ? end : NaN,
-      source: String(raw.source || raw.text || raw.ja || "").trim(),
-      en: raw.en != null ? String(raw.en) : null,
-      vi: raw.vi != null ? String(raw.vi) : null,
+      // Same normalization as the manual edit path — one text, one variant.
+      source: normalizeCueText(raw.source || raw.text || raw.ja),
+      en: raw.en != null ? normalizeCueText(raw.en) : null,
+      vi: raw.vi != null ? normalizeCueText(raw.vi) : null,
       tokens: Array.isArray(raw.tokens) ? raw.tokens : null,
       translated: raw.translated,
       mt_locked: raw.mt_locked,
@@ -5820,6 +5916,7 @@
   }
 
   let boundVideoEl = null;
+  let boundVideoCleanup = null;
   function bindVideoEvents() {
     const v = findVideo();
     if (v && v !== boundVideoEl) {
@@ -5835,9 +5932,14 @@
       };
 
       if ("requestVideoFrameCallback" in v) {
-        v.addEventListener("play", () => {
+        const onPlay = () => {
           v.requestVideoFrameCallback(onFrame);
-        }, { passive: true });
+        };
+        v.addEventListener("play", onPlay, { passive: true });
+        // A new video element replaces the old one: drop the old listener so
+        // it cannot keep a frame-callback chain alive.
+        boundVideoCleanup?.();
+        boundVideoCleanup = () => v.removeEventListener("play", onPlay);
         if (!v.paused) {
           v.requestVideoFrameCallback(onFrame);
         }
@@ -5860,7 +5962,8 @@
     stopLoop();
     loopTimer = setInterval(tick, 250);
     healthTimer = setInterval(syncHealth, 5000);
-    syncHealth();
+    // No immediate syncHealth here: every startLoop caller navigates right
+    // after, and onNavigate already syncs once (healthTimer covers the rest).
   }
 
   function stopLoop() {
@@ -5895,7 +5998,6 @@
       return;
     }
 
-    lastOverlayResetVideo = currentVideoId;
     cues = [];
     activeCueId = "";
     translatingIds.clear();
@@ -5908,8 +6010,12 @@
       captionsStatus = "idle";
       captionsInfo = "";
     }
-    if (pageBridgeReady) {
-      void pageCall("RESET_CAPTIONS", { videoId: currentVideoId }, 200).catch(() => {});
+    // RESET_CAPTIONS wipes the page world's captured timedtext state. Send it
+    // only for the video we are LEAVING and only after the new id settled
+    // (currentVideoId above), so a capture that already belongs to the NEW
+    // video is never wiped.
+    if (pageBridgeReady && prevVideoId && newVideoId !== prevVideoId) {
+      void pageCall("RESET_CAPTIONS", { videoId: prevVideoId }, 200).catch(() => {});
     }
     // YouTube: kick background SW ASAP in parallel with storage/disk/bridge setup
     const swPromise =
@@ -6091,10 +6197,15 @@
     startLoop();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
+  // The Node harness (extension/content/content_test.js) opts in through the
+  // seam below and only exercises the pure helpers - it must not boot the
+  // browser UI.
+  if (!globalThis.__JP_CAP_CONTENT_TEST__) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -6112,7 +6223,7 @@
       const prevPlatEnabled = isCurrentPlatformEnabled();
       const flagsChanged = ["enhanced_subtitles_enabled", "sentence_grouping_enabled", "sentence_translation_prefetch_enabled"]
         .some(key => settings[key] !== (changes.hardsubSettings.newValue?.[key] ?? DEFAULTS[key]));
-      settings = { ...DEFAULTS, ...changes.hardsubSettings.newValue };
+      settings = normalizeSettings(changes.hardsubSettings.newValue);
       if (flagsChanged) cancelSentencePrefetch();
       const nextPlatEnabled = isCurrentPlatformEnabled();
 
@@ -6128,35 +6239,6 @@
       }
       if (!nextPlatEnabled) return;
 
-      if (settings.vocabColors) {
-        settings.vocabColors = {
-          ...(Vocab.DEFAULT_VOCAB_COLORS || {}),
-          ...settings.vocabColors,
-        };
-      }
-      settings.levelColors = Vocab.normalizeLevelColors(
-        settings.levelColors || Vocab.DEFAULT_LEVEL_COLORS
-      );
-      if (settings.levelHighlightEnabled == null) {
-        settings.levelHighlightEnabled = true;
-      }
-      if (settings.dictShowSentence == null) settings.dictShowSentence = true;
-      if (settings.autoOpen == null) settings.autoOpen = DEFAULTS.autoOpen;
-      if (settings.showOnVideo == null) settings.showOnVideo = DEFAULTS.showOnVideo;
-      if (settings.barBgOpacity == null) settings.barBgOpacity = DEFAULTS.barBgOpacity;
-      if (settings.barTextOpacity == null) settings.barTextOpacity = DEFAULTS.barTextOpacity;
-      if (settings.barShowJa == null) settings.barShowJa = true;
-      if (settings.barShowEn == null) settings.barShowEn = true;
-      if (settings.barShowVi == null) settings.barShowVi = false;
-      if (settings.barScale == null || !Number.isFinite(Number(settings.barScale))) {
-        settings.barScale = DEFAULTS.barScale;
-      }
-      if (settings.barScaleW == null || !Number.isFinite(Number(settings.barScaleW))) {
-        settings.barScaleW = Number(settings.barScale) || DEFAULTS.barScaleW;
-      }
-      if (settings.barScaleH == null || !Number.isFinite(Number(settings.barScaleH))) {
-        settings.barScaleH = Number(settings.barScale) || DEFAULTS.barScaleH;
-      }
       applyDim();
       applyBarVisibility();
       applyBarPosition();
@@ -6179,13 +6261,32 @@
     publishSidePanelState();
   });
 
-  if (typeof window !== "undefined") {
+  // Dictionary debug hook — opt in with ?jpcap_debug=1 in the page URL.
+  if (typeof window !== "undefined" && /[?&]jpcap_debug=1(&|$)/.test(location.search || "")) {
     window.__contentDictDebug = {
       renderDictHtml,
       formatPosLabel,
       hasVietnameseChars,
       isInteractingWithPopup: () => isInteractingWithPopup,
       dictPinnedState: () => dictPinnedState,
+    };
+  }
+
+  /**
+   * Regression-test seam. The Node harness (extension/content/content_test.js)
+   * loads this file inside a vm sandbox and opts in through this flag, so the
+   * helpers below can be exercised without a browser. Nothing is exported in a
+   * real page session.
+   */
+  if (globalThis.__JP_CAP_CONTENT_TEST__) {
+    globalThis.__JP_CAP_CONTENT_TEST__.content = {
+      normalizeSettings,
+      normalizeCueText,
+      resolveCueIndex,
+      onNavigate,
+      getCues: () => cues,
+      getSettings: () => settings,
+      getCaptionMode: () => captionMode,
     };
   }
 })();

@@ -706,10 +706,6 @@
     "もらう": { level: "n5", vi: ["nhận được", "nhận"], en: ["get", "receive"] },
     "受け取る": { level: "n3", vi: ["nhận được", "nhận"], en: ["get", "receive"] },
     "出す": { level: "n5", vi: ["đưa ra", "phát ra", "lấy ra"], en: ["make", "give out", "put out"] },
-    "だす": { vi: ["đưa ra", "phát ra", "lấy ra"], en: ["make", "give out", "put out"] },
-    "たい": { vi: ["muốn", "muốn thử"], en: ["would like", "like to", "want to", "want"] },
-    "欲しい": { vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
-    "ほしい": { vi: ["muốn", "mong muốn"], en: ["want", "desire"] },
   };
 
   function cloneLevelColors(src) {

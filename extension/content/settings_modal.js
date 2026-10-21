@@ -10,14 +10,18 @@
 (function (root) {
   let modalEl = null;
 
-  const DEFAULT_JLPT_COLORS = {
-    n5: { on: true, color: "#7fd6a8" },
-    n4: { on: true, color: "#8fd3ff" },
-    n3: { on: true, color: "#f5d76e" },
-    n2: { on: true, color: "#e08a4a" },
-    n1: { on: true, color: "#e74c5c" },
-    unknown: { on: true, color: "#c5c5d0" },
-  };
+  // One source for the JLPT palette: shared/vocab_style.js owns the defaults
+  // (the content script, the side panel CSS and this modal read the same
+  // table). The local copy drifted (different "unknown" colour).
+  const DEFAULT_JLPT_COLORS =
+    (root.HardsubVocab && root.HardsubVocab.DEFAULT_LEVEL_COLORS) || {
+      n5: { on: true, color: "#7fd6a8" },
+      n4: { on: true, color: "#8fd3ff" },
+      n3: { on: true, color: "#f5d76e" },
+      n2: { on: true, color: "#e08a4a" },
+      n1: { on: true, color: "#e74c5c" },
+      unknown: { on: true, color: "#c5c5d0" },
+    };
 
   function createModalHtml(settings) {
     const s = settings || {};
@@ -202,6 +206,8 @@
                   <span class="lr-kbd">Space</span>
                 </div>
               </div>
+            </div>
+
             <div class="lr-settings-divider"></div>
 
             <!-- Section 6: AI Translation (Gemini) -->
@@ -267,7 +273,7 @@
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
 
-    // Opacity Slider (Real-time preview)
+    // Opacity Slider — live preview on every tick, persist only on release.
     const optOpacity = host.querySelector("#lr-opt-opacity");
     const opacityValEl = host.querySelector("#lr-opacity-val");
     optOpacity?.addEventListener("input", () => {
@@ -278,6 +284,8 @@
       if (bar) {
         bar.style.setProperty("--bar-bg-a", String(val));
       }
+    });
+    optOpacity?.addEventListener("change", () => {
       if (typeof onSettingsChanged === "function") onSettingsChanged(currentSettings);
     });
 
@@ -420,5 +428,7 @@
   root.HardsubSettingsModal = {
     open: openSettingsModal,
     close: closeModal,
+    // Exposed for the markup regression test (sidepanel/sidepanel_pure_test.js).
+    createModalHtml,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

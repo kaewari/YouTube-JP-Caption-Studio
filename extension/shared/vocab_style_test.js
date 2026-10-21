@@ -37,6 +37,12 @@ assert.strictEqual(Vocab.jlptLevel({ surface: "私", lemma: "私" }), "n5", "私
 assert.strictEqual(Vocab.jlptLevel({ surface: "皆さん", lemma: "皆さん" }), "n5", "皆さん should map to n5");
 assert.strictEqual(Vocab.jlptLevel({ surface: "世界", lemma: "世界" }), "n4", "世界 should map to n4");
 assert.strictEqual(Vocab.jlptLevel({ surface: "経験", lemma: "経験" }), "n3", "経験 should map to n3");
+// Regression: duplicate BILINGUAL_MAP keys without `level` used to overwrite the
+// leveled entries, so these words lost their JLPT band entirely.
+assert.strictEqual(Vocab.jlptLevel({ surface: "だす", lemma: "だす" }), "n4", "だす should map to n4");
+assert.strictEqual(Vocab.jlptLevel({ surface: "たい", lemma: "たい" }), "n5", "たい should map to n5");
+assert.strictEqual(Vocab.jlptLevel({ surface: "欲しい", lemma: "欲しい" }), "n5", "欲しい should map to n5");
+assert.strictEqual(Vocab.jlptLevel({ surface: "ほしい", lemma: "ほしい" }), "n5", "ほしい should map to n5");
 
 // Test 6: Bilingual JLPT keyword rendering
 const sampleTokens = [

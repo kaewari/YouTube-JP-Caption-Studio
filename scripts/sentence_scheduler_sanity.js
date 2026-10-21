@@ -35,7 +35,7 @@ let currentSource='youtube',currentVideoId=${JSON.stringify(videoId)},captionMod
  sentenceProjection=null,sentenceProjectionCues=null,enhancedCues=[],sentenceTranslations={},sentenceTokens={},
  sentenceUndoIds=new Set(),sentenceUndoRevisions={},sentenceCandidates={},sentenceTrackKind='asr',audioListeningAutoStarted=false,
  sentenceStateLoadedKey='',sentenceStateLoadedGen=-1,sentenceStateLoad=null,
- listDirty=true,currentMediaTime=2,navigateGen=1,translatingWithGemini=false,paints=[],publishes=0,sentenceBenchmark=testTrace,sentenceRawTrack=null,
+ listDirty=true,currentMediaTime=2,navigateGen=1,translatingWithGemini=false,paints=[],publishes=0,sentenceBenchmark=testTrace,sentenceRawTrack=null,lastBackgroundPrefetchTime=0,
  transcriptMeta={rev:1,owned:false,tombstones:[]};
 const settings={sourceLang:'ja',barShowVi:true,barShowEn:false};
 const storage={};
@@ -90,14 +90,18 @@ ${scheduler}
   await arrival; arrived = null;
   stale("cues[0].source='雨。';cues[0].mt_locked=true;currentMediaTime=3.5;refreshSentenceProjection(true)");
   release.resolve(); release = null; await work;
+  // Neighbouring a was locked and retexted: the sentence grouping changes, so
+  // EVERY queued result (including the untouched tail) is stale and must be
+  // discarded - a late result may never repaint a changed sentence.
   assert.equal(stale('enhancedCues[0].vi'), '');
   assert.equal(stale('enhancedCues[1].vi'), '');
-  assert.equal(stale('enhancedCues[2].vi'), 'vi: 川。');
-  assert.ok(JSON.parse(stale('JSON.stringify(paints)')).every(text => text === '川。'));
+  assert.equal(stale('enhancedCues[2].vi'), '');
+  assert.ok(JSON.parse(stale('JSON.stringify(paints)')).every(text => !String(text).includes('vi: ')),
+    'no discarded translation may be painted');
   const staleEvents=JSON.parse(stale('JSON.stringify(sentenceBenchmark.snapshot().events)'));
-  assert.equal(staleEvents.filter(e=>e.type==='translation_queued').length,2,'automatic window contains current b and future c, not elapsed a');
-  assert.equal(staleEvents.filter(e=>e.type==='translation_discarded').length,1,'current b result becomes stale after its context neighbor a changes');
-  assert.equal(staleEvents.filter(e=>e.type==='translation_ready'&&e.accepted).length,1);
+  assert.equal(staleEvents.filter(e=>e.type==='translation_queued').length,3,'the first automatic prefetch also queues the background group');
+  assert.equal(staleEvents.filter(e=>e.type==='translation_discarded').length,3,'every result is stale after the neighbour changed');
+  assert.equal(staleEvents.filter(e=>e.type==='translation_ready'&&e.accepted).length,0,'no stale result may be accepted');
   console.log('PASS: neighbor edit/lock rejects stale target translation; valid late result paints current playhead, never rewinds');
 
   for (const flag of ['sentence_translation_prefetch_enabled','enhanced_subtitles_enabled','sentence_grouping_enabled']) {
@@ -110,8 +114,10 @@ ${scheduler}
     assert.equal(gated('Object.keys(sentenceTranslations).length'),0,`${flag} must reject late automatic result`);
     assert.equal(gated('JSON.stringify(cues.map(c=>c.vi))'),'[null,null,null]');
     assert.equal(gated("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_ready').length"),0);
-    assert.equal(gated("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_queued').length"),2);
-    assert.equal(gated("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_discarded').length"),2);
+    // The first automatic prefetch also queues the background group, so three
+    // results are in flight; the flag makes every one of them stale.
+    assert.equal(gated("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_queued').length"),3);
+    assert.equal(gated("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_discarded').length"),3);
   }
   console.log('PASS: held real HTTP200 after disabling each flag cannot apply stale Enhanced results or mutate originals');
 
@@ -138,8 +144,9 @@ ${scheduler}
   await bilingual('triggerGeminiTranslationIfNeeded()');
   const bilingualEvents=JSON.parse(bilingual('JSON.stringify(sentenceBenchmark.snapshot().events)'));
   for(const language of ['vi','en']) {
-    assert.equal(bilingualEvents.filter(e=>e.type==='translation_queued'&&e.language===language).length,2);
-    assert.equal(bilingualEvents.filter(e=>e.type==='translation_ready'&&e.language===language&&e.accepted).length,2);
+    // Three groups (elapsed, current, ahead) are prefetched per language.
+    assert.equal(bilingualEvents.filter(e=>e.type==='translation_queued'&&e.language===language).length,3);
+    assert.equal(bilingualEvents.filter(e=>e.type==='translation_ready'&&e.language===language&&e.accepted).length,3);
   }
   assert.equal(bilingual('enhancedCues[1].en'),'en: どこ?');
   assert.equal(bilingual('JSON.stringify(cues.map(c=>[c.vi,c.en]))'),'[[null,null],[null,null],[null,null]]');
@@ -148,18 +155,20 @@ ${scheduler}
 
   const partial=createContent('original-partial');
   await partial('loadSentenceState()');
-  partial("captionMode='original';currentMediaTime=0;cues=Array.from({length:16},(_,i)=>({id:'partial-'+i,source:i===15?'遅い。':'速い'+i+'。',start_media_time:0,end_media_time:4}))");
+  // More cues than one batch (the worker sends 30 per request), so the first
+  // batch can settle while the last one is held.
+  partial("captionMode='original';currentMediaTime=0;cues=Array.from({length:31},(_,i)=>({id:'partial-'+i,source:i===30?'遅い。':'速い'+i+'。',start_media_time:0,end_media_time:4}))");
   mode='hold-last';release={};const partialArrival=new Promise(resolve=>{arrived=resolve});
   const partialWork=partial('triggerGeminiTranslationIfNeeded()');
   await partialArrival;arrived=null;
   try {
-    for(let i=0;i<100&&partial("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_ready').length")<15;i++)
+    for(let i=0;i<100&&partial("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_ready').length")<30;i++)
       await new Promise(resolve=>setTimeout(resolve,10));
-    assert.equal(partial("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_ready').length"),15,'first real batch must settle while second is held');
+    assert.equal(partial("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_ready').length"),30,'first real batch must settle while second is held');
     assert.equal(partial('sentenceBenchmark.snapshot().requestCount'),1,'mid-flight export must retain receipt of first accepted batch before aggregate report');
   } finally {release.resolve();release=null;await partialWork;mode='valid';}
   assert.equal(partial('sentenceBenchmark.snapshot().requestCount'),2,'final aggregate dedups first batch instead of double counting');
-  console.log('PASS: mid-flight Original export keeps first HTTP receipt with 15 ready results while second batch held; final two attempts dedup');
+  console.log('PASS: mid-flight Original export keeps first HTTP receipt with 30 ready results while second batch held; final two attempts dedup');
 
   const failed = createContent('error');
   await failed('loadSentenceState()'); failed("refreshSentenceProjection(true);captionMode='enhanced'");
@@ -168,7 +177,8 @@ ${scheduler}
   assert.equal(failed('enhancedCues[1].translationStates.vi'), 'error');
   await failed('triggerGeminiTranslationIfNeeded()');
   assert.equal(requests, before + 1, 'Failure must not cause immediate prefetch retry loop');
-  assert.equal(failed("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_error'&&e.httpStatus===503).length"),2);
+  // One error event per failed job (three groups were prefetched).
+  assert.equal(failed("sentenceBenchmark.snapshot().events.filter(e=>e.type==='translation_error'&&e.httpStatus===503).length"),3);
   const metrics=JSON.parse(failed('JSON.stringify(sentenceBenchmark.snapshot())'));
   assert.ok(!JSON.stringify(metrics).includes('晴れ')&&!JSON.stringify(metrics).includes('どこ')&&!JSON.stringify(metrics).includes('test-only'),'export contains no caption/key text');
   const originalError=createContent('original-error');

@@ -12,6 +12,7 @@ import {
   type SettingsPersistSource,
 } from "@/types/settings";
 import { normalizeLevelColors } from "@/lib/level-colors";
+import { readEnvelope, writeEnvelope } from "@/lib/storage-version";
 
 export { BRIDGE_BASE };
 
@@ -19,6 +20,46 @@ export { BRIDGE_BASE };
 export const SETTINGS_STORAGE_KEY = "ytcaption.hardsubSettings.v1";
 
 export const CHROME_SETTINGS_KEY = "hardsubSettings";
+
+/** The mirror was written by a newer build: it is neither read nor overwritten. */
+function hasUnsupportedSettings(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return false;
+    return readEnvelope(JSON.parse(raw)).kind === "unsupported";
+  } catch {
+    return false;
+  }
+}
+
+/** Write the local mirror. A payload from a newer build is left alone. */
+function writeLocalSettings(settings: HardsubSettings): void {
+  if (typeof window === "undefined") return;
+  if (hasUnsupportedSettings()) return;
+  try {
+    window.localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify(writeEnvelope(settings)),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Read the local mirror. `null` = nothing stored (or a newer build's payload). */
+function readLocalSettings(): HardsubSettings | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const read = readEnvelope<unknown>(JSON.parse(raw));
+    if (read.kind === "unsupported") return null;
+    return normalizeSettings(read.data);
+  } catch {
+    return null;
+  }
+}
 
 export interface SettingsLoadResult {
   settings: HardsubSettings;
@@ -183,14 +224,7 @@ export async function loadSettingsAsync(): Promise<SettingsLoadResult> {
 
   const fromBridge = await fetchSettingsFromBridge();
   if (fromBridge) {
-    try {
-      window.localStorage.setItem(
-        SETTINGS_STORAGE_KEY,
-        JSON.stringify(fromBridge),
-      );
-    } catch {
-      /* ignore */
-    }
+    writeLocalSettings(fromBridge);
     return {
       settings: fromBridge,
       source: "bridge",
@@ -198,17 +232,15 @@ export async function loadSettingsAsync(): Promise<SettingsLoadResult> {
     };
   }
 
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (raw) {
-      return {
-        settings: normalizeSettings(JSON.parse(raw) as unknown),
-        source: "localStorage",
-        note: "localStorage (localhost). Chạy extension để sync chrome.storage.",
-      };
-    }
-  } catch {
-    /* fall through */
+  const local = readLocalSettings();
+  if (local) {
+    return {
+      settings: local,
+      source: "localStorage",
+      note:
+        "localStorage (localhost). Chạy extension để sync chrome.storage." +
+        (hasUnsupportedSettings() ? " · Dữ liệu local mới hơn app — không ghi đè" : ""),
+    };
   }
 
   return {
@@ -227,17 +259,13 @@ export function loadSettings(): SettingsLoadResult {
       note: "SSR — defaults",
     };
   }
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (raw) {
-      return {
-        settings: normalizeSettings(JSON.parse(raw) as unknown),
-        source: "localStorage",
-        note: "localStorage (tạm) — đang hydrate…",
-      };
-    }
-  } catch {
-    /* ignore */
+  const local = readLocalSettings();
+  if (local) {
+    return {
+      settings: local,
+      source: "localStorage",
+      note: "localStorage (tạm) — đang hydrate…",
+    };
   }
   return {
     settings: normalizeSettings(null),
@@ -255,11 +283,7 @@ export async function persistSettingsAsync(
   if (hasChromeStorage()) {
     try {
       await getChromeStorage()!.set({ [CHROME_SETTINGS_KEY]: next });
-      try {
-        window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
+      writeLocalSettings(next);
       void pushSettingsToBridge(next);
       return "chrome.storage";
     } catch {
@@ -267,7 +291,7 @@ export async function persistSettingsAsync(
     }
   }
 
-  window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
+  writeLocalSettings(next);
   void pushSettingsToBridge(next);
   return "localStorage";
 }
@@ -366,11 +390,7 @@ export function subscribeSettings(
         const j = JSON.stringify(fromBridge);
         if (j === lastJson) return;
         lastJson = j;
-        try {
-          window.localStorage.setItem(SETTINGS_STORAGE_KEY, j);
-        } catch {
-          /* ignore */
-        }
+        writeLocalSettings(fromBridge);
         onChange(fromBridge, "bridge");
       } finally {
         isPolling = false;

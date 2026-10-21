@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 import shutil
 import threading
@@ -65,6 +66,11 @@ def _safe_video_id(video_id: str) -> str:
     return vid
 
 
+def validate_video_id(video_id: str) -> str:
+    """Public guard for the API layer: a malformed id is a client error (400)."""
+    return _safe_video_id(video_id)
+
+
 def video_dir(video_id: str) -> Path:
     d = scripts_root() / _safe_video_id(video_id)
     d.mkdir(parents=True, exist_ok=True)
@@ -94,6 +100,11 @@ def _format_time_plain(sec: float) -> str:
     return f"{minutes}:{seconds:02d}" + (f".{fraction}" if fraction else "")
 
 
+def _one_line(value: str) -> str:
+    """Collapse a caller-supplied value onto one line (no newline injection)."""
+    return " ".join(str(value or "").split())
+
+
 def render_script_txt(
     cues: list[dict[str, Any]],
     *,
@@ -110,9 +121,11 @@ def render_script_txt(
         f"video_id: {video_id}",
     ]
     if title:
-        lines.append(f"title: {title}")
+        # Metadata is caller-supplied: a newline would let a title inject a
+        # "JA: ..." cue into the next parse of this file.
+        lines.append(f"title: {_one_line(title)}")
     if url:
-        lines.append(f"URL: {url}")
+        lines.append(f"URL: {_one_line(url)}")
     lines.append(f"Updated: {time.strftime('%Y-%m-%d %H:%M')}")
     lines.append("# ----------------------------------------")
     lines.append("")
@@ -272,13 +285,41 @@ def _cues_from_txt(
     return cleaned
 
 
+def _fsync_dir(directory: Path) -> None:
+    """Persist the rename itself, not just the bytes of the new file."""
+    try:
+        fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _write_tmp(path: Path, content: str, encoding: str = "utf-8") -> Path:
+    """Write content to a temp file next to `path` and fsync it.
+
+    The bytes must be on disk before the rename, otherwise a power loss can
+    leave a half-written script behind an intact file name.
+    """
+    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    with open(tmp_path, "w", encoding=encoding) as fh:
+        fh.write(content)
+        fh.flush()
+        os.fsync(fh.fileno())
+    return tmp_path
+
+
 def _atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # Unique tmp per write so concurrent save_script calls never share one .tmp.
-    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    tmp_path = _write_tmp(path, content, encoding)
     try:
-        tmp_path.write_text(content, encoding=encoding)
         tmp_path.replace(path)
+        _fsync_dir(path.parent)
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -323,17 +364,17 @@ def merge_tokens(
 
 # Per-video serialization: concurrent saves (extension + app) must not interleave
 # cues.json/tokens.json/meta.json/script.txt writes into mixed revisions.
-_video_locks: dict[str, threading.Lock] = {}
-_video_locks_guard = threading.Lock()
+# A lock per video id grew forever (one live Lock per id ever touched), so the
+# table is a fixed set of stripes: bounded memory, still one writer per video.
+_VIDEO_LOCK_STRIPES = 64
+_video_locks: list[threading.Lock] = [
+    threading.Lock() for _ in range(_VIDEO_LOCK_STRIPES)
+]
 
 
 def _video_lock(video_id: str) -> threading.Lock:
     vid = _safe_video_id(video_id)
-    with _video_locks_guard:
-        lock = _video_locks.get(vid)
-        if lock is None:
-            lock = _video_locks[vid] = threading.Lock()
-        return lock
+    return _video_locks[hash(vid) % _VIDEO_LOCK_STRIPES]
 
 
 def save_script(
@@ -446,11 +487,10 @@ def _save_script_locked(
     temp_files: list[tuple[Path, Path]] = []
     try:
         for final_path, content in files_to_write.items():
-            tmp_path = final_path.with_name(f"{final_path.name}.{uuid.uuid4().hex}.tmp")
-            tmp_path.write_text(content, encoding="utf-8")
-            temp_files.append((tmp_path, final_path))
+            temp_files.append((_write_tmp(final_path, content), final_path))
         for tmp_path, final_path in temp_files:
             tmp_path.replace(final_path)
+        _fsync_dir(folder)
     finally:
         for tmp_path, _ in temp_files:
             tmp_path.unlink(missing_ok=True)
@@ -558,9 +598,12 @@ def _load_script_locked(vid: str) -> dict[str, Any] | None:
                 "rev": int(prev.get("rev") or 0) + (1 if changed else 0),
                 "deviceId": str(prev.get("deviceId") or device_id()),
             }
-            _atomic_write_text(
-                cues_path, _dump({"video_id": vid, "cues": cues, "meta": meta})
-            )
+            # Only rewrite cues.json when the cues really changed: a GET must
+            # not churn the file (and its mtime) on every call.
+            if changed or not cues_path.is_file():
+                _atomic_write_text(
+                    cues_path, _dump({"video_id": vid, "cues": cues, "meta": meta})
+                )
             if changed or not meta_path.is_file():
                 _atomic_write_text(meta_path, _dump(meta))
             if changed:

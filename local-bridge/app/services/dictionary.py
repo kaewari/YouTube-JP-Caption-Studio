@@ -10,11 +10,18 @@ import threading
 import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 from app.core.cache import dict_cache
 from app.data.hanviet_data import get_hanviet_reading
 from app.schemas.models import DictExample, DictResponse, DictSense
-from app.utils.text_utils import _kata_to_hira
+from app.utils.text_utils import (
+    PUNCT_STRIP,
+    hira_to_kata,
+    kata_to_hira,
+    nfkc,
+    strip_punct,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +301,6 @@ _SEED_JA_VI: dict[str, list[str]] = {
     "複雑": ["phức tạp"],
 }
 
-_PUNCT_STRIP = "。、.!?,！？「」『』（）()[]【】…・〜～『』「」〈〉《》""''\""
 _PARTICLE_SUFFIXES = ("は", "が", "を", "に", "で", "と", "も", "へ", "や", "の", "か", "ね", "よ", "な", "さ")
 _TAIL_PATTERNS = [
     re.compile(r"(てしまっ[たて]|てしま[うい]|ちゃっ[たて]|ちゃう|じゃっ[たて]|じゃう)$"),
@@ -306,24 +312,41 @@ _TAIL_PATTERNS = [
     re.compile(r"(っ[たて]|[いう]$)"),
 ]
 
-_local = threading.local()
+# One process-wide read-only handle guarded by a lock. A per-thread handle
+# would have to be closed by another thread after a rebuild, and closing a
+# SQLite connection while another thread uses it crashes the interpreter.
 _loaded = False
+_db_lock = threading.RLock()
+_db_conn: sqlite3.Connection | None = None
+# Table names present in the opened DB. Probed once per open: a half-built
+# dictionary used to raise sqlite3.OperationalError on every single lookup
+# (and log a warning per query, per request).
+_db_tables: frozenset[str] = frozenset()
 
 
 def _get_db() -> sqlite3.Connection | None:
-    global _loaded
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
-        return conn
-    if SQLITE_DB.is_file():
-        try:
-            conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0)
-            conn.execute("PRAGMA query_only = ON;")
-            _local.conn = conn
-            _loaded = True
-            return conn
-        except Exception as exc:
-            logger.warning("Failed opening dict.sqlite: %s", exc)
+    """The shared read-only handle, or None when the database is missing."""
+    global _loaded, _db_conn, _db_tables
+    with _db_lock:
+        if _db_conn is not None:
+            return _db_conn
+        if SQLITE_DB.is_file():
+            try:
+                conn = sqlite3.connect(str(SQLITE_DB), timeout=10.0, check_same_thread=False)
+                conn.execute("PRAGMA query_only = ON;")
+                try:
+                    rows = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                    _db_tables = frozenset(str(r[0]) for r in rows)
+                except Exception as exc:
+                    logger.warning("Failed probing dict.sqlite tables: %s", exc)
+                    _db_tables = frozenset()
+                _db_conn = conn
+                _loaded = True
+                return conn
+            except Exception as exc:
+                logger.warning("Failed opening dict.sqlite: %s", exc)
     return None
 
 
@@ -332,27 +355,32 @@ def is_loaded() -> bool:
 
 
 def close_dictionary() -> None:
-    """Close the read-only SQLite handle so a rebuilt DB can be reopened."""
-    global _loaded, _en_vi_cache
-    conn = getattr(_local, "conn", None)
-    if conn is not None:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        _local.conn = None
-    _loaded = False
+    """Close the shared read-only handle so a rebuilt DB can be reopened."""
+    global _loaded, _en_vi_cache, _db_conn, _db_tables
+    with _db_lock:
+        conn = _db_conn
+        _db_conn = None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as exc:
+                logger.warning("Failed closing dict.sqlite handle: %s", exc)
+        # The table probe belongs to the handle: reset it under the same lock,
+        # otherwise a concurrent reopen could wipe it mid-lookup.
+        _loaded = False
+        _db_tables = frozenset()
     _en_vi_cache = None
     dict_cache.clear()
 
 
 def load_dictionary() -> bool:
     """Ensure SQLite DB is ready (reopens after close_dictionary / rebuild)."""
-    close_dictionary()
-    conn = _get_db()
-    if conn is not None:
-        logger.info("Dictionary DB ready at %s", SQLITE_DB)
-        return True
+    with _db_lock:
+        close_dictionary()
+        conn = _get_db()
+        if conn is not None:
+            logger.info("Dictionary DB ready at %s", SQLITE_DB)
+            return True
     return False
 
 
@@ -398,7 +426,7 @@ def import_jmdict_xml(xml_path: Path, max_entries: int = 0) -> int:
 
 def _query_jmdict(key: str) -> list[dict]:
     conn = _get_db()
-    if not conn:
+    if not conn or "jmdict" not in _db_tables:
         return []
     try:
         cur = conn.cursor()
@@ -416,7 +444,7 @@ def _query_javi(key: str) -> list[str]:
     if curated:
         return curated
     conn = _get_db()
-    if not conn:
+    if not conn or "javi" not in _db_tables:
         return []
     try:
         cur = conn.cursor()
@@ -447,7 +475,7 @@ _POS_VI_MAP = {
 def _query_mazii(key: str) -> list[str]:
     """Query Mazii table for Vietnamese glosses."""
     conn = _get_db()
-    if not conn:
+    if not conn or "mazii" not in _db_tables:
         return []
     try:
         cur = conn.cursor()
@@ -466,7 +494,7 @@ def _query_mazii(key: str) -> list[str]:
 
 def _get_mazii_details(key: str) -> dict[str, Any] | None:
     conn = _get_db()
-    if not conn:
+    if not conn or "mazii" not in _db_tables:
         return None
     try:
         cur = conn.cursor()
@@ -481,20 +509,22 @@ def _get_mazii_details(key: str) -> dict[str, Any] | None:
         glosses = json.loads(glosses_raw) if glosses_raw else []
         ex_ids = json.loads(examples_raw) if examples_raw else []
         examples: list[DictExample] = []
-        if ex_ids:
+        if ex_ids and "mazii_examples" in _db_tables:
             placeholders = ",".join("?" for _ in ex_ids[:2])
             cur.execute(f"SELECT content, mean, trans FROM mazii_examples WHERE id IN ({placeholders})", ex_ids[:2])
             for c_ja, c_vi, c_tr in cur.fetchall():
                 examples.append(DictExample(ja=c_ja or "", vi=c_vi or "", trans=c_tr or ""))
 
-        hanviet_parts: list[str] = []
-        for ch in expr:
-            if "\u4e00" <= ch <= "\u9fff":
-                cur.execute("SELECT mean FROM mazii_kanji WHERE kanji = ?", (ch,))
-                k_row = cur.fetchone()
-                if k_row and k_row[0]:
-                    hanviet_parts.append(k_row[0].split(",")[0].strip().upper())
-        hanviet = " ".join(hanviet_parts)
+        hanviet = ""
+        if "mazii_kanji" in _db_tables:
+            hanviet_parts: list[str] = []
+            for ch in expr:
+                if "\u4e00" <= ch <= "\u9fff":
+                    cur.execute("SELECT mean FROM mazii_kanji WHERE kanji = ?", (ch,))
+                    k_row = cur.fetchone()
+                    if k_row and k_row[0]:
+                        hanviet_parts.append(k_row[0].split(",")[0].strip().upper())
+            hanviet = " ".join(hanviet_parts)
 
         pos_clean = [p.strip() for p in (pos or "").split(",") if p.strip()]
         pos_vi = [_POS_VI_MAP.get(p, p) for p in pos_clean]
@@ -514,7 +544,7 @@ def _get_mazii_details(key: str) -> dict[str, Any] | None:
 
 def _reading_from_mazii(key: str) -> str:
     conn = _get_db()
-    if not conn:
+    if not conn or "mazii" not in _db_tables:
         return ""
     try:
         cur = conn.cursor()
@@ -522,14 +552,14 @@ def _reading_from_mazii(key: str) -> str:
         row = cur.fetchone()
         if row and row[0]:
             return row[0].split(",")[0].strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("SQLite mazii reading query error for %s: %s", key, exc)
     return ""
 
 
 def _query_jmdict_vi(key: str) -> dict[str, list[str]]:
     conn = _get_db()
-    if not conn:
+    if not conn or "jmdict_vi" not in _db_tables:
         return {}
     out: dict[str, list[str]] = {}
     try:
@@ -553,16 +583,21 @@ def _query_hanviet(text: str) -> str:
     if hv:
         return hv
     conn = _get_db()
-    if not conn:
+    if not conn or "kanji_hanviet" not in _db_tables:
         return ""
     try:
         cur = conn.cursor()
-        readings: list[str] = []
-        for ch in text:
-            cur.execute("SELECT hanviet FROM kanji_hanviet WHERE kanji = ?", (ch,))
-            row = cur.fetchone()
-            if row and row[0]:
-                readings.append(row[0])
+        # One query for every kanji, not one per character.
+        chars = [ch for ch in text if "\u4e00" <= ch <= "\u9fff"]
+        if not chars:
+            return ""
+        placeholders = ",".join("?" for _ in chars)
+        cur.execute(
+            f"SELECT kanji, hanviet FROM kanji_hanviet WHERE kanji IN ({placeholders})",
+            chars,
+        )
+        found = {str(k): v for k, v in cur.fetchall()}
+        readings = [str(found[ch]) for ch in chars if found.get(ch)]
         return " ".join(readings)
     except Exception as exc:
         logger.warning("SQLite kanji_hanviet query error for %s: %s", text, exc)
@@ -600,7 +635,7 @@ def _vi_glosses_for(key: str, reading: str = "", lemma: str = "") -> list[str]:
     if reading and reading in by_reading:
         return list(by_reading[reading])[:8]
     if reading:
-        hira = _kata_to_hira(reading)
+        hira = kata_to_hira(reading)
         if hira in by_reading:
             return list(by_reading[hira])[:8]
     if "" in by_reading:
@@ -629,27 +664,8 @@ def _enrich_senses_vi(senses: list[DictSense], key: str) -> list[DictSense]:
     return out
 
 
-def _nfkc(text: str) -> str:
-    return unicodedata.normalize("NFKC", text or "").strip()
-
-
-def _hira_to_kata(text: str) -> str:
-    out = []
-    for ch in text:
-        code = ord(ch)
-        if 0x3041 <= code <= 0x3096:
-            out.append(chr(code + 0x60))
-        else:
-            out.append(ch)
-    return "".join(out)
-
-
-def _strip_punct(text: str) -> str:
-    return text.strip(_PUNCT_STRIP).strip()
-
-
 def _add_candidate(candidates: list[str], seen: set[str], value: str) -> None:
-    v = _nfkc(value)
+    v = nfkc(value)
     if not v or v in seen:
         return
     seen.add(v)
@@ -658,8 +674,8 @@ def _add_candidate(candidates: list[str], seen: set[str], value: str) -> None:
 
 def _script_variants(text: str) -> list[str]:
     out = [text]
-    hira = _kata_to_hira(text)
-    kata = _hira_to_kata(text)
+    hira = kata_to_hira(text)
+    kata = hira_to_kata(text)
     if hira != text:
         out.append(hira)
     if kata != text:
@@ -725,18 +741,17 @@ def _has_key(key: str) -> bool:
     conn = _get_db()
     if not conn:
         return False
+    # Only the tables that exist: a half-built dictionary must not turn every
+    # lookup into a sqlite3.OperationalError.
+    tables = [t for t in ("jmdict", "javi", "mazii", "jmdict_vi") if t in _db_tables]
+    if not tables:
+        return False
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT 1 FROM jmdict WHERE expression = ?
-            UNION ALL
-            SELECT 1 FROM javi WHERE expression = ?
-            UNION ALL
-            SELECT 1 FROM mazii WHERE expression = ?
-            UNION ALL
-            SELECT 1 FROM jmdict_vi WHERE expression = ?
-            LIMIT 1
-        """, (key, key, key, key))
+        union = " UNION ALL ".join(
+            f"SELECT 1 FROM {t} WHERE expression = ?" for t in tables
+        )
+        cur.execute(f"{union} LIMIT 1", tuple([key] * len(tables)))
         return cur.fetchone() is not None
     except Exception as exc:
         logger.warning("SQLite _has_key query error for %s: %s", key, exc)
@@ -748,7 +763,8 @@ def has_entry(key: str) -> bool:
     k = (key or "").strip()
     if not k:
         return False
-    return _has_key(k)
+    with _db_lock:
+        return _has_key(k)
 
 
 def _longest_prefix_match(text: str) -> str | None:
@@ -780,8 +796,8 @@ def _greedy_context_combinations(surface: str, context_tokens: list[str]) -> lis
     if not context_tokens:
         return combos
     # Keep boundaries in place; stripping punctuation can invent a new word.
-    cleaned_tokens = [_nfkc(t) for t in context_tokens]
-    s_clean = _strip_punct(_nfkc(surface))
+    cleaned_tokens = [nfkc(t) for t in context_tokens]
+    s_clean = strip_punct(nfkc(surface))
     if not s_clean:
         return combos
 
@@ -790,7 +806,7 @@ def _greedy_context_combinations(surface: str, context_tokens: list[str]) -> lis
         idx = cleaned_tokens.index(s_clean)
         limit = idx
         for token in cleaned_tokens[idx:idx + 6]:
-            if not token or any(ch in _PUNCT_STRIP or ch.isspace() or unicodedata.category(ch).startswith('P') for ch in token):
+            if not token or any(ch in PUNCT_STRIP or ch.isspace() or unicodedata.category(ch).startswith('P') for ch in token):
                 break
             limit += 1
         # Multi-token combinations starting at surface
@@ -817,7 +833,7 @@ def _expand_candidates(
 
     # 2. Surface and lemma variants
     for raw in (surface, lemma):
-        base = _strip_punct(_nfkc(raw or ""))
+        base = strip_punct(nfkc(raw or ""))
         if not base:
             continue
         for v in _script_variants(base):
@@ -830,15 +846,17 @@ def _expand_candidates(
         from app.services.tokenize_ja import is_loaded as tok_loaded, tokenize
 
         if tok_loaded() and surface:
-            for tok in tokenize(_nfkc(surface)):
+            for tok in tokenize(nfkc(surface)):
                 for piece in (tok.lemma, tok.surface):
-                    piece = _strip_punct(_nfkc(piece or ""))
+                    piece = strip_punct(nfkc(piece or ""))
                     if not piece or len(piece) > 24:
                         continue
                     for v in _script_variants(piece):
                         _add_candidate(candidates, seen, v)
-    except Exception:
-        pass
+    except Exception as exc:
+        # A tokenize failure must not kill the lookup, but it must be visible:
+        # a silent failure degrades the candidates to zero signal.
+        logger.debug("Candidate expansion failed for %r: %s", surface, exc)
 
     return candidates
 
@@ -848,12 +866,23 @@ def lookup(
     lemma: str = "",
     context_tokens: list[str] | None = None,
 ) -> DictResponse:
-    raw = _nfkc(surface or "")
+    # One process-wide connection cannot be used by two threads at the same
+    # time, so the whole lookup runs under the lock.
+    with _db_lock:
+        return _lookup_locked(surface, lemma, context_tokens)
+
+
+def _lookup_locked(
+    surface: str,
+    lemma: str = "",
+    context_tokens: list[str] | None = None,
+) -> DictResponse:
+    raw = nfkc(surface or "")
     if not raw:
         return DictResponse(surface=surface, found=False, message="empty")
 
     ctx_key = json.dumps(context_tokens, ensure_ascii=False) if context_tokens else ""
-    cache_key = f"{raw}|{_nfkc(lemma or '')}|{ctx_key}"
+    cache_key = f"{raw}|{nfkc(lemma or '')}|{ctx_key}"
     cached = dict_cache.get(cache_key)
     if cached:
         return DictResponse(**cached)

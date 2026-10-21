@@ -4,6 +4,8 @@ importScripts("../shared/gemini_translate.js");
 const BRIDGE = "http://127.0.0.1:8765";
 /** Optional Native Messaging fallback only — primary IME path is bridge POST /ime/switch. */
 const IME_NATIVE_HOST = "com.ytcaption.ime_switch";
+/** Every bridge/IME call must end — a hung request would block the service worker. */
+const IME_FETCH_TIMEOUT_MS = 5000;
 
 const POLL_BRIDGE_ALARM = "poll_bridge_state";
 const DRIVE_UPLOAD_ALARM = "drive_upload_retry";
@@ -223,8 +225,14 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   } catch (_) {}
 });
 
+/** Set while the offscreen document is closing — a start must wait for it. */
+let _offscreenClosing = null;
+
 async function ensureOffscreenDocument() {
   if (!chrome.offscreen?.createDocument) return;
+  // A stop closes the document; wait for that close so createDocument cannot
+  // race the teardown.
+  if (_offscreenClosing) await _offscreenClosing;
   const offscreenUrl = chrome.runtime.getURL("offscreen/audio_capture.html");
   if (chrome.runtime.getContexts) {
     const existing = (await chrome.runtime.getContexts({
@@ -240,10 +248,20 @@ async function ensureOffscreenDocument() {
       justification: "Capture tab audio for local speech recognition",
     });
   } catch (err) {
-    if (!String(err).includes("already exists")) {
+    const msg = String(err);
+    if (!msg.includes("already exists") && !msg.includes("single offscreen document")) {
       throw err;
     }
   }
+}
+
+/** Release the offscreen document: it holds the AudioContext and the tab stream. */
+async function closeOffscreenDocument() {
+  if (!chrome.offscreen?.closeDocument) return;
+  const closing = chrome.offscreen.closeDocument().catch(() => {});
+  _offscreenClosing = closing;
+  await closing;
+  if (_offscreenClosing === closing) _offscreenClosing = null;
 }
 
 async function handleAudioStartCapture(msg, sender) {
@@ -254,7 +272,7 @@ async function handleAudioStartCapture(msg, sender) {
     throw new Error("chrome.tabCapture.getMediaStreamId not available");
   }
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-  await chrome.runtime.sendMessage({
+  const res = await chrome.runtime.sendMessage({
     target: "offscreen",
     type: "START_CAPTURE",
     streamId,
@@ -262,6 +280,11 @@ async function handleAudioStartCapture(msg, sender) {
     videoId: msg.videoId,
     playhead: msg.playhead || 0,
   });
+  // The offscreen document reports its own failures (getUserMedia denied, …):
+  // a silent {ok:true} left the overlay "listening" with no recorder.
+  if (!res?.ok) {
+    throw new Error(res?.error || "Audio capture failed to start");
+  }
   return { ok: true };
 }
 
@@ -272,8 +295,27 @@ async function handleAudioStopCapture() {
       type: "STOP_CAPTURE",
     });
   } catch (_) {}
+  // Only after the stop is acknowledged — otherwise the recorder would keep
+  // running inside a document that is about to disappear.
+  await closeOffscreenDocument();
   return { ok: true };
 }
+
+/**
+ * Commands the side panel may drive in a page. Kept in sync with the
+ * `cmd === "…"` branches of handleSidePanelCmd (content/content.js).
+ */
+const SP_CMD_ALLOWLIST = new Set([
+  "ping", "get_state", "set_caption_mode", "toggle_audio_listening",
+  "accept_asr_candidate", "revert_asr_candidate", "dismiss_asr_candidate",
+  "undo_sentence", "reload", "refresh_script", "add_cue", "delete_cue",
+  "edit_ja", "edit_en", "edit_vi", "edit_timeline", "copy", "export",
+  "export_json", "export_benchmark", "import_cues", "clear_translations",
+  "show_dict", "hide_dict", "schedule_hide_dict", "open_settings",
+  "restore_previous_backup", "restore_sentence_backup", "wipe_saved_and_reload",
+  "play", "toggle_overlay", "toggle_pip", "toggle_star_cue",
+  "set_user_vocab", "trigger_gemini_translate",
+]);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "SAVED_CUES_MUTATE") {
@@ -319,8 +361,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "SP_CMD_PROXY") {
     const tabId = msg.tabId;
+    const cmd = String(msg.cmd || "");
+    // The proxy forwards to a caller-supplied tab id, so the SW — not only the
+    // content script — must refuse commands outside the side panel's contract.
+    if (!SP_CMD_ALLOWLIST.has(cmd) || !Number.isInteger(tabId) || tabId < 0) {
+      sendResponse({ ok: false, error: "sp_cmd_denied" });
+      return false;
+    }
     chrome.tabs
-      .sendMessage(tabId, { type: "SP_CMD", cmd: msg.cmd, ...(msg.payload || {}) })
+      .sendMessage(tabId, { type: "SP_CMD", cmd, ...(msg.payload || {}) })
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
@@ -328,7 +377,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "AUDIO_START_CAPTURE") {
     handleAudioStartCapture(msg, sender)
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
     return true;
   }
   if (msg?.type === "AUDIO_STOP_CAPTURE") {
@@ -338,6 +387,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg?.type === "ASR_CANDIDATE_RECEIVED") {
+    if (msg.tabId) {
+      chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
+    }
+    return false;
+  }
+  if (msg?.type === "ASR_CAPTURE_ERROR") {
+    // Offscreen capture failed — forward it to the tab that asked for capture.
     if (msg.tabId) {
       chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
     }
@@ -479,7 +535,7 @@ async function handleImeSwitch(msg) {
 async function imeViaBridge(cmd) {
   try {
     if (cmd === "status") {
-      const res = await fetch(`${BRIDGE}/ime/status`);
+      const res = await fetch(`${BRIDGE}/ime/status`, { signal: AbortSignal.timeout(IME_FETCH_TIMEOUT_MS) });
       if (!res.ok) return { ok: false, error: `http_${res.status}`, missing: true };
       const data = await res.json();
       return data && typeof data === "object" ? data : { ok: false, error: "bad_json" };
@@ -489,6 +545,7 @@ async function imeViaBridge(cmd) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to }),
+      signal: AbortSignal.timeout(IME_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `http_${res.status}`, missing: true };
     const data = await res.json();
@@ -569,6 +626,7 @@ async function pushExtensionStateToBridge() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
     });
     if (res.ok) {
       _lastPushedJson = j;
@@ -585,7 +643,7 @@ async function pushExtensionStateToBridge() {
 
 async function pullExtensionStateFromBridge() {
   try {
-    const res = await fetch(`${BRIDGE}/extension_state`);
+    const res = await fetch(`${BRIDGE}/extension_state`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
     if (!res.ok) return;
     const remote = await res.json();
     const updatedAt = Number(remote?.updatedAt) || 0;
@@ -684,9 +742,10 @@ if (chrome.alarms?.onAlarm) {
         if (!ids.length) return;
         try {
           const res = await driveQueued(() => mirrorToDrive(ids));
-          if (res && res.ok) {
-            storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+          // Only a real mirror clears the queue — "not_connected" is not an upload.
+          if (res && res.ok && !res.skipped) {
             for (const id of ids) _pendingMirror.delete(id);
+            void clearPendingMirror(ids);
           }
         } catch (e) {
           console.warn("[drive] alarm mirror failed, keeping pending IDs:", e);
@@ -726,10 +785,18 @@ const BRIDGE_ALLOWLIST = [
 // DoS guards for BRIDGE_FETCH — per-tab rate limit + body size cap.
 const BRIDGE_FETCH_BODY_CAP = 256 * 1024; // 256 KB
 const BRIDGE_FETCH_RATE_LIMIT = 50; // max requests per tab per second
+const BRIDGE_FETCH_TIMEOUT_MS = 20000; // a hung bridge must not block the SW
+const BRIDGE_RATE_BUCKET_MAX = 64; // keep the per-tab map bounded in a long session
 const _bridgeRateBuckets = new Map(); // tabId → { count, resetAt }
 function _bridgeRateCheck(tabId) {
   const now = Date.now();
   const key = tabId || 0;
+  // Evict expired buckets — one entry per tab would leak for the whole session.
+  if (_bridgeRateBuckets.size > BRIDGE_RATE_BUCKET_MAX) {
+    for (const [id, expired] of _bridgeRateBuckets) {
+      if (now > expired.resetAt) _bridgeRateBuckets.delete(id);
+    }
+  }
   let bucket = _bridgeRateBuckets.get(key);
   if (!bucket || now > bucket.resetAt) {
     bucket = { count: 0, resetAt: now + 1000 };
@@ -756,8 +823,9 @@ async function handleBridgeFetch(msg, sender) {
   }
   const url = `${BRIDGE}${path}`;
   const opts = { method };
-  // Script writes share the saved-state queue; a stalled bridge must release it.
-  if (path === "/scripts/save" && method === "POST") opts.signal = AbortSignal.timeout(20000);
+  // Every bridge call must end: a hung request would keep the saved-state
+  // queue (script writes) blocked until the service worker dies.
+  opts.signal = AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS);
   if (isForm && body) {
     const blob = dataUrlToBlob(body.imageBase64);
     const fd = new FormData();
@@ -793,8 +861,10 @@ async function handleYtFetch(msg) {
   if (!url.startsWith("https://www.youtube.com/api/timedtext")) {
     return { ok: false, error: "bad_url" };
   }
-  const text = await fetchTimedtextBody(url);
-  return { ok: !!text, status: text ? 200 : 0, text: text || "" };
+  const lastError = { reason: "", status: 0 };
+  const text = await fetchTimedtextBody(url, lastError);
+  // Real HTTP status — a throttled 429 must not read like an empty 200.
+  return { ok: !!text, status: text ? 200 : (lastError.status || 0), text: text || "" };
 }
 
 function normalizeTimedtextUrl(url) {
@@ -826,12 +896,22 @@ function buildTimedtextUrlVariants(baseUrl) {
   return variants;
 }
 
-/** Cookie header once per load (not per timedtext URL). */
+/**
+ * Cookie header once per load (not per timedtext URL). Only the cookies that
+ * decide login/consent state travel with the request — the whole .youtube.com
+ * jar also carries ad/tracking cookies the watch page never needs.
+ */
+const YT_COOKIE_PREFIXES = ["SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID", "CONSENT", "VISITOR_INFO"];
+function isNeededYtCookie(name) {
+  const n = String(name || "");
+  return YT_COOKIE_PREFIXES.some((prefix) => n === prefix || n.startsWith(prefix));
+}
 async function getYtCookieHeader() {
   try {
     const cookies = await chrome.cookies.getAll({ domain: ".youtube.com" });
-    if (cookies?.length) {
-      return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    const keep = (cookies || []).filter((c) => c && isNeededYtCookie(c.name));
+    if (keep.length) {
+      return keep.map((c) => `${c.name}=${c.value}`).join("; ");
     }
   } catch (_) {}
   return "";
@@ -1033,6 +1113,7 @@ async function fetchWebCaptionTracks(videoId, cookieHeader = "") {
   const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
     headers,
     cache: "no-store",
+    signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) return [];
   const html = await res.text();
@@ -1098,6 +1179,7 @@ async function fetchAndroidCaptionTracks(videoId) {
           contentCheckOk: true,
           racyCheckOk: true,
         }),
+        signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) continue;
       const data = await res.json();
@@ -1199,6 +1281,7 @@ function isThrottleError(lastError) {
  * empty (member/age-gated tracks). Keeps the per-load request fan-out small so
  * YouTube's per-IP throttle never trips.
  */
+const TIMEDTEXT_FETCH_TIMEOUT_MS = 10000;
 async function fetchTimedtextBody(baseUrl, lastError = null) {
   if (!baseUrl) return "";
   const urls = buildTimedtextUrlVariants(baseUrl);
@@ -1210,7 +1293,9 @@ async function fetchTimedtextBody(baseUrl, lastError = null) {
           Accept: "*/*",
           Referer: "https://www.youtube.com/",
         };
-        const res = await fetch(url, { headers, credentials: cred, cache: "no-store" });
+        const res = await fetch(url, { headers, credentials: cred, cache: "no-store",
+          signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS) });
+        if (lastError) lastError.status = res.status;
         if (!res.ok) {
           if (lastError && res.status >= 400) {
             lastError.reason = `http_${res.status}_${cred}`;
@@ -1230,7 +1315,10 @@ async function fetchTimedtextBody(baseUrl, lastError = null) {
           lastError.reason = `html_like_${trimmed.slice(0, 24).replace(/\s+/g, " ")}_${cred}`;
         }
       } catch (err) {
-        if (lastError) lastError.reason = `fetch_err ${String(err).slice(0, 60)}`;
+        if (lastError) {
+          lastError.reason = `fetch_err ${String(err).slice(0, 60)}`;
+          lastError.status = 0;
+        }
       }
     }
   }
@@ -1527,6 +1615,16 @@ async function uploadDriveSnapshot(fileId, snapshot, interactive = false) {
 let _driveQueue = Promise.resolve();
 /** videoId → last Drive freshness probe, so navigation does not hit Drive every time. */
 const _freshCheckedAt = new Map();
+const FRESH_CHECK_MAX = 256; // cap the per-video map — one entry per watched video would leak
+/** Record a freshness probe and drop the oldest entries once the map is full. */
+function markFreshChecked(videoId, now) {
+  _freshCheckedAt.set(videoId, now);
+  while (_freshCheckedAt.size > FRESH_CHECK_MAX) {
+    const oldest = _freshCheckedAt.keys().next().value;
+    if (oldest === undefined) break;
+    _freshCheckedAt.delete(oldest);
+  }
+}
 
 /** Serialize Drive work: two concurrent mirrors must not create the same subfolder twice. */
 function driveQueued(fn) {
@@ -1540,10 +1638,25 @@ async function driveConnected() {
   return !!(s.driveConnected || s.driveFileId);
 }
 
-async function bridgeJson(path) {
-  const res = await fetch(`${BRIDGE}${path}`);
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
+/**
+ * Read JSON from the local bridge.
+ *
+ * `strict: true` turns a failed read into an error instead of null: the Drive
+ * mirror must not mistake "the bridge said 500" for "there is nothing to
+ * mirror", or the video would leave the queue although the mirror never ran.
+ */
+async function bridgeJson(path, opts = {}) {
+  const res = await fetch(`${BRIDGE}${path}`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
+  if (!res.ok) {
+    if (opts.strict) throw new Error(`bridge GET ${path} -> HTTP ${res.status}`);
+    return null;
+  }
+  try {
+    return await res.json();
+  } catch (err) {
+    if (opts.strict) throw new Error(`bridge GET ${path} -> invalid JSON`);
+    return null;
+  }
 }
 
 async function driveList(q) {
@@ -1633,14 +1746,14 @@ async function mirrorToDrive(videoIds) {
   if (!(await driveConnected())) return { ok: true, skipped: "not_connected" };
   const ids = videoIds?.length
     ? videoIds
-    : ((await bridgeJson("/scripts")) || []).map((s) => s.video_id);
+    : ((await bridgeJson("/scripts", { strict: true })) || []).map((s) => s.video_id);
   const { lastMirroredRev = {} } = await chrome.storage.local.get(["lastMirroredRev"]);
   const mirrored = [];
   for (const id of ids) {
-    const meta = await bridgeJson(`/scripts/${encodeURIComponent(id)}/meta`);
+    const meta = await bridgeJson(`/scripts/${encodeURIComponent(id)}/meta`, { strict: true });
     if (!meta) continue;
     if (lastMirroredRev[id] === meta.rev) continue;
-    const files = (await bridgeJson(`/scripts/${encodeURIComponent(id)}/files`))?.files;
+    const files = (await bridgeJson(`/scripts/${encodeURIComponent(id)}/files`, { strict: true }))?.files;
     if (!files) continue;
     const folderId = await ensureVideoFolder(id);
     const existing = await driveChildren(folderId);
@@ -1665,7 +1778,7 @@ async function mirrorFromDrive(videoIds, opts = {}) {
     const now = Date.now();
     const fresh = want.filter((id) => now - (_freshCheckedAt.get(id) || 0) < opts.maxAgeMs);
     if (fresh.length === want.length) return { ok: true, skipped: "checked_recently" };
-    for (const id of want) _freshCheckedAt.set(id, now);
+    for (const id of want) markFreshChecked(id, now);
   }
   const folderId = await getDriveFolderId(false);
   const folders = await driveList(
@@ -1695,6 +1808,7 @@ async function mirrorFromDrive(videoIds, opts = {}) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ files }),
+      signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -1926,6 +2040,7 @@ async function pullVocabSnapshot() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(snap),
+    signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
@@ -1964,29 +2079,100 @@ async function pullDriveIfNewer() {
 
 /** videoIds seen since the last flush — one save burst must not mirror the whole library. */
 const _pendingMirror = new Set();
+/** Serializes pending-list writes so a read-modify-write cannot interleave. */
+let _pendingMirrorWrite = Promise.resolve();
+
+/** Union of the persisted and the in-memory pending IDs (order preserved). */
+function mergePendingIds(stored, incoming) {
+  const out = [];
+  const seen = new Set();
+  for (const id of [...(Array.isArray(stored) ? stored : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    const key = String(id);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+/** Pending IDs minus the ones whose mirror succeeded. */
+function removePendingIds(ids, done) {
+  const drop = new Set((Array.isArray(done) ? done : []).map(String));
+  return (Array.isArray(ids) ? ids : []).map(String).filter((id) => !drop.has(id));
+}
+
+function pendingMirrorStorage() {
+  return chrome.storage.session || chrome.storage.local;
+}
+
+/**
+ * Persist pending IDs. The stored list is the source of truth across an SW
+ * idle-kill: it is unioned with the in-memory set, so a restart (empty Set)
+ * can never overwrite IDs that are still queued.
+ */
+function persistPendingMirror() {
+  const storage = pendingMirrorStorage();
+  _pendingMirrorWrite = _pendingMirrorWrite
+    .then(async () => {
+      try {
+        const raw = (await storage.get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+        await storage.set({
+          [DRIVE_PENDING_MIRROR_KEY]: mergePendingIds(raw, Array.from(_pendingMirror)),
+        });
+      } catch (_) {}
+    })
+    .catch(() => {});
+  return _pendingMirrorWrite;
+}
+
+/** Drop only the IDs whose mirror really ran — queued work survives every failure. */
+function clearPendingMirror(ids) {
+  const storage = pendingMirrorStorage();
+  _pendingMirrorWrite = _pendingMirrorWrite
+    .then(async () => {
+      try {
+        const raw = (await storage.get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+        const rest = removePendingIds(raw, ids);
+        if (rest.length) {
+          await storage.set({ [DRIVE_PENDING_MIRROR_KEY]: rest });
+        } else {
+          await storage.remove([DRIVE_PENDING_MIRROR_KEY]);
+        }
+      } catch (_) {}
+    })
+    .catch(() => {});
+  return _pendingMirrorWrite;
+}
+
+/** Restore IDs queued before an SW idle-kill (the in-memory Set starts empty). */
+async function restorePendingMirror() {
+  try {
+    const raw = (await pendingMirrorStorage().get([DRIVE_PENDING_MIRROR_KEY]))[DRIVE_PENDING_MIRROR_KEY];
+    for (const id of Array.isArray(raw) ? raw : []) {
+      if (id) _pendingMirror.add(String(id));
+    }
+  } catch (_) {}
+}
+void restorePendingMirror();
 
 function scheduleDriveUpload(videoId) {
   if (videoId) _pendingMirror.add(String(videoId));
   if (_driveUploadTimer) clearTimeout(_driveUploadTimer);
   // Persist pending IDs for crash-recovery alarm (MV3 may kill SW between timer and fire).
-  const storage = chrome.storage.session || chrome.storage.local;
-  storage.set({ [DRIVE_PENDING_MIRROR_KEY]: Array.from(_pendingMirror) }).catch(() => {});
+  void persistPendingMirror();
   // Alarm is the crash-recovery path; timer preserves the existing 5s UI debounce.
-  void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1 }).catch?.(() => {});
+  // Periodic, so a mirror that failed (Drive offline) is retried until it lands.
+  void chrome.alarms?.create?.(DRIVE_UPLOAD_ALARM, { delayInMinutes: 1, periodInMinutes: 1 }).catch?.(() => {});
   _driveUploadTimer = setTimeout(async () => {
     _driveUploadTimer = null;
     const ids = Array.from(_pendingMirror);
     if (!ids.length) return;
     try {
       const res = await driveQueued(() => mirrorToDrive(ids));
-      if (res && res.ok) {
+      // Only a real mirror clears the queue — "not_connected" is not an upload.
+      if (res && res.ok && !res.skipped) {
         for (const id of ids) _pendingMirror.delete(id);
-        const remaining = Array.from(_pendingMirror);
-        if (remaining.length) {
-          storage.set({ [DRIVE_PENDING_MIRROR_KEY]: remaining }).catch(() => {});
-        } else {
-          storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
-        }
+        void clearPendingMirror(ids);
       }
     } catch (e) {
       console.warn("[drive] debounced mirror failed, keeping pending IDs:", e);
@@ -2000,7 +2186,8 @@ async function uploadDriveNow() {
     clearTimeout(_driveUploadTimer);
     _driveUploadTimer = null;
   }
-  _pendingMirror.clear();
+  // IDs queued before this full mirror — the mirror covers exactly these.
+  const covered = Array.from(_pendingMirror);
   if (!(await driveConnected())) {
     // No pull before push — pull of empty/stale Drive would wipe local then upload the wipe.
     const c = await connectDrive({ pull: false });
@@ -2013,10 +2200,11 @@ async function uploadDriveNow() {
     console.warn("[drive] bridge snapshot skipped:", e);
   }
   const res = await driveQueued(() => mirrorToDrive());
-  if (res && res.ok) {
-    _pendingMirror.clear();
-    const storage = chrome.storage.session || chrome.storage.local;
-    storage.remove([DRIVE_PENDING_MIRROR_KEY]).catch(() => {});
+  // Only a real mirror clears the queue — "not_connected" is not an upload.
+  // IDs queued during the mirror stay pending (the mirror may predate them).
+  if (res && res.ok && !res.skipped) {
+    for (const id of covered) _pendingMirror.delete(id);
+    void clearPendingMirror(covered);
   }
   return res;
 }
@@ -2032,7 +2220,7 @@ async function uploadDriveFromBridge() {
     const fileId = await ensureDriveFileId(false);
     let res = null;
     try {
-      res = await fetch(`${BRIDGE}/backup/snapshot`);
+      res = await fetch(`${BRIDGE}/backup/snapshot`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
     } catch (_) {
       return { ok: true, skipped: "bridge_offline" };
     }
