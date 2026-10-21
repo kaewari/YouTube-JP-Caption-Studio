@@ -6,6 +6,20 @@ Scripts: `ipad-app/scripts/`. First-run chi tiết: `FIRST_RUN.md`.
 
 ---
 
+## Chuẩn bị dữ liệu runtime (dict.sqlite)
+
+`Resources/dict.sqlite` là **dữ liệu runtime** (không nằm trong git — xem AGENTS.md §8), nhưng
+project Xcode khai báo nó là resource nên **build sẽ fail nếu file thiếu**:
+
+```bash
+# từ thư mục gốc repo
+cp data/dict/dict.sqlite ipad-app/Resources/dict.sqlite
+cp data/dict/dict.sqlite iphone-app/Resources/dict.sqlite
+```
+
+App vẫn chạy được nếu không có file (tra cứu từ điển offline sẽ tắt, log
+`dict.sqlite missing from bundle`); CI chỉ dùng một file rỗng làm placeholder để compile.
+
 ## Lần đầu cài lên iPad (Xcode signing, Trust)
 
 Làm **một lần** trên Mac + iPad (manual):

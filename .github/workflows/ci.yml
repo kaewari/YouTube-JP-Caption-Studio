@@ -137,3 +137,29 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
+
+  ios-build:
+    name: ios-build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage the runtime dictionary placeholder
+        # dict.sqlite is runtime data (not in git, see AGENTS.md §8). The apps
+        # degrade without it, so an empty placeholder is enough to compile.
+        run: |
+          mkdir -p ipad-app/Resources iphone-app/Resources
+          : > ipad-app/Resources/dict.sqlite
+          : > iphone-app/Resources/dict.sqlite
+      - name: Build the iPad app
+        run: |
+          xcodebuild -project ipad-app/YouTubeJPCaptionStudio.xcodeproj \
+            -scheme YouTubeJPCaptionStudio \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/dd-ipad build
+      - name: Build the iPhone app
+        run: |
+          xcodebuild -project iphone-app/YouTubeJPCaptionStudioiPhone.xcodeproj \
+            -scheme YouTubeJPCaptionStudioiPhone \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/dd-iphone build
