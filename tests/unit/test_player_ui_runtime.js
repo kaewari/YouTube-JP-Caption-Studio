@@ -302,7 +302,12 @@ function runHeadlessChromeSuite() {
 
     server.listen(0, "127.0.0.1", () => {
       const port = server.address().port;
-      const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+      // CHROME_PATH keeps the test off a hardcoded machine path: macOS, a
+      // Linux CI runner and a developer with Chrome elsewhere all work.
+      const chromePath = process.env.CHROME_PATH
+        || (process.platform === "darwin"
+          ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          : "/usr/bin/google-chrome");
       chromeProcess = execFile(chromePath, [
         "--headless=new",
         "--disable-gpu",
