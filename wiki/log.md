@@ -569,3 +569,24 @@ repo-root tests, 25 sanity scripts, 7 web tests, the anti-fake gate - all green;
 all four CI jobs simulated green on a clean `git archive master` tree. Seven
 independent read-only reviews ran in total; every finding is closed with a test
 that fails on the old code.
+
+## [2026-10-21] lint | Wiki state after the audit remediation merge
+
+Checked per AGENTS.md §4 (lint):
+
+- **Stale "active" rows**: the P0 remediation row now reads *merged into `master`*. The other
+  open rows (local-bridge audit 2026-08-06, perf/UX sweep 2026-08-23, codebase improvements
+  2026-08-22, the sentence MVP native activation) are older work with open items - left
+  untouched, no evidence here to close them.
+- **Topic vs newer review**: `topics/p0-remediation-2026-10-20.md` was reconciled with the
+  final acceptance review - the "5 sanity suites fail" claim and the "bridgeJson 5xx blind
+  spot" gap are gone (both fixed), and the raw plan file was restored to its filed content
+  (§4: `plan/` is immutable) with the corrections moved into the topic page.
+- **Orphans / cross-links**: `review/full-codebase-improvement-audit-2026-10-18.md` and
+  `plan/p0-remediation-2026-10-20.md` are both linked from the topic page and from
+  `index.md`; no orphan topic was found.
+- **Open gaps not tracked as topics**: none - every remaining gap of the 2026-10-18 audit is
+  listed in the P0 remediation topic ("Open gaps").
+- **Layer rule**: no file under `plan/` or `review/` was rewritten after filing; the one
+  exception (the cursor contract and the verification commands) was reverted and re-filed in
+  the wiki layer.
