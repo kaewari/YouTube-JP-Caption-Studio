@@ -157,6 +157,30 @@ identical to the branch base). After the merge the whole suite was re-run **on m
 15 extension suites, 133 bridge tests, 30 repo-root tests, 25 sanity scripts, the web suite
 and all four CI jobs simulated on a clean `git archive master` tree - all green.
 
+## Post-merge verification (2026-10-21)
+
+After the merge an independent read-only review re-ran every suite on `master` and simulated
+the CI jobs **in clean virtualenvs** (the local venv has extra packages and hides missing
+dependencies). That found and fixed:
+
+- **`root-tests` was structurally red in CI**: the job installed `pytest numpy soundfile`, but
+  `scripts/slice_gold_audio.py` imports `scipy` at module level, so `pytest -q tests/` could
+  not even be collected on a clean runner. The job now installs `scipy>=1.11.0` (verified in a
+  fresh venv: 30 passed, exit 0).
+- **The iOS apps were never compiled by CI**, so a Swift change that does not build could
+  reach master unnoticed. The new `ios-build` job builds both apps for the simulator;
+  `Resources/dict.sqlite` is runtime data and not in git, so the job stages an empty
+  placeholder and `ipad-app/Scripts/COMMANDS.md` + the iPhone twin now say where the real
+  dictionary comes from. Both apps build: `** BUILD SUCCEEDED **`.
+- The macOS menu-bar bridge compiles (`swiftc -O -parse-as-library`): the agent's change there
+  is a comment clarification of the process-group reality, no behaviour change.
+- `tests/unit/test_player_ui_runtime.js` hardcoded the macOS Chrome path - it now honours
+  `CHROME_PATH`, so another machine or a CI runner can execute it.
+- The pre-existing test files that no CI job runs (`scripts/hook_anti_fake_test.js`,
+  `scripts/tdd_bugfix_test.js`, `scripts/tdd_pixel_and_timing_test.js`,
+  `scripts/test_code_taste_hook.py`, the `tools/open-code-review` Go suite) were executed
+  manually: all pass.
+
 ## Open gaps
 
 - The `bridgeJson()` helper still reports success on a 5xx, so a failed Drive mirror leaves
