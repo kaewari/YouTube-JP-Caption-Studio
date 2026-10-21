@@ -56,6 +56,30 @@ struct ContentView: View {
     @State private var isPlayerFullscreen = false
     @State private var sidePanelBeforeFullscreen: Bool?
     @State private var fullscreenToggleNonce = 0
+    // Side-panel tools (same entry points as the iPad app).
+    @State private var sheet: PhoneSheet?
+    @State private var showImporter = false
+    @State private var pendingImport: PendingImport?
+    @State private var importMode: ScriptCue.ImportMode = .merge
+    @State private var importIncludeJA = false
+    @State private var confirmClearMT = false
+    @State private var confirmWipe = false
+
+    /// One sheet at a time — several `.sheet` modifiers on the same view fight
+    /// over which one presents.
+    enum PhoneSheet: Identifiable {
+        case settings
+        case importOptions
+        case export(URL)
+
+        var id: String {
+            switch self {
+            case .settings: return "settings"
+            case .importOptions: return "import"
+            case .export(let url): return "export-\(url.lastPathComponent)"
+            }
+        }
+    }
 
     private var activeCue: ScriptCue? {
         guard let id = activeCueId else { return nil }
@@ -144,6 +168,27 @@ struct ContentView: View {
                     applyDriveSync(result)
                 }
             }
+        }
+        .sheet(item: $sheet) { which in
+            switch which {
+            case .settings:
+                SidePanelSettingsSheet()
+            case .importOptions:
+                importSheet
+            case .export(let url):
+                ActivityView(url: url)
+            }
+        }
+        .confirmationDialog("Xóa toàn bộ EN/VI?", isPresented: $confirmClearMT, titleVisibility: .visible) {
+            Button("Xóa dịch", role: .destructive) { clearTranslations() }
+            Button("Hủy", role: .cancel) {}
+        }
+        .confirmationDialog("Xóa sub đã lưu và tải lại từ YouTube?", isPresented: $confirmWipe, titleVisibility: .visible) {
+            Button("Xóa sub", role: .destructive) { wipeAndReload() }
+            Button("Hủy", role: .cancel) {}
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.plainText, .json], allowsMultipleSelection: false) { result in
+            handleImport(result)
         }
     }
 
@@ -279,11 +324,13 @@ struct ContentView: View {
                                         noFixed ? "no" : "YES")
                     UserDefaults.standard.set(layoutOK, forKey: "debugLayoutOK")
                     UserDefaults.standard.set(layoutNote, forKey: "debugLayoutNote")
+                    #if DEBUG
+                    // Debug dumps only — a Release build must not litter the user's
+                    // Files app with layout_smoke.* on every layout check.
                     if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
                         let payload = "ok=\(layoutOK)\n\(layoutNote ?? "")\n"
                         try? payload.write(to: dir.appendingPathComponent("layout_smoke.txt"), atomically: true, encoding: .utf8)
                     }
-                    #if DEBUG
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
                     #endif
                 },
@@ -378,18 +425,16 @@ struct ContentView: View {
 
             chromePills
 
-            Menu {
-                Button("Connect Google Drive", systemImage: "folder") {
-                    Task { await connectDrive() }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 32, height: 32)
-                    .foregroundStyle(Color.primary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Thêm tùy chọn")
+            SidePanelToolbar(
+                onReload: { Task { await loadCaptions(for: videoID) } },
+                onAddCue: addCueAtPlayhead,
+                onClearTranslations: { confirmClearMT = true },
+                onWipeScript: { confirmWipe = true },
+                onExport: exportScript,
+                onImport: { showImporter = true },
+                onConnectDrive: { Task { await connectDrive() } },
+                onSettings: { sheet = .settings }
+            )
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -488,6 +533,44 @@ struct ContentView: View {
     private var toolsColumn: some View {
         subtitlesList
             .background(Color(uiColor: .systemBackground))
+    }
+
+    /// Import options — a sheet (the phone has no room for the iPad's inline panel).
+    private var importSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("\(pendingImport?.fileName ?? "file") · \(pendingImport?.rows.count ?? 0) mục")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Chế độ", selection: $importMode) {
+                        Text("Gộp (partial)").tag(ScriptCue.ImportMode.merge)
+                        Text("Thay thế (full)").tag(ScriptCue.ImportMode.replace)
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Gồm JA/timeline", isOn: $importIncludeJA)
+                        .disabled(importMode == .replace)
+                } header: {
+                    Text("Nhập bản dịch")
+                } footer: {
+                    Text("Gộp: khớp theo cue id hoặc thời điểm ±0,35s + JA (mặc định chỉ EN/VI). Thay thế: xóa script cũ, ghi đè toàn bộ dịch + timeline từ file.")
+                }
+            }
+            .navigationTitle("Nhập bản dịch")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Hủy") {
+                        pendingImport = nil
+                        sheet = nil
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Áp dụng") { applyImport() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private var subtitlesList: some View {
@@ -726,6 +809,87 @@ struct ContentView: View {
         }
     }
 
+    private func addCueAtPlayhead() {
+        let cue = ScriptCue.addCueAtPlayhead(videoId: videoID, atMs: playheadMs, context: modelContext)
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        let total = Int(cue.startTime / 1000)
+        statusMessage = String(format: "Đã thêm cue tại %d:%02d", total / 60, total % 60)
+    }
+
+    private func clearTranslations() {
+        ScriptCue.clearTranslations(videoId: videoID, context: modelContext)
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        statusMessage = "Đã xóa EN/VI"
+    }
+
+    private func wipeAndReload() {
+        ScriptCue.wipeAll(videoId: videoID, context: modelContext)
+        currentCues = []
+        statusMessage = "Đã xóa sub — đang tải lại…"
+        Task { await loadCaptions(for: videoID) }
+    }
+
+    private func exportScript() {
+        let text = ScriptCue.exportTXT(currentCues)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(videoID)-script.txt")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            sheet = .export(url)
+            statusMessage = "Export sẵn sàng"
+        } catch {
+            statusMessage = "Export lỗi: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let err):
+            statusMessage = "Import lỗi: \(err.localizedDescription)"
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+                statusMessage = "Không đọc được file import"
+                return
+            }
+            let parsed = ScriptCue.parseImportRows(text)
+            guard !parsed.isEmpty else {
+                statusMessage = "Import: không parse được — dùng TXT/JSON export từ app hoặc extension"
+                return
+            }
+            importMode = .merge
+            importIncludeJA = false
+            pendingImport = PendingImport(fileName: url.lastPathComponent, rows: parsed)
+            sheet = .importOptions
+            statusMessage = "Đã đọc \(parsed.count) mục — chọn chế độ rồi Áp dụng"
+        }
+    }
+
+    private func applyImport() {
+        guard let pendingImport else {
+            statusMessage = "Chưa chọn file"
+            return
+        }
+        let result = ScriptCue.importRows(
+            videoId: videoID,
+            rows: pendingImport.rows,
+            mode: importMode,
+            includeJA: importMode == .replace || importIncludeJA,
+            context: modelContext
+        )
+        if !result.cues.isEmpty {
+            currentCues = result.cues.filter { !$0.isDeleted }
+        } else {
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        }
+        statusMessage = importMode == .replace
+            ? "Import: đã thay thế \(result.replaced) cue"
+            : "Import: cập nhật \(result.updated) · bỏ qua \(result.skipped) · không khớp \(result.unmatched)"
+        self.pendingImport = nil
+        sheet = nil
+    }
+
     /// Prefer cues returned by pull/import — `ScriptCue.load` can miss SwiftData relationship.
     private func applyDriveSync(_ result: DriveScriptsService.SyncResult) {
         if let cues = result.cues, !cues.isEmpty {
@@ -754,6 +918,22 @@ private struct CueRowFramesKey: PreferenceKey {
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
+}
+
+private struct PendingImport {
+    let fileName: String
+    let rows: [ScriptCue.ImportRow]
+}
+
+// Share sheet for Export
+private struct ActivityView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {

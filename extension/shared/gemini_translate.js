@@ -4,10 +4,18 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.HardsubGeminiTranslate = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  // Model ids verified against https://ai.google.dev/gemini-api/docs/models and
+  // /docs/deprecations (fetched 2026-10-21): gemini-3.8-flash is GA (2026-09-02, no
+  // shutdown announced), gemini-3.6-flash and gemini-3.5-flash-lite are GA (2026-07-21).
+  // The old chain ended in gemini-1.5-flash (series already shut down) and led with
+  // gemini-2.5-flash, which Google now limits to accounts that used it before — a fresh
+  // install burned two failing calls before translating anything.
   const MODEL_NAME = "gemini-3.8-flash";
-  const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-1.5-flash"];
+  const FALLBACK_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
   const BATCH_SIZE = 30, CONCURRENCY = 3, PROMPT_VERSION = 3;
   const STORAGE_KEY = "geminiApiKey";
+  /** Marker: the legacy chrome.storage.sync copy of the key was already purged. */
+  const SYNC_PURGED_KEY = "geminiApiKeySyncPurged";
   const CACHE_STORAGE_KEY = "sentenceMtCache:v1", CACHE_LIMIT = 512, CACHE_BYTES = 4 * 1024 * 1024;
   const BOGUS_INTERJECTION_MAP = {
     "う": "Ư...",
@@ -43,13 +51,49 @@
   const ownerEpochs = new Map(), clientEpochs = { automatic: 0, manual: 0 };
   const clientId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
+  /** chrome.storage.sync is optional (Node/tests) — never throw on a missing API. */
+  function syncStore() {
+    return typeof chrome !== "undefined" && chrome.storage ? chrome.storage.sync : null;
+  }
+
+  /**
+   * One-time migration out of chrome.storage.sync: Google replicates the sync
+   * area to every signed-in account and its own servers, so an API key must
+   * live in chrome.storage.local only. Copy first, delete from sync second —
+   * a failed copy must never lose the key.
+   * @returns {Promise<string>} the key recovered from sync ("" when there was none)
+   */
+  async function migrateKeyOutOfSync() {
+    const sync = syncStore();
+    if (!sync) return "";
+    let syncKey = "";
+    try {
+      const stored = await sync.get([STORAGE_KEY]);
+      syncKey = stored && stored[STORAGE_KEY] ? String(stored[STORAGE_KEY]).trim() : "";
+    } catch (_) {
+      return ""; // sync unreachable — retry on the next read, keep the key where it is
+    }
+    try {
+      if (syncKey) {
+        const local = await chrome.storage.local.get([STORAGE_KEY]);
+        if (!(local && local[STORAGE_KEY])) await chrome.storage.local.set({ [STORAGE_KEY]: syncKey });
+      }
+      await sync.remove([STORAGE_KEY]);
+      await chrome.storage.local.set({ [SYNC_PURGED_KEY]: true });
+    } catch (_) {}
+    return syncKey;
+  }
+
   async function getStoredApiKey() {
     if (typeof chrome !== "undefined" && chrome.storage) {
       try {
-        const local = await chrome.storage.local.get([STORAGE_KEY]);
-        if (local && local[STORAGE_KEY]) return String(local[STORAGE_KEY]).trim();
-        const sync = await chrome.storage.sync.get([STORAGE_KEY]);
-        if (sync && sync[STORAGE_KEY]) return String(sync[STORAGE_KEY]).trim();
+        const local = await chrome.storage.local.get([STORAGE_KEY, SYNC_PURGED_KEY]);
+        const localKey = local && local[STORAGE_KEY] ? String(local[STORAGE_KEY]).trim() : "";
+        if (localKey && local && local[SYNC_PURGED_KEY]) return localKey;
+        // Not migrated yet: an older build may still have the key in sync.
+        const migrated = await migrateKeyOutOfSync();
+        if (localKey) return localKey;
+        if (migrated) return migrated;
       } catch (_) {}
     }
     if (typeof process !== "undefined" && process.env && process.env.GEMINI_API_KEY) {
@@ -63,8 +107,11 @@
     if (typeof chrome !== "undefined" && chrome.storage) {
       try {
         await chrome.storage.local.set({ [STORAGE_KEY]: clean });
-        if (chrome.storage.sync) {
-          await chrome.storage.sync.set({ [STORAGE_KEY]: clean }).catch(error => {});
+        // Never replicate the key: drop any copy an older build left in sync.
+        const sync = syncStore();
+        if (sync) {
+          try { await sync.remove([STORAGE_KEY]); } catch (_) {}
+          await chrome.storage.local.set({ [SYNC_PURGED_KEY]: true });
         }
       } catch (_) {}
     }

@@ -3,6 +3,9 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MIRRORED FILE — an identical copy lives in the sibling app (ipad-app/ ⇄ iphone-app/).
+// No shared Swift package yet: apply every change to BOTH copies and keep them byte-identical.
+
 /// JSON snapshot of scripts + vocab → user-picked folder (Google Drive via Files).
 ///
 /// First-run (physical iPad — you must do this yourself):
@@ -50,7 +53,9 @@ final class BackupService: ObservableObject {
         var cues: [CueDTO]
     }
 
-    /// Wire is start-only: `duration` omitted on encode; ignored on apply (derived from next start).
+    /// `duration` is persisted when finite — a user-tuned cue length must survive
+    /// restore / Drive-newer sync. Legacy backups without it fall back to
+    /// `derivedDuration` (next cue start).
     struct CueDTO: Codable, Equatable {
         var id: String
         var startTime: Double
@@ -244,7 +249,7 @@ final class BackupService: ObservableObject {
                         CueDTO(
                             id: c.id,
                             startTime: c.startTime,
-                            duration: nil,
+                            duration: c.duration.isFinite ? c.duration : nil,
                             textJA: c.textJA,
                             textEN: c.textEN,
                             textVI: c.textVI,
@@ -266,7 +271,8 @@ final class BackupService: ObservableObject {
         )
     }
 
-    /// Duration from next start; last cue → `CueTiming.defaultDurMs` (start-only wire).
+    /// Duration from next start; last cue → `CueTiming.defaultDurMs`.
+    /// Fallback for legacy wire files that carry no `duration`.
     static func derivedDuration(cues: [CueDTO], index: Int) -> Double {
         let sorted = cues.sorted { $0.startTime < $1.startTime }
         guard index >= 0, index < sorted.count else { return CueTiming.defaultDurMs }
@@ -277,46 +283,65 @@ final class BackupService: ObservableObject {
         return CueTiming.defaultDurMs
     }
 
-    private func apply(_ snap: Snapshot, to context: ModelContext) throws {
+    /// Wire duration when present and sane, else derived from the next start.
+    static func resolvedDuration(cues: [CueDTO], index: Int) -> Double {
+        let sorted = cues.sorted { $0.startTime < $1.startTime }
+        guard index >= 0, index < sorted.count else { return CueTiming.defaultDurMs }
+        if let d = sorted[index].duration, d.isFinite, d > 0 { return d }
+        return derivedDuration(cues: sorted, index: index)
+    }
+
+    fileprivate func apply(_ snap: Snapshot, to context: ModelContext) throws {
+        let localIds = (try context.fetch(FetchDescriptor<VideoScript>())).map(\.videoId)
         for s in (try context.fetch(FetchDescriptor<VideoScript>())) { context.delete(s) }
         for v in (try context.fetch(FetchDescriptor<Vocabulary>())) { context.delete(v) }
         // Single save at the end: a mid-insert failure must not permanently wipe
         // the existing data (wipe and insert are one transaction on the next save).
 
-        for sd in snap.scripts {
-            let script = VideoScript(videoId: sd.videoId, title: sd.title, owned: sd.owned)
-            // Restore Lamport state — otherwise rev resets to 0 and Drive sync
-            // re-pulls (and may overwrite) the just-restored local copy.
-            script.rev = sd.rev ?? 0
-            script.deviceId = sd.deviceId ?? ""
-            context.insert(script)
-            let ordered = sd.cues.sorted { $0.startTime < $1.startTime }
-            for (i, cd) in ordered.enumerated() {
-                let cue = ScriptCue(
-                    id: cd.id,
-                    startTime: cd.startTime,
-                    duration: Self.derivedDuration(cues: ordered, index: i),
-                    textJA: cd.textJA,
-                    textEN: cd.textEN,
-                    textVI: cd.textVI,
-                    isDeleted: cd.isDeleted
-                )
-                cue.video = script
-                context.insert(cue)
+        do {
+            for sd in snap.scripts {
+                let script = VideoScript(videoId: sd.videoId, title: sd.title, owned: sd.owned)
+                // Restore Lamport state — otherwise rev resets to 0 and Drive sync
+                // re-pulls (and may overwrite) the just-restored local copy.
+                script.rev = sd.rev ?? 0
+                script.deviceId = sd.deviceId ?? ""
+                context.insert(script)
+                let ordered = sd.cues.sorted { $0.startTime < $1.startTime }
+                for (i, cd) in ordered.enumerated() {
+                    let cue = ScriptCue(
+                        id: cd.id,
+                        startTime: cd.startTime,
+                        duration: Self.resolvedDuration(cues: ordered, index: i),
+                        textJA: cd.textJA,
+                        textEN: cd.textEN,
+                        textVI: cd.textVI,
+                        isDeleted: cd.isDeleted
+                    )
+                    cue.video = script
+                    context.insert(cue)
+                }
             }
+            for vd in snap.vocab {
+                let v = Vocabulary(
+                    word: vd.word,
+                    reading: vd.reading,
+                    meaning: vd.meaning,
+                    jlptLevel: vd.jlptLevel,
+                    frequencyCount: vd.frequencyCount
+                )
+                v.savedAt = vd.savedAt
+                context.insert(v)
+            }
+            try context.save()
+        } catch {
+            // The wipe is only *pending* — without a rollback a later save() would
+            // persist "everything deleted" after a failed restore. Discard it.
+            context.rollback()
+            throw error
         }
-        for vd in snap.vocab {
-            let v = Vocabulary(
-                word: vd.word,
-                reading: vd.reading,
-                meaning: vd.meaning,
-                jlptLevel: vd.jlptLevel,
-                frequencyCount: vd.frequencyCount
-            )
-            v.savedAt = vd.savedAt
-            context.insert(v)
-        }
-        try context.save()
+        // The restored state is authoritative: stale dirty ids would force a
+        // spurious patch-push + rev bump on the next Drive sync (ping-pong).
+        for id in Set(localIds + snap.scripts.map(\.videoId)) { DriveDirty.clear(videoId: id) }
     }
 
     private func decodeSnapshot(_ data: Data) throws -> Snapshot {
@@ -333,6 +358,11 @@ final class BackupService: ObservableObject {
 
     private func rememberApplied(_ date: Date) {
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: Self.lastAppliedKey)
+    }
+
+    /// A `save()` failed — the edit is not persisted. Shown in the status line.
+    func reportSaveFailure(_ error: Error) {
+        status = "Lưu lỗi: \(error.localizedDescription)"
     }
 
     /// Shared with `DriveScriptsService` — one folder bookmark for the whole app.
@@ -356,7 +386,17 @@ extension ModelContext {
     /// Save then debounce Drive backup — call after every data mutation.
     @MainActor
     func saveAndScheduleBackup() {
-        try? save()
+        do {
+            try save()
+        } catch {
+            // The mutation is NOT persisted (e.g. unique-constraint violation).
+            // Roll back so the context stays consistent, surface the error, and
+            // do NOT back up: the backup would encode the stale on-disk state and
+            // make a failed edit look like it landed.
+            rollback()
+            BackupService.shared.reportSaveFailure(error)
+            return
+        }
         BackupService.shared.scheduleBackup(context: self)
         VocabSync.shared.schedulePush(context: self)
     }
@@ -408,7 +448,7 @@ enum BackupSmoke {
     static func run() {
         let at = Date(timeIntervalSince1970: 1_754_112_000)
         let cues: [BackupService.CueDTO] = [
-            .init(id: "1", startTime: 0, duration: nil, textJA: "こんにちは", textEN: "Hi", textVI: "Xin chào", isDeleted: false),
+            .init(id: "1", startTime: 0, duration: 1500, textJA: "こんにちは", textEN: "Hi", textVI: "Xin chào", isDeleted: false),
             .init(id: "2", startTime: 1000, duration: nil, textJA: "世界", textEN: nil, textVI: nil, isDeleted: true),
         ]
         let snap = BackupService.Snapshot(
@@ -424,7 +464,7 @@ enum BackupSmoke {
         enc.dateEncodingStrategy = .iso8601
         let data = try! enc.encode(snap)
         let json = String(data: data, encoding: .utf8)!
-        assert(!json.contains("\"duration\""), "duration omitted on wire")
+        assert(json.contains("\"duration\":1500"), "duration on wire")
         assert(json.contains("updatedAt"), "updatedAt present")
         assert(json.contains("\"rev\":7"), "rev on wire")
         assert(json.contains("\"deviceId\":\"ipad-smoke\""), "deviceId on wire")
@@ -437,16 +477,66 @@ enum BackupSmoke {
         assert(round.scripts[0].rev == 7, "rev roundtrip")
         assert(round.scripts[0].deviceId == "ipad-smoke", "deviceId roundtrip")
         assert(round.scripts[0].cues[0].textJA == "こんにちは", "cue text")
-        assert(round.scripts[0].cues[0].duration == nil, "duration nil after decode")
+        assert(round.scripts[0].cues[0].duration == 1500, "duration roundtrip")
+        assert(round.scripts[0].cues[1].duration == nil, "nil duration stays nil")
         assert(round.vocab.count == 1 && round.vocab[0].word == "世界", "vocab count")
         assert(abs(BackupService.derivedDuration(cues: cues, index: 0) - 1000) < 0.001, "derive next start")
         assert(abs(BackupService.derivedDuration(cues: cues, index: 1) - CueTiming.defaultDurMs) < 0.001, "last default dur")
-        // Legacy wire with duration still decodes; apply ignores it.
+        // Wire duration wins; a cue without it falls back to the derived length.
+        assert(abs(BackupService.resolvedDuration(cues: cues, index: 0) - 1500) < 0.001, "wire duration wins")
+        assert(abs(BackupService.resolvedDuration(cues: cues, index: 1) - CueTiming.defaultDurMs) < 0.001, "no wire duration → derived")
+        // Legacy wire with duration still decodes and is honoured.
         let legacy = #"{"version":1,"scripts":[{"videoId":"x","title":"t","owned":true,"cues":[{"id":"1","startTime":0,"duration":999,"textJA":"a","isDeleted":false}]}],"vocab":[]}"#.data(using: .utf8)!
         let old = try! dec.decode(BackupService.Snapshot.self, from: legacy)
         assert(old.scripts[0].cues[0].duration == 999, "legacy duration decoded")
         assert(old.scripts[0].rev == nil && old.scripts[0].deviceId == nil, "legacy rev/deviceId nil")
-        assert(abs(BackupService.derivedDuration(cues: old.scripts[0].cues, index: 0) - CueTiming.defaultDurMs) < 0.001, "apply ignores wire duration")
+        assert(abs(BackupService.resolvedDuration(cues: old.scripts[0].cues, index: 0) - 999) < 0.001, "legacy wire duration honoured")
+
+        // Real round-trip: encode a store → apply into a fresh store → same duration.
+        let container = try! ModelContainer(
+            for: VideoScript.self, ScriptCue.self, Vocabulary.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let ctx = ModelContext(container)
+        let script = VideoScript(videoId: "smoke-dur", title: "t", owned: true)
+        ctx.insert(script)
+        let cue = ScriptCue(id: "c1", startTime: 0, duration: 1234, textJA: "あ")
+        cue.video = script
+        script.cues.append(cue)
+        ctx.insert(cue)
+        try! ctx.save()
+        let live = try! BackupService.shared.encodeSnapshot(context: ctx)
+        assert(live.scripts.first?.cues.first?.duration == 1234, "duration on the encoded wire")
+
+        let target = try! ModelContainer(
+            for: VideoScript.self, ScriptCue.self, Vocabulary.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let targetCtx = ModelContext(target)
+        try! BackupService.shared.apply(live, to: targetCtx)
+        let restored = ScriptCue.load(videoId: "smoke-dur", context: targetCtx)
+        assert(restored.count == 1, "restored cue count")
+        assert(abs(restored[0].duration - 1234) < 0.001, "user-tuned duration survives restore")
+
+        // A failing apply must not wipe the store: duplicate videoId violates the
+        // unique constraint → save() throws → apply() rolls back, old rows survive.
+        let dup = BackupService.Snapshot(
+            updatedAt: at,
+            scripts: [
+                .init(videoId: "dup", title: "a", owned: true, rev: nil, deviceId: nil, cues: []),
+                .init(videoId: "dup", title: "b", owned: true, rev: nil, deviceId: nil, cues: []),
+            ],
+            vocab: []
+        )
+        var applyThrew = false
+        do {
+            try BackupService.shared.apply(dup, to: targetCtx)
+        } catch {
+            applyThrew = true
+        }
+        assert(applyThrew, "duplicate videoId must fail the apply")
+        assert(ScriptCue.load(videoId: "smoke-dur", context: targetCtx).count == 1,
+               "failed apply rolls back — old rows survive")
 
         // Walk-up: …/YouTube JP Caption Studio/EiISOvl2_tQ/cues.json → sync root (not videoId).
         let tmp = FileManager.default.temporaryDirectory

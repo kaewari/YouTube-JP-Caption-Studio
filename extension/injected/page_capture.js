@@ -26,6 +26,10 @@
       window.removeEventListener("message", window.__hardsubPageMsgHandler);
     } catch (_) {}
   }
+  // Reply to this page only — a "*" target would hand the payload to whatever
+  // document the window hosts next. Opaque origins ("null") have no matching
+  // targetOrigin; the extension never runs on them, so they keep "*".
+  const PAGE_TARGET_ORIGIN = location.origin === "null" ? "*" : location.origin;
 
   const state = {
     video: null,
@@ -728,7 +732,7 @@
               cues,
               cap: CAP_TOKEN,
             },
-            "*"
+            PAGE_TARGET_ORIGIN
           );
         } catch (_) {}
       }
@@ -1079,7 +1083,7 @@
           count: cues.length,
           cap: CAP_TOKEN,
         },
-        "*"
+        PAGE_TARGET_ORIGIN
       );
     } catch (_) {}
   }
@@ -1993,7 +1997,7 @@
     const reply = (result) => {
       window.postMessage(
         { source: "hardsub-ocr-page", requestId, result, cap: CAP_TOKEN },
-        "*"
+        PAGE_TARGET_ORIGIN
       );
     };
 
@@ -2014,6 +2018,9 @@
             reply({ ok: false, reason: "exception", message: String(err), cues: [] })
           );
       } else if (type === "FETCH_MULTI_LANG") {
+        // FETCH_MULTI_LANG and FETCH_MULTI_LANG_CAPTIONS are the same handler
+        // under two names. Both are kept because the call sites live in
+        // content/content.js — renaming one side alone would break the bridge.
         fetchMultiLangCaptions(payload || {})
           .then(reply)
           .catch((err) =>

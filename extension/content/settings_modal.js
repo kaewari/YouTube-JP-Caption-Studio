@@ -10,14 +10,18 @@
 (function (root) {
   let modalEl = null;
 
-  const DEFAULT_JLPT_COLORS = {
-    n5: { on: true, color: "#7fd6a8" },
-    n4: { on: true, color: "#8fd3ff" },
-    n3: { on: true, color: "#f5d76e" },
-    n2: { on: true, color: "#e08a4a" },
-    n1: { on: true, color: "#e74c5c" },
-    unknown: { on: true, color: "#c5c5d0" },
-  };
+  // One source for the JLPT palette: shared/vocab_style.js owns the defaults
+  // (the content script, the side panel CSS and this modal read the same
+  // table). The local copy drifted (different "unknown" colour).
+  const DEFAULT_JLPT_COLORS =
+    (root.HardsubVocab && root.HardsubVocab.DEFAULT_LEVEL_COLORS) || {
+      n5: { on: true, color: "#7fd6a8" },
+      n4: { on: true, color: "#8fd3ff" },
+      n3: { on: true, color: "#f5d76e" },
+      n2: { on: true, color: "#e08a4a" },
+      n1: { on: true, color: "#e74c5c" },
+      unknown: { on: true, color: "#c5c5d0" },
+    };
 
   function createModalHtml(settings) {
     const s = settings || {};

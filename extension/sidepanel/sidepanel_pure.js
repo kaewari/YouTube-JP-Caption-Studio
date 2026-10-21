@@ -88,12 +88,27 @@
     return `${esc(ctx.slice(0, at))}${box}${esc(ctx.slice(at + String(lemma).length))}`;
   }
 
+  /**
+   * The content script answers `set_caption_mode` with the mode it really
+   * applied. When the panel asked for "enhanced" but the sentence engine is
+   * off, the content script downgrades to "original" — the panel has to say
+   * so instead of showing a switch that did nothing.
+   * @returns {string} message to show, or "" when nothing was downgraded
+   */
+  function captionModeDowngrade(requested, response) {
+    if (!response || response.ok === false) return "";
+    if (requested !== "enhanced") return "";
+    if (response.captionMode === "enhanced") return "";
+    return "Enhanced chưa bật (cần bật trong Cài đặt) — đang dùng Original";
+  }
+
   const api = {
     rowsNeedReorder,
     collectWords,
     wordsSignature,
     savedSignature,
     buildSavedWordHtml,
+    captionModeDowngrade,
   };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;

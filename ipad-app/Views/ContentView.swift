@@ -30,10 +30,6 @@ struct ContentView: View {
     @State private var activeCueId: String?
     @State private var isPlaying: Bool = false
     @State private var seekRequest: Double? = nil
-    /// Autotest scroll target (px) — reproduce fullscreen-while-scrolled state.
-    @State private var scrollRequest: Double? = nil
-    /// Autotest arbitrary-JS driver (miniplayer toggle repro).
-    @State private var jsEvalRequest: String? = nil
     @State private var reloadNonce = 0
     @State private var historyAction: PlayerHistoryAction? = nil
     @State private var canGoBack = false
@@ -309,6 +305,9 @@ struct ContentView: View {
                                         noFixed ? "no" : "YES")
                     UserDefaults.standard.set(layoutOK, forKey: "debugLayoutOK")
                     UserDefaults.standard.set(layoutNote, forKey: "debugLayoutNote")
+                    #if DEBUG
+                    // Debug dumps only — a Release build must not litter the user's
+                    // Files app with layout_smoke.* on every layout check.
                     if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
                         let payload = "ok=\(layoutOK)\n\(layoutNote ?? "")\n"
                         try? payload.write(to: dir.appendingPathComponent("layout_smoke.txt"), atomically: true, encoding: .utf8)
@@ -317,7 +316,6 @@ struct ContentView: View {
                             try? jsonString.write(to: dir.appendingPathComponent("layout_smoke.json"), atomically: true, encoding: .utf8)
                         }
                     }
-                    #if DEBUG
                     print("[LayoutSmoke] \(layoutOK ? "ok" : "FAIL") \(layoutNote ?? "")")
                     #endif
                 },
@@ -332,8 +330,6 @@ struct ContentView: View {
                     applyPlayerFullscreen(active)
                 },
                 seekRequest: $seekRequest,
-                scrollRequest: $scrollRequest,
-                jsEvalRequest: $jsEvalRequest,
                 reloadNonce: $reloadNonce,
                 fullscreenToggleNonce: $fullscreenToggleNonce,
                 historyAction: $historyAction,
@@ -546,7 +542,7 @@ struct ContentView: View {
         if scrolls.count == 2 {
             let at = scrolls[0], y = scrolls[1]
             DispatchQueue.main.asyncAfter(deadline: .now() + at) {
-                scrollRequest = y
+                AutotestBridge.shared.scrollPage?(y)
                 print("[Autotest] scroll to \(y) at \(at)s")
             }
         }
@@ -554,7 +550,7 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + at) {
                 // Try the classic control-bar button, then any renderer whose label
                 // mentions miniplayer; always dump the result state.
-                jsEvalRequest = "(function(){var cands=[document.querySelector('.ytp-miniplayer-button')]; var tb=Array.prototype.slice.call(document.querySelectorAll('ytd-toggle-button-renderer, ytd-button-renderer')).find(function(b){return /[Mm]iniplayer/.test((b.getAttribute('aria-label')||'')+' '+b.textContent);}); if(tb)cands.push(tb); var hit=cands.filter(Boolean)[0]; if(hit)hit.click(); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                AutotestBridge.shared.evaluateJS?("(function(){var cands=[document.querySelector('.ytp-miniplayer-button')]; var tb=Array.prototype.slice.call(document.querySelectorAll('ytd-toggle-button-renderer, ytd-button-renderer')).find(function(b){return /[Mm]iniplayer/.test((b.getAttribute('aria-label')||'')+' '+b.textContent);}); if(tb)cands.push(tb); var hit=cands.filter(Boolean)[0]; if(hit)hit.click(); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()")
                 print("[Autotest] miniplayer click at \(at)s")
             }
         }
@@ -563,11 +559,11 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + on) {
                 // Simulate YT's miniplayer re-parent: move #movie_player into a
                 // fixed, TRANSFORMED box (containing block for position:fixed).
-                jsEvalRequest = "(function(){var p=document.querySelector('#movie_player'); if(!p)return; var box=document.getElementById('cs-trap-box'); if(!box){box=document.createElement('div'); box.id='cs-trap-box'; box.style.cssText='position:fixed; right:16px; bottom:16px; width:400px; height:301px; transform:translate3d(0,0,0); background:#000; z-index:2147483647; overflow:hidden;'; document.body.appendChild(box);} box.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                AutotestBridge.shared.evaluateJS?("(function(){var p=document.querySelector('#movie_player'); if(!p)return; var box=document.getElementById('cs-trap-box'); if(!box){box=document.createElement('div'); box.id='cs-trap-box'; box.style.cssText='position:fixed; right:16px; bottom:16px; width:400px; height:301px; transform:translate3d(0,0,0); background:#000; z-index:2147483647; overflow:hidden;'; document.body.appendChild(box);} box.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()")
                 print("[Autotest] trapbox ON at \(on)s")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + off) {
-                jsEvalRequest = "(function(){var p=document.querySelector('#movie_player'); var host=document.querySelector('#player'); if(!p||!host)return; host.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()"
+                AutotestBridge.shared.evaluateJS?("(function(){var p=document.querySelector('#movie_player'); var host=document.querySelector('#player'); if(!p||!host)return; host.appendChild(p); setTimeout(function(){window.__csPostLayout&&window.__csPostLayout();},400);})()")
                 print("[Autotest] trapbox OFF at \(off)s")
             }
         }

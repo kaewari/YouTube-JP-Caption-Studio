@@ -41,11 +41,16 @@ const http=require('node:http');
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  try {
   const base=`http://127.0.0.1:${server.address().port}`;
-  const network=vm.createContext({HardsubTimedtextParse:Parse,URL,
+  // The worker aborts its fetches with AbortSignal.timeout, so the sandbox
+  // needs the same global.
+  const network=vm.createContext({HardsubTimedtextParse:Parse,URL,AbortSignal,
    fetch:(url,opts)=>fetch(base+new URL(url).pathname+new URL(url).search,opts)});
-  vm.runInContext(worker.slice(worker.indexOf('function normalizeTimedtextUrl('),worker.indexOf('/** Cookie header')),network);
+  // The URL adapters end where the language aliases begin; a stale end marker
+  // would slice the rest of the worker in and declare everything twice.
+  vm.runInContext(worker.slice(worker.indexOf('function normalizeTimedtextUrl('),worker.indexOf('const LANG_FAMILY_ALIASES')),network);
   vm.runInContext(worker.slice(worker.indexOf('const LANG_FAMILY_ALIASES'),worker.indexOf('function sortTracks(')),network);
-  vm.runInContext(worker.slice(worker.indexOf('async function fetchBestLangPack('),worker.indexOf('function dataUrlToBlob(')),network);
+  // fetchBestLangPack calls sortTracks, so both belong in this slice.
+  vm.runInContext(worker.slice(worker.indexOf('function sortTracks('),worker.indexOf('function dataUrlToBlob(')),network);
   network.candidates=[{url:'https://www.youtube.com/api/timedtext?v=fixture&lang=ja',lang:'ja',asr:true,via:'android',
    track:{vssId:'a.ja',languageCode:'ja',kind:'asr',baseUrl:'signed-secret'}}];
   let pack=await vm.runInContext("fetchBestLangPack(candidates,'ja',{})",network);
@@ -54,7 +59,7 @@ const http=require('node:http');
   pack=await vm.runInContext("fetchBestLangPack(candidates,'ja',{})",network);
   assert.equal(pack.sourceTrack.format,'json3');assert.equal(pack.cues[0].segmentAnchors[0].time,1);
   assert.equal(JSON.stringify(pack.sourceTrack).includes('signed-secret'),false);
-  const pageNetwork=vm.createContext({HardsubTimedtextParse:Parse,URL,
+  const pageNetwork=vm.createContext({HardsubTimedtextParse:Parse,URL,AbortSignal,
    fetch:network.fetch,parseTimedtextBody:body=>Parse.parseTimedtextBody(body,{includeSource:true}),
    state:{captions:{},timedtext:{url:'https://www.youtube.com/api/timedtext?v=fixture&lang=ja',videoId:'fixture',body:'',cues:[]}},
    netflixState:{},ccTriggerVideoId:'',tryEnablePlayerCaptions:()=>{},

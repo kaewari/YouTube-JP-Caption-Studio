@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from app.utils.text_utils import _kata_to_hira
+from app.utils.text_utils import kata_to_hira
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,9 @@ SAMPLES_PER_BAND = 8
 _freq: dict[str, int] = {}
 _jlpt: dict[str, str] = {}
 _loaded = False
+# A failed load must not be retried on every lookup (one log line per token),
+# but an explicit reload (bootstrap) must be able to try again.
+_load_failed = False
 
 # POS prefixes that should not be highlighted as vocab.
 _SKIP_POS_PREFIXES = (
@@ -38,22 +41,36 @@ def is_loaded() -> bool:
     return _loaded
 
 
-def load_freq() -> bool:
-    global _freq, _jlpt, _loaded
+def load_freq(force: bool = False) -> bool:
+    """Load the frequency + JLPT maps.
+
+    `_loaded` is set only after a successful read. It used to be set before
+    the files were even opened, so a broken freq_ja.json left the process
+    "loaded" with an empty map and every rank/JLPT lookup returned None for
+    the rest of the process lifetime. A failed load is not retried on every
+    lookup (that would log once per token); pass force=True to try again.
+    """
+    global _freq, _jlpt, _loaded, _load_failed
     if _loaded:
         return True
-    _loaded = True
+    if _load_failed and not force:
+        return False
+
     if FREQ_JSON.exists():
         try:
             raw = json.loads(FREQ_JSON.read_text(encoding="utf-8"))
             _freq = {str(k): int(v) for k, v in raw.items()}
             logger.info("Loaded freq map (%d lemmas)", len(_freq))
         except Exception as exc:
-            logger.warning("Failed to load freq map: %s", exc)
+            logger.error("Failed to load freq map: %s", exc)
             _freq = {}
+            _load_failed = True
+            return False
     else:
-        logger.warning("freq map missing: %s", FREQ_JSON)
+        logger.error("freq map missing: %s", FREQ_JSON)
         _freq = {}
+        _load_failed = True
+        return False
 
     if JLPT_JSON.exists():
         try:
@@ -61,11 +78,14 @@ def load_freq() -> bool:
             _jlpt = {str(k): str(v).lower() for k, v in raw_jlpt.items()}
             logger.info("Loaded JLPT map (%d entries)", len(_jlpt))
         except Exception as exc:
-            logger.warning("Failed to load JLPT map: %s", exc)
+            logger.error("Failed to load JLPT map: %s", exc)
             _jlpt = {}
     else:
+        logger.error("JLPT map missing: %s", JLPT_JSON)
         _jlpt = {}
 
+    _loaded = True
+    _load_failed = False
     return True
 
 
@@ -79,7 +99,7 @@ def rank_of(lemma: str, surface: str = "", reading: str = "") -> int | None:
     if reading:
         if reading in _freq:
             return _freq[reading]
-        hira = _kata_to_hira(reading)
+        hira = kata_to_hira(reading)
         if hira in _freq:
             return _freq[hira]
     return None
@@ -122,7 +142,7 @@ def jlpt_of(rank: int | None, lemma: str = "", reading: str = "", surface: str =
     # 2. Check loaded comprehensive JLPT dataset (14,000+ words)
     candidates = [lemma, surface, reading]
     if reading:
-        candidates.append(_kata_to_hira(reading))
+        candidates.append(kata_to_hira(reading))
     for cand in candidates:
         if cand and cand in _jlpt:
             return _jlpt[cand]
@@ -193,7 +213,7 @@ def _reading_lookup():
             if not ms:
                 return ""
             reading = ms[0].reading_form() or ""
-            return _kata_to_hira(reading)
+            return kata_to_hira(reading)
 
         return lookup
     except Exception:

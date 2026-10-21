@@ -148,9 +148,10 @@ def backup_snapshot_get() -> dict[str, Any]:
             user_vocab = dict(_ext_state.get("userVocab") or {})
         return encode_snapshot(user_vocab=user_vocab)
     except Exception as exc:
+        # The raw exception text can carry file paths: log it, answer generic.
         logger.exception("backup/snapshot GET failed")
         append_errors_log("ERROR", f"backup/snapshot GET failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="backup/snapshot failed") from exc
 
 
 @router.post("/backup/snapshot")
@@ -174,4 +175,4 @@ def backup_snapshot_post(body: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("backup/snapshot POST failed")
         append_errors_log("ERROR", f"backup/snapshot POST failed: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="backup/snapshot failed") from exc

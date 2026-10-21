@@ -231,33 +231,32 @@ export function SettingsPanel() {
     setSettings((prev) => ({ ...prev, ...partial }));
   }
 
+  /** React may call a state updater twice (StrictMode), so the updater stays
+   *  pure: the next value is computed here and the write happens in the
+   *  handler, not inside the updater. */
   function patchOverlay(partial: Partial<HardsubSettings>) {
-    setSettings((prev) => {
-      const next = { ...prev, ...partial };
-      void persistSettingsAsync(next).then((src) => {
-        setSource(src);
-        setNote(
-          src === "chrome.storage"
-            ? "Overlay live → chrome.storage"
-            : "Overlay live → localStorage + bridge",
-        );
-      });
-      return next;
+    const next = { ...settings, ...partial };
+    setSettings(next);
+    void persistSettingsAsync(next).then((src) => {
+      setSource(src);
+      setNote(
+        src === "chrome.storage"
+          ? "Overlay live → chrome.storage"
+          : "Overlay live → localStorage + bridge",
+      );
     });
   }
 
   function patchLevel(partial: Partial<HardsubSettings>) {
-    setSettings((prev) => {
-      const next = { ...prev, ...partial };
-      void persistSettingsAsync(next).then((src) => {
-        setSource(src);
-        setNote(
-          src === "chrome.storage"
-            ? "Tô màu live → chrome.storage"
-            : "Tô màu live → localStorage + bridge",
-        );
-      });
-      return next;
+    const next = { ...settings, ...partial };
+    setSettings(next);
+    void persistSettingsAsync(next).then((src) => {
+      setSource(src);
+      setNote(
+        src === "chrome.storage"
+          ? "Tô màu live → chrome.storage"
+          : "Tô màu live → localStorage + bridge",
+      );
     });
   }
 
@@ -283,17 +282,15 @@ export function SettingsPanel() {
   }
 
   function handleResetOverlay() {
-    setSettings((prev) => {
-      const next = resetOverlaySettings(prev);
-      void persistSettingsAsync(next).then((src) => {
-        setSource(src);
-        setNote(
-          src === "chrome.storage"
-            ? "Đã đặt lại overlay · chrome.storage"
-            : "Đã đặt lại overlay · localStorage",
-        );
-      });
-      return next;
+    const next = resetOverlaySettings(settings);
+    setSettings(next);
+    void persistSettingsAsync(next).then((src) => {
+      setSource(src);
+      setNote(
+        src === "chrome.storage"
+          ? "Đã đặt lại overlay · chrome.storage"
+          : "Đã đặt lại overlay · localStorage",
+      );
     });
     setMsg("Đã đặt lại overlay");
     window.setTimeout(() => setMsg(""), 2000);

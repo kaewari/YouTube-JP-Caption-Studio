@@ -17,6 +17,7 @@ import resource
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -38,6 +39,28 @@ DEFAULT_INITIAL_PROMPT = "こんにちは。日本語のYouTube動画の字幕�
 DEFAULT_AUDIO_FILTER_CHAIN = (
     "highpass=f=100,lowpass=f=8000,afftdn=nf=-25,dynaudnorm=f=150:g=15:p=0.95:b=1"
 )
+
+# The `model` request parameter reaches `path_or_hf_repo` unchecked: an
+# arbitrary value makes the bridge pull an unknown Hugging Face repo (or read
+# an arbitrary local path) on every request. Only known-good repos are served.
+ALLOWED_MODELS: tuple[str, ...] = (
+    DEFAULT_MODEL_NAME,
+    "mlx-community/whisper-large-v3-turbo",
+)
+
+# One Metal model at a time: two concurrent first loads would allocate the
+# same model twice and can exhaust unified memory.
+_asr_lock = threading.Lock()
+
+
+def resolve_model_name(model_name: str | None) -> str:
+    """Map a requested model to an allowlisted repo id (ValueError if unknown)."""
+    name = (model_name or "").strip() or DEFAULT_MODEL_NAME
+    if name not in ALLOWED_MODELS:
+        raise ValueError(
+            "unsupported model; allowed: " + ", ".join(ALLOWED_MODELS)
+        )
+    return name
 
 
 def is_valid_speech_text(text: str) -> bool:
@@ -144,9 +167,25 @@ def get_metal_peak_memory_bytes() -> Optional[int]:
             return mx.get_peak_memory()
         if hasattr(mx, "metal") and hasattr(mx.metal, "get_peak_memory"):
             return mx.metal.get_peak_memory()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Metal peak memory unavailable: %s", exc)
     return None
+
+
+def reset_metal_peak_memory() -> None:
+    """Reset the Metal peak counter so the next reading covers one request only.
+
+    Without this the reported peak is the process-lifetime maximum, not the
+    peak of the transcription that just ran.
+    """
+    try:
+        import mlx.core as mx
+        if hasattr(mx, "reset_peak_memory"):
+            mx.reset_peak_memory()
+        elif hasattr(mx, "metal") and hasattr(mx.metal, "reset_peak_memory"):
+            mx.metal.reset_peak_memory()
+    except Exception as exc:
+        logger.debug("Metal peak memory reset unavailable: %s", exc)
 
 
 def to_mono_float32(audio: np.ndarray) -> np.ndarray:
@@ -293,8 +332,8 @@ def decode_audio_bytes(
                     if raw_float.size > 0 and np.all(np.isfinite(raw_float)) and np.max(np.abs(raw_float)) <= 1.5:
                         arr = np.ascontiguousarray(raw_float, dtype=np.float32)
                         return apply_audio_dsp(arr, filter_profile=filter_profile) if preprocess else arr
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Raw float32 PCM fallback failed: %s", exc)
             if len(data) % 2 == 0:
                 try:
                     raw_i16 = np.frombuffer(data, dtype=np.int16)
@@ -302,16 +341,19 @@ def decode_audio_bytes(
                         raw_float = raw_i16.astype(np.float32) / 32768.0
                         arr = np.ascontiguousarray(raw_float, dtype=np.float32)
                         return apply_audio_dsp(arr, filter_profile=filter_profile) if preprocess else arr
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Raw int16 PCM fallback failed: %s", exc)
             logger.error("ffmpeg decoding error: %s", ffmpeg_err)
-            raise ValueError(f"Unable to decode audio payload: {ffmpeg_err}") from ffmpeg_err
+            # The ffmpeg/soundfile internals stay in the log, not in the
+            # exception message: the API hands that text to the caller.
+            raise ValueError("Unable to decode audio payload") from ffmpeg_err
 
-    err_msg = f"Unable to decode audio format: soundfile error ({sf_error})"
-    if ffmpeg_err is not None:
-        err_msg += f", ffmpeg error ({ffmpeg_err})"
-    logger.error(err_msg)
-    raise ValueError(err_msg)
+    logger.error(
+        "Unable to decode audio format: soundfile error (%s), ffmpeg error (%s)",
+        sf_error,
+        ffmpeg_err,
+    )
+    raise ValueError("Unable to decode audio format")
 
 
 def transcribe_audio(
@@ -349,6 +391,10 @@ def transcribe_audio(
     Returns:
     Dict with text, segments (id, start, end, text), durationSec, elapsedSec, rtf, model, ram metrics.
     """
+    # Reject an unknown repo before any audio work: the value is caller
+    # controlled and ends up in `path_or_hf_repo`.
+    model_name = resolve_model_name(model_name)
+
     if isinstance(audio_input, bytes):
         audio = decode_audio_bytes(audio_input, preprocess=preprocess)
     elif isinstance(audio_input, np.ndarray):
@@ -384,23 +430,29 @@ def transcribe_audio(
         effective_prompt = None
 
     try:
-        raw_result = mlx_whisper.transcribe(
-            audio,
-            path_or_hf_repo=model_name,
-            language=language,
-            fp16=fp16,
-            temperature=temperature,
-            condition_on_previous_text=condition_on_previous_text,
-            no_speech_threshold=no_speech_threshold,
-            logprob_threshold=logprob_threshold,
-            initial_prompt=effective_prompt,
-            word_timestamps=word_timestamps,
-            compression_ratio_threshold=compression_ratio_threshold,
-            hallucination_silence_threshold=hallucination_silence_threshold,
-        )
+        # The Metal peak counter is process-wide: reset it so the reported
+        # number covers this transcription, not the whole process lifetime.
+        reset_metal_peak_memory()
+        with _asr_lock:
+            raw_result = mlx_whisper.transcribe(
+                audio,
+                path_or_hf_repo=model_name,
+                language=language,
+                fp16=fp16,
+                temperature=temperature,
+                condition_on_previous_text=condition_on_previous_text,
+                no_speech_threshold=no_speech_threshold,
+                logprob_threshold=logprob_threshold,
+                initial_prompt=effective_prompt,
+                word_timestamps=word_timestamps,
+                compression_ratio_threshold=compression_ratio_threshold,
+                hallucination_silence_threshold=hallucination_silence_threshold,
+            )
     except Exception as e:
         logger.error("mlx_whisper execution failed: %s", e)
-        raise RuntimeError(f"ASR transcription failed: {e}") from e
+        # The MLX internals stay in the log; the caller only learns that the
+        # transcription failed.
+        raise RuntimeError("ASR transcription failed") from e
 
     elapsed_time = time.perf_counter() - start_time
     rss_after = get_process_rss_bytes()

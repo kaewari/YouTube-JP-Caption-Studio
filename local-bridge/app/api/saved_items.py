@@ -143,8 +143,9 @@ def api_sync_saved(body: SyncRequest) -> SyncResponse:
             )
         return SyncResponse(**res)
     except Exception as exc:
+        # The raw exception text can carry SQL and file paths: log it, answer generic.
         logger.exception("api_sync_saved error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="saved items request failed") from exc
 
 
 @router.get("/saved/items")
@@ -158,8 +159,9 @@ def api_list_saved(
         with db_conn() as conn:
             return list_items(conn, item_type=type, video_id=video_id, include_deleted=include_deleted, limit=limit)
     except Exception as exc:
+        # The raw exception text can carry SQL and file paths: log it, answer generic.
         logger.exception("api_list_saved error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="saved items request failed") from exc
 
 
 @router.get("/saved/items/{item_id}")
@@ -177,8 +179,9 @@ def api_upsert_saved(body: SavedItemPayload) -> dict[str, Any]:
         with db_conn() as conn:
             return upsert_item(conn, body.model_dump())
     except Exception as exc:
+        # The raw exception text can carry SQL and file paths: log it, answer generic.
         logger.exception("api_upsert_saved error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="saved items request failed") from exc
 
 
 @router.delete("/saved/items/{item_id}")
@@ -192,8 +195,9 @@ def api_delete_saved(item_id: str, hard: bool = Query(False)) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
+        # The raw exception text can carry SQL and file paths: log it, answer generic.
         logger.exception("api_delete_saved error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="saved items request failed") from exc
 
 
 @router.get("/saved/search")
@@ -206,5 +210,6 @@ def api_search_saved(
         with db_conn() as conn:
             return search_items(conn, query=q, item_type=type, limit=limit)
     except Exception as exc:
+        # The raw exception text can carry SQL and file paths: log it, answer generic.
         logger.exception("api_search_saved error")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="saved items request failed") from exc

@@ -4,12 +4,12 @@
  * Browser + Node-friendly.
  */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
   }
   root.HardsubDfxpParser = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   const DEFAULT_TICK_RATE = 10000000;
 
   function parseTime(timeStr, tickRate, frameRate) {
@@ -69,17 +69,16 @@
     return NaN;
   }
 
+  /**
+   * Entity decoding is shared with shared/timedtext_parse.js — one implementation,
+   * one behaviour (single pass, no double decode). The sibling module is loaded
+   * in the same content script; `require` covers standalone Node use.
+   */
   function decodeXmlEntities(text) {
     if (!text) return "";
-    return text
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&apos;/g, "'")
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_, hex) { return String.fromCharCode(parseInt(hex, 16)); })
-      .replace(/&#(\d+);/g, function (_, dec) { return String.fromCharCode(parseInt(dec, 10)); });
+    const shared = (root && root.HardsubTimedtextParse) ||
+      (typeof require === "function" ? require("./timedtext_parse.js") : null);
+    return shared ? shared.decodeEntities(text) : String(text);
   }
 
   function cleanText(rawHtml) {

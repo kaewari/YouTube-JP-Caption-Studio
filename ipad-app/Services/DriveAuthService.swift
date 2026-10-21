@@ -1,17 +1,32 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
+import OSLog
 import Security
 import UIKit
+
+// MIRRORED FILE — an identical copy lives in the sibling app (ipad-app/ ⇄ iphone-app/).
+// No shared Swift package yet: apply every change to BOTH copies and keep them byte-identical.
+
+private let driveLog = Logger(subsystem: "com.example.YouTubeJPCaptionStudio", category: "DriveAuth")
 
 /// Google OAuth via `ASWebAuthenticationSession` + PKCE + Keychain. No GoogleSignIn SPM.
 @MainActor
 final class DriveAuthService: NSObject {
     static let shared = DriveAuthService()
 
-    private let keychainService = "com.example.YouTubeJPCaptionStudio.drive"
+    /// Keychain service per app (real bundle id) — the old placeholder was
+    /// shared by the iPad and the iPhone app.
+    private var keychainService: String {
+        (Bundle.main.bundleIdentifier ?? "com.example.YouTubeJPCaptionStudio") + ".drive"
+    }
+    /// Pre-2026-10 placeholder service (both apps wrote to it) — read once, then dropped.
+    private static let legacyKeychainService = "com.example.YouTubeJPCaptionStudio.drive"
     private let keychainAccount = "oauth"
     private var session: ASWebAuthenticationSession?
+    /// One refresh at a time: concurrent callers await the same POST instead of
+    /// racing each other (last-write-wins on the Keychain pair).
+    private var refreshTask: Task<Tokens, Error>?
 
     var hasToken: Bool { loadTokens() != nil }
 
@@ -44,11 +59,15 @@ final class DriveAuthService: NSObject {
                tokens.expiresAt.timeIntervalSinceNow > 60 {
                 return tokens.accessToken
             }
-            if !tokens.refreshToken.isEmpty,
-               let refreshed = try? await refresh(tokens.refreshToken) {
-                tokens = refreshed
-                try saveTokens(tokens)
-                return tokens.accessToken
+            if !tokens.refreshToken.isEmpty {
+                do {
+                    tokens = try await refreshedTokens(refreshToken: tokens.refreshToken)
+                    return tokens.accessToken
+                } catch {
+                    // Never swallow the refresh failure silently — the caller would
+                    // only see "not connected" and the cause would be lost.
+                    driveLog.error("token refresh failed: \(error.localizedDescription, privacy: .public)")
+                }
             }
             if !interactive { return nil }
         } else if !interactive {
@@ -57,6 +76,20 @@ final class DriveAuthService: NSObject {
         let tokens = try await authorize()
         try saveTokens(tokens)
         return tokens.accessToken
+    }
+
+    /// Single in-flight refresh: the first caller performs the POST, every other
+    /// caller awaits the same result instead of refreshing again.
+    private func refreshedTokens(refreshToken: String) async throws -> Tokens {
+        if let existing = refreshTask { return try await existing.value }
+        let task = Task<Tokens, Error> { [refreshToken] in
+            let tokens = try await self.refresh(refreshToken)
+            try self.saveTokens(tokens)
+            return tokens
+        }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
     }
 
     private func authorize() async throws -> Tokens {
@@ -201,20 +234,40 @@ final class DriveAuthService: NSObject {
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount,
         ]
-        SecItemDelete(query as CFDictionary)
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        let status = SecItemAdd(add as CFDictionary, nil)
-        guard status == errSecSuccess || status == errSecDuplicateItem else {
+        let attrs: [String: Any] = [
+            kSecValueData as String: data,
+            // This-device-only: the token must not ride iCloud Keychain to another device.
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        // Update in place: a delete+add pair drops the token when the process dies
+        // between the two calls.
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            let addStatus = SecItemAdd(query.merging(attrs) { $1 } as CFDictionary, nil)
+            guard addStatus == errSecSuccess else {
+                throw DriveAuthError.tokenHTTP(Int(addStatus), "Keychain save failed")
+            }
+        } else if status != errSecSuccess {
             throw DriveAuthError.tokenHTTP(Int(status), "Keychain save failed")
         }
+        // The per-app item exists now — drop the shared legacy placeholder.
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.legacyKeychainService,
+            kSecAttrAccount as String: keychainAccount,
+        ] as CFDictionary)
     }
 
     private func loadTokens() -> Tokens? {
+        if let tokens = readTokens(service: keychainService) { return tokens }
+        // Legacy placeholder item — used once, then migrated on the next save.
+        return readTokens(service: Self.legacyKeychainService)
+    }
+
+    private func readTokens(service: String) -> Tokens? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: keychainAccount,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -227,12 +280,13 @@ final class DriveAuthService: NSObject {
     }
 
     private func deleteTokens() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-        ]
-        SecItemDelete(query as CFDictionary)
+        for service in [keychainService, Self.legacyKeychainService] {
+            SecItemDelete([
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: keychainAccount,
+            ] as CFDictionary)
+        }
     }
 }
 

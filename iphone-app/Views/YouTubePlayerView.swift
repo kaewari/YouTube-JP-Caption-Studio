@@ -31,6 +31,13 @@ struct YouTubePlayerView: UIViewRepresentable {
     private static let desktopUA =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 
+    /// Finite decimal literal for JS interpolation — never `nan`/`inf`/exponent,
+    /// and never a locale decimal comma.
+    static func jsNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        return String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -78,7 +85,7 @@ struct YouTubePlayerView: UIViewRepresentable {
         context.coordinator.parent = self
 
         if let seekTime = seekRequest {
-            let seconds = seekTime / 1000.0
+            let seconds = Self.jsNumber(seekTime / 1000.0)
             uiView.evaluateJavaScript(
                 "(function(){if(window.__csSeek)return window.__csSeek(\(seconds));var v=document.querySelector('#movie_player video.html5-main-video')||document.querySelector('#movie_player video');if(v)v.currentTime=\(seconds);})();"
             )

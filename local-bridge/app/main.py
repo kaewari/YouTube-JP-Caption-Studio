@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,12 +22,69 @@ from app.api.state import router as state_router
 from app.api.tokenize import router as tokenize_router
 from app.core.governor import governor
 from app.services.dictionary import load_dictionary
+from app.services.ime_switch import ensure_helper
+from app.services.tokenize_ja import load_tokenizer
 from app.services.vocab_freq import load_freq
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bridge")
 
-app = FastAPI(title="YouTube JP Caption Studio Bridge", version="0.3.0")
+
+def check_single_worker() -> None:
+    """Fail fast when the bridge is started with more than one uvicorn worker.
+
+    Every piece of bridge state is per process (governor slots, the Sudachi
+    tokenizer, the shared dictionary handle, the per-video save locks), so a
+    second worker silently breaks the contract. local-bridge/start.sh starts
+    uvicorn with --workers 1 for exactly this reason.
+    """
+    raw = os.environ.get("WEB_CONCURRENCY") or os.environ.get("UVICORN_WORKERS") or ""
+    try:
+        workers = int(raw)
+    except ValueError:
+        return
+    if workers > 1:
+        logger.error(
+            "Refusing to start with %d uvicorn workers: the governor, the "
+            "tokenizer cache, the dictionary handle and the per-video locks are "
+            "per-process. Start the bridge with --workers 1 (local-bridge/start.sh).",
+            workers,
+        )
+        raise RuntimeError(
+            f"multiple uvicorn workers ({workers}) break the per-process bridge state"
+        )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    check_single_worker()
+    governor.start()
+    load_ext_state_disk()
+    try:
+        load_dictionary()
+        load_freq()
+    except Exception:
+        logger.exception("Warm load partial failure")
+    # Warm the tokenizer and the IME helper here: doing it lazily inside a
+    # request handler blocks that request (the swiftc build alone can take
+    # two minutes) and duplicates the work under concurrent requests.
+    try:
+        load_tokenizer()
+    except Exception:
+        logger.exception("Sudachi preload failed")
+    try:
+        ensure_helper()
+    except Exception:
+        logger.exception("IME helper build failed")
+    try:
+        yield
+    finally:
+        governor.stop()
+
+
+app = FastAPI(
+    title="YouTube JP Caption Studio Bridge", version="0.3.0", lifespan=lifespan
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^(chrome-extension://[a-z0-9]{32}|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
@@ -44,22 +104,6 @@ app.include_router(ime_router)
 app.include_router(state_router)
 app.include_router(saved_items_router)
 app.include_router(asr_router)
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    governor.start()
-    load_ext_state_disk()
-    try:
-        load_dictionary()
-        load_freq()
-    except Exception:
-        logger.exception("Warm load partial failure")
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    governor.stop()
 
 
 @app.get("/")

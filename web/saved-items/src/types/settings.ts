@@ -2,6 +2,8 @@
  * Matches extension popup `hardsubSettings` in chrome.storage.local
  * (`extension/popup/popup.js` DEFAULTS).
  */
+import { DEFAULT_LEVEL_COLORS, type LevelColors } from "@/lib/level-colors";
+
 export interface HardsubRoi {
   top: number;
   left: number;
@@ -39,8 +41,8 @@ export interface HardsubSettings {
   hideRareWords: boolean;
   /** Side panel "Làm nổi bật theo cấp độ" — master JLPT coloring toggle. */
   levelHighlightEnabled: boolean;
-  /** Per-level colors, mirror of extension/shared/vocab_style.js. */
-  levelColors: Record<string, { on: boolean; color: string }>;
+  /** Per-level colors — single source of truth: `@/lib/level-colors`. */
+  levelColors: LevelColors;
   /** Per-platform enable/disable settings (default all true). */
   enabledPlatforms?: {
     youtube: boolean;
@@ -81,14 +83,7 @@ export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
   showKnownGreen: true,
   hideRareWords: false,
   levelHighlightEnabled: true,
-  levelColors: {
-    n5: { on: true, color: "#7fd6a8" },
-    n4: { on: true, color: "#8fd3ff" },
-    n3: { on: true, color: "#f5d76e" },
-    n2: { on: true, color: "#e08a4a" },
-    n1: { on: true, color: "#e74c5c" },
-    unknown: { on: true, color: "#c5c5d0" },
-  },
+  levelColors: { ...DEFAULT_LEVEL_COLORS },
   enabledPlatforms: {
     youtube: true,
     netflix: true,

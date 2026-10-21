@@ -8,7 +8,7 @@
 
 ## 1. PHÂN TÍCH KIẾN TRÚC & MODULE HỆ THỐNG
 
-Dự án YouTube JP Caption Studio bao gồm 3 phân hệ chính tương tác chặt chẽ với nhau:
+Dự án YouTube JP Caption Studio bao gồm 6 phân hệ tương tác chặt chẽ với nhau. Ba phân hệ đầu (1–3) có bộ test tự động; ba phân hệ native (4–6) **chỉ có kiểm thử thủ công** (không có runner tự động trong repo — mọi dòng "manual" dưới đây là việc phải làm tay trên thiết bị/máy thật):
 
 ```
 [YouTube JP Caption Studio]
@@ -26,10 +26,28 @@ Dự án YouTube JP Caption Studio bao gồm 3 phân hệ chính tương tác ch
  │    ├── 2.4 ASR Whisper Service (Async Worker Thread, Metal GPU Inference)
  │    └── 2.5 Dictionary Service (JMdict Lookup, Gloss EN/VI Cache, IME Switch)
  │
- └── 3. SAVED ITEMS WEB APP (Next.js - web/saved-items)
-      ├── 3.1 Vocabulary & Sentences Grid View
-      ├── 3.2 Search & Filter Panel (JLPT Levels, Tags, Sources)
-      └── 3.3 Static Extension Popup Export (Turbopack Build)
+ ├── 3. SAVED ITEMS WEB APP (Next.js - web/saved-items)
+ │    ├── 3.1 Vocabulary & Sentences Grid View
+ │    ├── 3.2 Search & Filter Panel (JLPT Levels, Tags, Sources)
+ │    └── 3.3 Static Extension Popup Export (Turbopack Build)
+ │
+ ├── 4. IPAD APP (SwiftUI - ipad-app/)
+ │    ├── 4.1 WKWebView Player (YouTube Embed, Cue Interception)
+ │    ├── 4.2 Native Hardsub Overlay (TokenizedJAView + Furigana)
+ │    ├── 4.3 Side Panel & Cue Editor (SwiftData)
+ │    ├── 4.4 Dict Popup (Bundled dict.sqlite, VI+EN)
+ │    └── 4.5 Drive Backup (Files + OAuth)
+ │
+ ├── 5. IPHONE APP (SwiftUI - iphone-app/)
+ │    ├── 5.1 Compact Player (Portrait/landscape layout switch)
+ │    ├── 5.2 Overlay & Side Panel (Same core as iPad)
+ │    └── 5.3 Drive Backup (Same OAuth flow, separate Bundle ID)
+ │
+ └── 6. MACOS BRIDGE APP (SwiftUI menu bar - macos-bridge-app/)
+      ├── 6.1 Start/Stop/Restart Bridge (start.sh, port 8765)
+      ├── 6.2 Health Poll & Status Line (ready/bootstrap)
+      ├── 6.3 Saved Items Web App (:3000) shortcut
+      └── 6.4 Process Ownership & Port Sweep (kill only own processes)
 ```
 
 ---
@@ -98,3 +116,6 @@ Dự án YouTube JP Caption Studio bao gồm 3 phân hệ chính tương tác ch
 | **MOD-11** | **Sidepanel UI & Button States** | Nút Original (`#1e1e2d`), Enhanced (`#10b981`), Audio (`#0284c7`); đổi tab Sub/Words/Saved. | Extension reload giữa chừng -> Sidepanel tự động phục hồi trạng thái từ cache không cần tải lại. | Sidepanel co hẹp chiều rộng $< 320$px -> Toolbar tự động responsive, không vỡ layout. | **P2 (Medium)** |
 | **MOD-12** | **Long Sentence Popover & Hover** | Popover câu dài có thanh cuộn riêng (`max-height: 280px`); rê chuột vào popover không bị tắt. | Rê chuột nhanh qua nút Play -> Không bị chớp tắt giao diện nhờ timer bắc cầu 180ms. | Câu tiếng Nhật dài trên 5 dòng -> Hiển thị thanh cuộn nội bộ, tạm giấu `title` tránh đè tooltip. | **P2 (Medium)** |
 | **MOD-13** | **Saved Items Web Application** | Ứng dụng Next.js hiển thị lưới từ vựng, lọc theo cấp độ JLPT N5-N1 và tags đầy đủ. | API Bridge offline -> Hiển thị banner trạng thái mất kết nối, hiển thị dữ liệu đã cache. | Tập dữ liệu $> 5000$ mục từ vựng -> Hiển thị mượt mà không giật lag, build static export thành công. | **P2 (Medium)** |
+| **MOD-14** | **iPad App (SwiftUI) — kiểm thử thủ công** | Cài app lên iPad thật (`ipad-app/Scripts/COMMANDS.md`): overlay phụ đề tiếng Nhật có furigana, side panel sửa cue, dict popup VI+EN, lưu từ. | Không có kết nối mạng -> overlay vẫn render từ cue đã nạp, dict dùng `dict.sqlite` bundle sẵn. | Xoay màn hình, cắt app giữa chừng, hết hạn chữ ký 7 ngày -> phải `renew-ipad-signing.sh`, KHÔNG xoá app (mất sandbox). | **P2 (Medium)** — manual |
+| **MOD-15** | **iPhone App (SwiftUI) — kiểm thử thủ công** | Cài app lên iPhone thật (`iphone-app/Scripts/COMMANDS.md`): portrait xếp dọc / landscape chia đôi, overlay + side panel, dict popup, Drive backup. | Bundle ID riêng (`com.example.YouTubeJPCaptionStudio.iPhone`) -> cài song song với iPad không đụng nhau. | Không có Auto IME và không có nút mark Known/Learning trên dict popup (khác iPad/Desktop) -> không được tính là lỗi. | **P2 (Medium)** — manual |
+| **MOD-16** | **macOS Bridge App (menu bar) — kiểm thử thủ công** | Build `cd macos-bridge-app && ./build.sh`, mở app: menu-bar hiện trạng thái, Start/Stop/Restart bridge (8765), mở Saved Items (3000), mở thư mục log. | Bridge đang chạy bởi Terminal khác -> app không được kill tiến trình của người dùng (chỉ sweep port khi `bridgeProcessOwned`). | Đổi vị trí clone repo -> phải build lại (`Contents/Resources/bridge_root.txt` ghi lúc build); Stop phải dừng được cả uvicorn lẫn saved-items. | **P2 (Medium)** — manual |

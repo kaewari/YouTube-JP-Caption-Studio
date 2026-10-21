@@ -24,6 +24,7 @@
       wordsSignature: () => "",
       savedSignature: () => "",
       buildSavedWordHtml: (lemma) => `<span class="lr-saved-word-box">${lemma}</span>`,
+      captionModeDowngrade: () => "",
     };
   })();
 
@@ -70,7 +71,11 @@
 
   captionModeBtn?.addEventListener("click", async () => {
     if (isEditingAny()) { toast("Nhấn Enter hoặc Escape để kết thúc sửa câu trước"); return; }
-    await sendCmd("set_caption_mode", { mode: state.captionMode === "enhanced" ? "original" : "enhanced" });
+    const requested = state.captionMode === "enhanced" ? "original" : "enhanced";
+    const res = await sendCmd("set_caption_mode", { mode: requested });
+    // The content script may downgrade to Original (Enhanced off) — say it.
+    const note = Pure.captionModeDowngrade(requested, res);
+    if (note) toast(note);
   });
 
   audioModeBtn?.addEventListener("click", async () => {
@@ -205,51 +210,6 @@
   let lastCueSeq = 0;
   let lastCueSession = "";
 
-  /** Cache /health response (5s) */
-  let _healthCache = { data: null, expiresAt: 0 };
-  async function fetchBridgeHealth(maxAgeMs = 5000) {
-    const now = Date.now();
-    if (_healthCache.data && now < _healthCache.expiresAt) {
-      return _healthCache.data;
-    }
-    try {
-      const res = await chrome.runtime.sendMessage({
-        type: "BRIDGE_FETCH",
-        path: "/health",
-        method: "GET",
-      });
-      _healthCache = { data: res, expiresAt: now + maxAgeMs };
-      return res;
-    } catch (err) {
-      return { ok: false, error: String(err) };
-    }
-  }
-  let lastGetStateAt = 0;
-  let getStatePendingTimer = null;
-  function throttledGetState(targetTabId) {
-    if (targetTabId == null) return;
-    const now = Date.now();
-    const elapsed = now - lastGetStateAt;
-    if (elapsed >= 200) {
-      lastGetStateAt = now;
-      if (getStatePendingTimer) {
-        clearTimeout(getStatePendingTimer);
-        getStatePendingTimer = null;
-      }
-      try {
-        chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
-      } catch (_) {}
-    } else if (!getStatePendingTimer) {
-      getStatePendingTimer = setTimeout(() => {
-        getStatePendingTimer = null;
-        lastGetStateAt = Date.now();
-        try {
-          chrome.tabs.sendMessage(targetTabId, { type: "SP_CMD", cmd: "get_state" }).catch(() => {});
-        } catch (_) {}
-      }, 200 - elapsed);
-    }
-  }
-
   /**
    * Edit session for JA / EN / VI / timeline. While set, skip full renderList.
    * JA/EN/VI: Enter commits (JA → force MT; EN/VI → persist + lock only);
@@ -268,7 +228,6 @@
    */
   let editPrevLang = null;
   let imeActivating = false;
-  let imeNudgeEl = null;
   let osImeActive = false;
 
   const Timing = globalThis.HardsubCueTiming || {
@@ -835,21 +794,6 @@
     pendingListRender = false;
     listDirty = true;
     renderList(true);
-  }
-
-  function ensureImeNudge() {
-    if (imeNudgeEl) return imeNudgeEl;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.lang = "ja-JP";
-    input.setAttribute("inputmode", "text");
-    input.setAttribute("autocomplete", "off");
-    input.setAttribute("aria-hidden", "true");
-    input.tabIndex = -1;
-    input.className = "sp-ime-nudge";
-    document.body.appendChild(input);
-    imeNudgeEl = input;
-    return input;
   }
 
   /**
@@ -2123,7 +2067,6 @@
           </div>
           <div class="lr-saved-row-actions">
             <button type="button" class="lr-saved-del-btn" data-del-word="${escapeAttr(lemma)}" title="Xóa khỏi từ đã lưu">🗑</button>
-            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
           </div>
         </div>
       `;
@@ -2144,7 +2087,6 @@
           </div>
           <div class="lr-saved-row-actions">
             <button type="button" class="lr-saved-del-btn" data-del-cue="${escapeAttr(sc.id)}" title="Bỏ lưu câu">🗑</button>
-            <button type="button" class="lr-saved-menu-btn" title="Cài đặt">⋮</button>
           </div>
         </div>
       `;

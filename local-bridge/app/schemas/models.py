@@ -77,7 +77,9 @@ class SegmentCueIn(BaseModel):
 
 
 class TokenizeBatchRequest(BaseModel):
-    cues: list[SegmentCueIn] = Field(default_factory=list)
+    # A batch is one import pass over a video's cues; an unbounded list would
+    # queue thousands of Sudachi tokenizations in a single request.
+    cues: list[SegmentCueIn] = Field(default_factory=list, max_length=2000)
 
 
 class TokenizeBatchItem(BaseModel):

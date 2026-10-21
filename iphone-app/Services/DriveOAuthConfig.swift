@@ -1,12 +1,17 @@
 import Foundation
 
+// MIRRORED FILE — an identical copy lives in the sibling app (ipad-app/ ⇄ iphone-app/).
+// No shared Swift package yet: apply every change to BOTH copies and keep them byte-identical.
+
 /// Google Drive OAuth — requires an **iOS** OAuth client from GCP.
 /// Do NOT paste the Chrome extension `client_id` (→ Error 400: invalid_request).
 enum DriveOAuthConfig {
-    /// Paste iOS client id (`….apps.googleusercontent.com`). Bundle: `com.example.YouTubeJPCaptionStudio`.
+    /// iOS client id (`….apps.googleusercontent.com`) and Drive folder id are read
+    /// from the app bundle (`Info.plist` → `DRIVE_OAUTH_CLIENT_ID` / `DRIVE_FOLDER_ID`)
+    /// instead of being hardcoded in the source tree. Bundle: `com.example.YouTubeJPCaptionStudio`.
     /// Then update `Info.plist` / `project.yml` URL scheme to `com.googleusercontent.apps.<prefix>`.
-    static let clientId = "886146342458-ik5d09sgushl9itr8csk6mj1ordv8ii2.apps.googleusercontent.com"
-    static let folderId = "1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA"
+    static let clientId = Bundle.main.object(forInfoDictionaryKey: "DRIVE_OAUTH_CLIENT_ID") as? String ?? ""
+    static let folderId = Bundle.main.object(forInfoDictionaryKey: "DRIVE_FOLDER_ID") as? String ?? ""
     static let scope = "https://www.googleapis.com/auth/drive"
     static let authURL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     static let tokenURL = URL(string: "https://oauth2.googleapis.com/token")!

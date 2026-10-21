@@ -4,6 +4,8 @@ importScripts("../shared/gemini_translate.js");
 const BRIDGE = "http://127.0.0.1:8765";
 /** Optional Native Messaging fallback only — primary IME path is bridge POST /ime/switch. */
 const IME_NATIVE_HOST = "com.ytcaption.ime_switch";
+/** Every bridge/IME call must end — a hung request would block the service worker. */
+const IME_FETCH_TIMEOUT_MS = 5000;
 
 const POLL_BRIDGE_ALARM = "poll_bridge_state";
 const DRIVE_UPLOAD_ALARM = "drive_upload_retry";
@@ -299,6 +301,22 @@ async function handleAudioStopCapture() {
   return { ok: true };
 }
 
+/**
+ * Commands the side panel may drive in a page. Kept in sync with the
+ * `cmd === "…"` branches of handleSidePanelCmd (content/content.js).
+ */
+const SP_CMD_ALLOWLIST = new Set([
+  "ping", "get_state", "set_caption_mode", "toggle_audio_listening",
+  "accept_asr_candidate", "revert_asr_candidate", "dismiss_asr_candidate",
+  "undo_sentence", "reload", "refresh_script", "add_cue", "delete_cue",
+  "edit_ja", "edit_en", "edit_vi", "edit_timeline", "copy", "export",
+  "export_json", "export_benchmark", "import_cues", "clear_translations",
+  "show_dict", "hide_dict", "schedule_hide_dict", "open_settings",
+  "restore_previous_backup", "restore_sentence_backup", "wipe_saved_and_reload",
+  "play", "toggle_overlay", "toggle_pip", "toggle_star_cue",
+  "set_user_vocab", "trigger_gemini_translate",
+]);
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "SAVED_CUES_MUTATE") {
     handleSavedCueMutation(msg, sender).then(sendResponse).catch(err => sendResponse({ ok: false, error: String(err.message || err) }));
@@ -343,8 +361,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "SP_CMD_PROXY") {
     const tabId = msg.tabId;
+    const cmd = String(msg.cmd || "");
+    // The proxy forwards to a caller-supplied tab id, so the SW — not only the
+    // content script — must refuse commands outside the side panel's contract.
+    if (!SP_CMD_ALLOWLIST.has(cmd) || !Number.isInteger(tabId) || tabId < 0) {
+      sendResponse({ ok: false, error: "sp_cmd_denied" });
+      return false;
+    }
     chrome.tabs
-      .sendMessage(tabId, { type: "SP_CMD", cmd: msg.cmd, ...(msg.payload || {}) })
+      .sendMessage(tabId, { type: "SP_CMD", cmd, ...(msg.payload || {}) })
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
@@ -510,7 +535,7 @@ async function handleImeSwitch(msg) {
 async function imeViaBridge(cmd) {
   try {
     if (cmd === "status") {
-      const res = await fetch(`${BRIDGE}/ime/status`);
+      const res = await fetch(`${BRIDGE}/ime/status`, { signal: AbortSignal.timeout(IME_FETCH_TIMEOUT_MS) });
       if (!res.ok) return { ok: false, error: `http_${res.status}`, missing: true };
       const data = await res.json();
       return data && typeof data === "object" ? data : { ok: false, error: "bad_json" };
@@ -520,6 +545,7 @@ async function imeViaBridge(cmd) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to }),
+      signal: AbortSignal.timeout(IME_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return { ok: false, error: `http_${res.status}`, missing: true };
     const data = await res.json();
@@ -600,6 +626,7 @@ async function pushExtensionStateToBridge() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
     });
     if (res.ok) {
       _lastPushedJson = j;
@@ -616,7 +643,7 @@ async function pushExtensionStateToBridge() {
 
 async function pullExtensionStateFromBridge() {
   try {
-    const res = await fetch(`${BRIDGE}/extension_state`);
+    const res = await fetch(`${BRIDGE}/extension_state`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
     if (!res.ok) return;
     const remote = await res.json();
     const updatedAt = Number(remote?.updatedAt) || 0;
@@ -758,10 +785,18 @@ const BRIDGE_ALLOWLIST = [
 // DoS guards for BRIDGE_FETCH — per-tab rate limit + body size cap.
 const BRIDGE_FETCH_BODY_CAP = 256 * 1024; // 256 KB
 const BRIDGE_FETCH_RATE_LIMIT = 50; // max requests per tab per second
+const BRIDGE_FETCH_TIMEOUT_MS = 20000; // a hung bridge must not block the SW
+const BRIDGE_RATE_BUCKET_MAX = 64; // keep the per-tab map bounded in a long session
 const _bridgeRateBuckets = new Map(); // tabId → { count, resetAt }
 function _bridgeRateCheck(tabId) {
   const now = Date.now();
   const key = tabId || 0;
+  // Evict expired buckets — one entry per tab would leak for the whole session.
+  if (_bridgeRateBuckets.size > BRIDGE_RATE_BUCKET_MAX) {
+    for (const [id, expired] of _bridgeRateBuckets) {
+      if (now > expired.resetAt) _bridgeRateBuckets.delete(id);
+    }
+  }
   let bucket = _bridgeRateBuckets.get(key);
   if (!bucket || now > bucket.resetAt) {
     bucket = { count: 0, resetAt: now + 1000 };
@@ -788,8 +823,9 @@ async function handleBridgeFetch(msg, sender) {
   }
   const url = `${BRIDGE}${path}`;
   const opts = { method };
-  // Script writes share the saved-state queue; a stalled bridge must release it.
-  if (path === "/scripts/save" && method === "POST") opts.signal = AbortSignal.timeout(20000);
+  // Every bridge call must end: a hung request would keep the saved-state
+  // queue (script writes) blocked until the service worker dies.
+  opts.signal = AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS);
   if (isForm && body) {
     const blob = dataUrlToBlob(body.imageBase64);
     const fd = new FormData();
@@ -825,8 +861,10 @@ async function handleYtFetch(msg) {
   if (!url.startsWith("https://www.youtube.com/api/timedtext")) {
     return { ok: false, error: "bad_url" };
   }
-  const text = await fetchTimedtextBody(url);
-  return { ok: !!text, status: text ? 200 : 0, text: text || "" };
+  const lastError = { reason: "", status: 0 };
+  const text = await fetchTimedtextBody(url, lastError);
+  // Real HTTP status — a throttled 429 must not read like an empty 200.
+  return { ok: !!text, status: text ? 200 : (lastError.status || 0), text: text || "" };
 }
 
 function normalizeTimedtextUrl(url) {
@@ -858,12 +896,22 @@ function buildTimedtextUrlVariants(baseUrl) {
   return variants;
 }
 
-/** Cookie header once per load (not per timedtext URL). */
+/**
+ * Cookie header once per load (not per timedtext URL). Only the cookies that
+ * decide login/consent state travel with the request — the whole .youtube.com
+ * jar also carries ad/tracking cookies the watch page never needs.
+ */
+const YT_COOKIE_PREFIXES = ["SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID", "CONSENT", "VISITOR_INFO"];
+function isNeededYtCookie(name) {
+  const n = String(name || "");
+  return YT_COOKIE_PREFIXES.some((prefix) => n === prefix || n.startsWith(prefix));
+}
 async function getYtCookieHeader() {
   try {
     const cookies = await chrome.cookies.getAll({ domain: ".youtube.com" });
-    if (cookies?.length) {
-      return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    const keep = (cookies || []).filter((c) => c && isNeededYtCookie(c.name));
+    if (keep.length) {
+      return keep.map((c) => `${c.name}=${c.value}`).join("; ");
     }
   } catch (_) {}
   return "";
@@ -1065,6 +1113,7 @@ async function fetchWebCaptionTracks(videoId, cookieHeader = "") {
   const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
     headers,
     cache: "no-store",
+    signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) return [];
   const html = await res.text();
@@ -1130,6 +1179,7 @@ async function fetchAndroidCaptionTracks(videoId) {
           contentCheckOk: true,
           racyCheckOk: true,
         }),
+        signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) continue;
       const data = await res.json();
@@ -1231,6 +1281,7 @@ function isThrottleError(lastError) {
  * empty (member/age-gated tracks). Keeps the per-load request fan-out small so
  * YouTube's per-IP throttle never trips.
  */
+const TIMEDTEXT_FETCH_TIMEOUT_MS = 10000;
 async function fetchTimedtextBody(baseUrl, lastError = null) {
   if (!baseUrl) return "";
   const urls = buildTimedtextUrlVariants(baseUrl);
@@ -1242,7 +1293,9 @@ async function fetchTimedtextBody(baseUrl, lastError = null) {
           Accept: "*/*",
           Referer: "https://www.youtube.com/",
         };
-        const res = await fetch(url, { headers, credentials: cred, cache: "no-store" });
+        const res = await fetch(url, { headers, credentials: cred, cache: "no-store",
+          signal: AbortSignal.timeout(TIMEDTEXT_FETCH_TIMEOUT_MS) });
+        if (lastError) lastError.status = res.status;
         if (!res.ok) {
           if (lastError && res.status >= 400) {
             lastError.reason = `http_${res.status}_${cred}`;
@@ -1262,7 +1315,10 @@ async function fetchTimedtextBody(baseUrl, lastError = null) {
           lastError.reason = `html_like_${trimmed.slice(0, 24).replace(/\s+/g, " ")}_${cred}`;
         }
       } catch (err) {
-        if (lastError) lastError.reason = `fetch_err ${String(err).slice(0, 60)}`;
+        if (lastError) {
+          lastError.reason = `fetch_err ${String(err).slice(0, 60)}`;
+          lastError.status = 0;
+        }
       }
     }
   }
@@ -1559,6 +1615,16 @@ async function uploadDriveSnapshot(fileId, snapshot, interactive = false) {
 let _driveQueue = Promise.resolve();
 /** videoId → last Drive freshness probe, so navigation does not hit Drive every time. */
 const _freshCheckedAt = new Map();
+const FRESH_CHECK_MAX = 256; // cap the per-video map — one entry per watched video would leak
+/** Record a freshness probe and drop the oldest entries once the map is full. */
+function markFreshChecked(videoId, now) {
+  _freshCheckedAt.set(videoId, now);
+  while (_freshCheckedAt.size > FRESH_CHECK_MAX) {
+    const oldest = _freshCheckedAt.keys().next().value;
+    if (oldest === undefined) break;
+    _freshCheckedAt.delete(oldest);
+  }
+}
 
 /** Serialize Drive work: two concurrent mirrors must not create the same subfolder twice. */
 function driveQueued(fn) {
@@ -1573,7 +1639,7 @@ async function driveConnected() {
 }
 
 async function bridgeJson(path) {
-  const res = await fetch(`${BRIDGE}${path}`);
+  const res = await fetch(`${BRIDGE}${path}`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
   if (!res.ok) return null;
   return res.json().catch(() => null);
 }
@@ -1697,7 +1763,7 @@ async function mirrorFromDrive(videoIds, opts = {}) {
     const now = Date.now();
     const fresh = want.filter((id) => now - (_freshCheckedAt.get(id) || 0) < opts.maxAgeMs);
     if (fresh.length === want.length) return { ok: true, skipped: "checked_recently" };
-    for (const id of want) _freshCheckedAt.set(id, now);
+    for (const id of want) markFreshChecked(id, now);
   }
   const folderId = await getDriveFolderId(false);
   const folders = await driveList(
@@ -1727,6 +1793,7 @@ async function mirrorFromDrive(videoIds, opts = {}) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ files }),
+      signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -1958,6 +2025,7 @@ async function pullVocabSnapshot() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(snap),
+    signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
@@ -2137,7 +2205,7 @@ async function uploadDriveFromBridge() {
     const fileId = await ensureDriveFileId(false);
     let res = null;
     try {
-      res = await fetch(`${BRIDGE}/backup/snapshot`);
+      res = await fetch(`${BRIDGE}/backup/snapshot`, { signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS) });
     } catch (_) {
       return { ok: true, skipped: "bridge_offline" };
     }

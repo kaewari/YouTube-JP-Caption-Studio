@@ -13,7 +13,7 @@ Làm **một lần** trên Mac + iPad (manual):
 1. Mở `ipad-app/YouTubeJPCaptionStudio.xcodeproj` trong Xcode.
 2. Chọn iPad làm destination → **Automatic Signing** + **Team** (Apple ID). Giữ nguyên Bundle ID.
 3. ⌘R. Trên iPad: **Settings → General → VPN & Device Management → Trust** developer cert.
-4. Smoke: Overlay / Side panel. Trong app: **Thư mục** → Connect Drive (OAuth). Cần iOS `client_id` trong `Services/DriveOAuthConfig.swift` (xem mục OAuth bên dưới).
+4. Smoke: Overlay / Side panel. Trong app: **Thư mục** → Connect Drive (OAuth). Cần iOS `client_id` trong `Info.plist` (`DRIVE_OAUTH_CLIENT_ID`) (xem mục OAuth bên dưới).
 
 Free account: chữ ký ~7 ngày. Renew từ Mac — **không xoá app**.
 
@@ -87,11 +87,11 @@ Chrome extension `client_id` **không** dùng được trên iOS — Google tr�
 Một lần trên GCP (cùng project với extension):
 
 1. Credentials → Create OAuth client ID → kiểu **iOS** → bundle `com.example.YouTubeJPCaptionStudio`.
-2. Paste full `….apps.googleusercontent.com` vào `ipad-app/Services/DriveOAuthConfig.swift` (`clientId`) — **không** paste client của Chrome extension.
+2. Paste full `….apps.googleusercontent.com` vào `DRIVE_OAUTH_CLIENT_ID` trong `ipad-app/Info.plist` (và `ipad-app/project.yml` để xcodegen không mất) — **không** paste client của Chrome extension.
 3. Đổi URL scheme trong `Info.plist` / `project.yml` thành reverse-client-id: `com.googleusercontent.apps.<prefix>` (bỏ `.apps.googleusercontent.com` khỏi client_id).
 4. Consent Testing → thêm email Test users (vd. `sonhoang236@gmail.com`) nếu app chưa publish.
 
-Scope: `https://www.googleapis.com/auth/drive`. Folder cố định: `1K8LPtKici0gVaq5FuTMDmYDWzPpBokFA`.
+Scope: `https://www.googleapis.com/auth/drive`. Folder cố định: khai báo ở `DRIVE_FOLDER_ID` (`Info.plist`).
 
 ---
 
