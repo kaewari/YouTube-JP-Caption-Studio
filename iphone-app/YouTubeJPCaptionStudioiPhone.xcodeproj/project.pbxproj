@@ -14,7 +14,6 @@
 		1345ED45A537400D06B9D298 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */; };
 		3EA303D952E882591535A41E /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */; };
 		4311DC1436E7370D8F64AC22 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = B883C2D182FCCB052DB62AB7 /* dict.sqlite */; };
-		612AFEB9A6EAC577064641FE /* LayoutSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C836678EF7ED9B8585035E /* LayoutSmoke.swift */; };
 		6F7640688EB87BEF5EDDB59D /* DictionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF29E3058D31465754DE87B /* DictionaryService.swift */; };
 		7D0275FED28032C8B0EBF619 /* DriveOAuthConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C6E89F512D30E23FA394920 /* DriveOAuthConfig.swift */; };
 		7E841698ED640414701EAA06 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AA9B610EF8E586B15B8272 /* SettingsSync.swift */; };
@@ -43,7 +42,6 @@
 		0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenizedJAView.swift; sourceTree = "<group>"; };
 		271D4212455C2220D45CE8A8 /* CaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptionService.swift; sourceTree = "<group>"; };
 		27AA9B610EF8E586B15B8272 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSync.swift; sourceTree = "<group>"; };
-		27C836678EF7ED9B8585035E /* LayoutSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSmoke.swift; sourceTree = "<group>"; };
 		2C6E89F512D30E23FA394920 /* DriveOAuthConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveOAuthConfig.swift; sourceTree = "<group>"; };
 		2E4172276AF5DA5F68946F3B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3627E90D42E2DDF187019E44 /* YouTubeJPCaptionStudioiPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudioiPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -123,7 +121,6 @@
 				2C6E89F512D30E23FA394920 /* DriveOAuthConfig.swift */,
 				4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */,
 				792772A0D58934B45726519D /* FreqService.swift */,
-				27C836678EF7ED9B8585035E /* LayoutSmoke.swift */,
 				427BA2A94CD3D1BD5A7DA282 /* NLPTagger.swift */,
 				27AA9B610EF8E586B15B8272 /* SettingsSync.swift */,
 				9A317A500F21BD4DD778665D /* SubtitleParser.swift */,
@@ -234,7 +231,6 @@
 				B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */,
 				07FF03F6EFBA414BDFF2961E /* FreqService.swift in Sources */,
 				01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */,
-				612AFEB9A6EAC577064641FE /* LayoutSmoke.swift in Sources */,
 				D1D70FBEBFB7F9601D62C2EF /* NLPTagger.swift in Sources */,
 				EB1594CDE5EA8B43FDE7D8EA /* ScriptStore.swift in Sources */,
 				7E841698ED640414701EAA06 /* SettingsSync.swift in Sources */,

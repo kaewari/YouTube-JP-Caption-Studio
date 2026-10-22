@@ -12,7 +12,6 @@
 		1996D0D18771C283A322FD87 /* HardsubOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B02A38A9CB5FBA65C6B519 /* HardsubOverlayView.swift */; };
 		25BEB2092FEF749023B6D46A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35E5D4B798F5943B879E185 /* ContentView.swift */; };
 		27BA98860F8A681C1C2A6E01 /* SubtitleParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F05870AE09C2B30732B220 /* SubtitleParser.swift */; };
-		32DC632DEA3CC943327197AE /* LayoutSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BD266EBFF07B4E913FB60E0 /* LayoutSmoke.swift */; };
 		35970FA8BC8DC8F856C48544 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 379212178088FA4529647D1B /* dict.sqlite */; };
 		3AB4D163FF0C14BC2F1A66FA /* NLPTagger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B19A515A7A2B3E46AC8A08CB /* NLPTagger.swift */; };
 		49D25F1C933A12A70F36DCCE /* FreqService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08484CEA80A422900B3C8E28 /* FreqService.swift */; };
@@ -45,7 +44,6 @@
 		139AC6F51301ACA394E77963 /* freq_ja.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = freq_ja.json; sourceTree = "<group>"; };
 		234AADBCA61338B8D3029066 /* YouTubeURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeURL.swift; sourceTree = "<group>"; };
 		25C50EE31E03D570B2D49120 /* VocabStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStyle.swift; sourceTree = "<group>"; };
-		2BD266EBFF07B4E913FB60E0 /* LayoutSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSmoke.swift; sourceTree = "<group>"; };
 		379212178088FA4529647D1B /* dict.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dict.sqlite; sourceTree = "<group>"; };
 		3FDA951EDD369ADDD71B7F19 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		46986FC76458D09925AD7415 /* VocabSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabSync.swift; sourceTree = "<group>"; };
@@ -85,7 +83,6 @@
 				C4F7B3D95A27430DE07A940E /* DriveOAuthConfig.swift */,
 				BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */,
 				08484CEA80A422900B3C8E28 /* FreqService.swift */,
-				2BD266EBFF07B4E913FB60E0 /* LayoutSmoke.swift */,
 				B19A515A7A2B3E46AC8A08CB /* NLPTagger.swift */,
 				5B2E452F69E33C8F30F31DB0 /* SettingsSync.swift */,
 				E9F05870AE09C2B30732B220 /* SubtitleParser.swift */,
@@ -246,7 +243,6 @@
 				9C6414DBCF894434894CBE4A /* DriveScriptsService.swift in Sources */,
 				49D25F1C933A12A70F36DCCE /* FreqService.swift in Sources */,
 				1996D0D18771C283A322FD87 /* HardsubOverlayView.swift in Sources */,
-				32DC632DEA3CC943327197AE /* LayoutSmoke.swift in Sources */,
 				3AB4D163FF0C14BC2F1A66FA /* NLPTagger.swift in Sources */,
 				B69DC12DB15E175BC49A789B /* ScriptStore.swift in Sources */,
 				5A27D756C565E7E9B39CACEA /* SettingsSync.swift in Sources */,

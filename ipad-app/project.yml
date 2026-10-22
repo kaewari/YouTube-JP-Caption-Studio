@@ -45,8 +45,12 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
           - UIInterfaceOrientationPortraitUpsideDown
+        # Keep this in sync with the committed Info.plist, which ships
+        # NSAllowsLocalNetworking only. `xcodegen generate` rewrites Info.plist from
+        # these properties, so a broader value here silently disables ATS for the
+        # WKWebView that loads YouTube.
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
         CFBundleURLTypes:
           - CFBundleURLName: com.example.YouTubeJPCaptionStudio.drive-oauth
             CFBundleURLSchemes:
