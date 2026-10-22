@@ -154,6 +154,7 @@ Mỗi video = folder `<videoId>/` trên Drive (và `data/subtitles/{videoId}/` t
 #### Vocab + settings (cùng folder gốc)
 
 - **Vocab** — `caption-studio-backup.json`: LWW; wire `{ version, updatedAt, scripts: [], vocab: [...] }` — chỉ Vocabulary (scripts không qua file này).
+- **Vocab-only (iPad → extension)** — `caption-studio-vocab.json` (`VocabSync.swift`, cùng wire shape, luôn `scripts: []`): extension đọc file này trong `pullDriveIfNewer` và **merge cộng thêm** vào `userVocab` — từ đã có trên PC giữ nguyên status, từ lạ vào với status `learning`; không từ nào bị xoá hay ghi đè. Ví dụ: thêm từ trên iPad → mở Chrome → Connect Drive (hoặc chờ lần pull kế tiếp) → từ xuất hiện trong side panel với badge *Đang học*.
 - **Settings** — `caption-studio-settings.json`: auto pull/push sau Connect; không sync geometry. Keys: furigana, barShow*/barScale/opacities, dimHardsub, dictShowSentence, JLPT colors, followTimeline, isDarkTheme, sidePanelFontScale.
 - Files **Backup**/**Restore** trên iPad = fallback offline/reinstall.
 

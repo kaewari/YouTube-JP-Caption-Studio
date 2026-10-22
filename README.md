@@ -41,7 +41,7 @@ trips — the trace is sampled state, not a release gate. See the
 8. **JLPT / Frequency Coloring**: Tokens colored by difficulty band (N5→N1 / unknown) from the shared `freq_ja.json` rank map.
 9. **Personal Vocabulary Tracker**: Mark Known / Learning / Ignore / Special, save words and starred sentences into `savedCues`.
 10. **Native iPad / iPhone**: Standalone SwiftUI apps (`ipad-app/`, sibling `iphone-app/`) — hardsub, side panel, tokenize, dict popup, import/export.
-11. **Drive Sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder.
+11. **Drive Sync (PC ↔ iPad/iPhone)**: Shared `caption-studio-backup.json` in a fixed Google Drive folder; iPad-only vocab lands in `caption-studio-vocab.json` and is merged additively into the extension's `userVocab` (local statuses never overwritten).
 12. **Bilingual Hover Sync & JLPT Coloring**: Hovering mapped words highlights their counterparts (`.tok-hover-sync`). The sentence MVP requires levels from corresponding Japanese tokens; unmapped words stay neutral. Group-level NLP/color verification is pending.
 13. **Instant Overlay Dict & Cue Popover**: Hovering overlay tokens immediately opens dictionary definitions. Hovering any Play button `▶` reveals a sentence breakdown popover (JA with furigana, VI, EN).
 

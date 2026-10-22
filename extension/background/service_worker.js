@@ -1343,7 +1343,7 @@ function dataUrlToBlob(dataUrl) {
 const DRIVE_BACKUP_NAME = "caption-studio-backup.json";
 
 if (globalThis.__JP_CAP_SW_TEST__) {
-  globalThis.__JP_CAP_SW_TEST__.sw = { mergeVocabSnapshot };
+  globalThis.__JP_CAP_SW_TEST__.sw = { mergeVocabSnapshot, mergeIosVocab };
 }
 const DRIVE_SETTINGS_NAME = "caption-studio-settings.json";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -1577,6 +1577,26 @@ async function ensureDriveFileId(interactive = false) {
   }
   await chrome.storage.local.set({ driveFileId: fileId, driveConnected: true });
   return fileId;
+}
+
+/** The iPad writes this vocab-only file through the Drive REST API (VocabSync); nothing read it. */
+const DRIVE_VOCAB_NAME = "caption-studio-vocab.json";
+
+/** Id of `name` in the sync folder, or "" when that file does not exist yet. */
+async function driveFileIdByName(name, interactive = false) {
+  const folderId = await getDriveFolderId(interactive);
+  const q = encodeURIComponent(
+    `'${folderId}' in parents and name='${name}' and trashed=false`
+  );
+  const res = await driveRequest(
+    `/files?q=${q}&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    {},
+    interactive
+  );
+  if (!res.ok) throw new Error(`Drive list ${res.status}`);
+  const list = await res.json();
+  const hit = (list?.files || []).find((f) => f.name === name);
+  return hit?.id ? String(hit.id) : "";
 }
 
 async function downloadDriveSnapshot(fileId, interactive = false) {
@@ -2055,12 +2075,46 @@ async function pullVocabSnapshot() {
   return { updatedAt: applied };
 }
 
+/**
+ * Additive merge of iPad vocab into the local word→status map. The iOS payload carries no
+ * status, so an existing local word keeps its status and an unknown word starts at
+ * `learning` — nothing is overwritten or deleted.
+ * ponytail: additive-only, no per-word LWW; per-word merge needs an updatedAt per entry.
+ */
+function mergeIosVocab(localVocab, entries) {
+  const merged = { ...(localVocab || {}) };
+  let added = 0;
+  for (const e of Array.isArray(entries) ? entries : []) {
+    const word = String(e?.word || "").trim();
+    if (!word || merged[word]) continue;
+    merged[word] = "learning";
+    added++;
+  }
+  return { merged, added };
+}
+
+/** Pull `caption-studio-vocab.json` from Drive and merge its words into `userVocab`. */
+async function pullIosVocabSnapshot() {
+  const fileId = await driveFileIdByName(DRIVE_VOCAB_NAME, false);
+  if (!fileId) return { skipped: "absent" };
+  const snap = await downloadDriveSnapshot(fileId, false);
+  if (!snap || typeof snap !== "object") return { skipped: "empty" };
+  const { userVocab } = await chrome.storage.local.get(["userVocab"]);
+  const { merged, added } = mergeIosVocab(userVocab, snap.vocab);
+  if (!added) return { skipped: "up_to_date", added: 0 };
+  // Storage write; the existing onChanged hook pushes the merged map to the bridge.
+  await chrome.storage.local.set({ userVocab: merged });
+  return { added, updatedAt: String(snap.updatedAt || "") };
+}
+
 async function pullDriveIfNewer() {
   if (_driveBusy) return { ok: true, skipped: "busy" };
   _driveBusy = true;
   try {
     if (!(await driveConnected())) return { ok: true, skipped: "not_connected" };
     const vocab = await pullVocabSnapshot();
+    // Absent/extra file must never fail the whole sync.
+    const iosVocab = await pullIosVocabSnapshot().catch(() => ({ skipped: "error" }));
     const settings = await syncSettingsOnConnect();
     const mirror = await driveQueued(() => mirrorFromDrive());
     const restored = !!mirror.pulled?.length;
@@ -2070,6 +2124,7 @@ async function pullDriveIfNewer() {
       restored,
       pulled: mirror.pulled || [],
       updatedAt: vocab.updatedAt || "",
+      iosVocabAdded: iosVocab.added || 0,
       settings: settings?.action || "",
     };
   } catch (err) {

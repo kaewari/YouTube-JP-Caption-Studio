@@ -365,6 +365,43 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
     console.log("PASS: the Drive upload merges vocab instead of replacing it");
   }
 
+  // mergeIosVocab: the iPad's vocab-only file carries no status, so merge additively.
+  {
+    const sw = loadServiceWorker({ route: () => makeResponse({ status: 404, body: "" }) });
+    const merge = sw.seam?.sw?.mergeIosVocab;
+    assert.equal(typeof merge, "function", "the worker must expose mergeIosVocab to the test seam");
+
+    const local = { "猫": "known", "犬": "ignored" };
+    const entries = [
+      { word: "猫", reading: "ねこ", meaning: "con mèo" },
+      { word: "魚", reading: "さかな", meaning: "con cá" },
+      { word: "   " },
+      { word: "" },
+      {},
+      null,
+    ];
+    const { merged, added } = merge(local, entries);
+
+    assert.equal(added, 1, "only the unknown word is added");
+    assert.equal(merged["猫"], "known", "an existing local status must never be overwritten");
+    assert.equal(merged["犬"], "ignored", "an untouched local word keeps its status");
+    assert.equal(merged["魚"], "learning", "an iPad-only word starts at learning");
+    assert.equal(Object.keys(merged).length, 3, "blank entries must not create keys");
+    assert.equal(local["魚"], undefined, "the local map must not be mutated in place");
+
+    const empty = merge(undefined, undefined);
+    assert.equal(empty.added, 0, "a missing payload is not an error");
+    assert.equal(JSON.stringify(empty.merged), "{}", "a missing local map starts empty");
+
+    const fresh = merge({}, [{ word: " 空 " }]);
+    assert.equal(fresh.merged["空"], "learning", "a word is trimmed before it is stored");
+
+    const noop = merge({ "猫": "known" }, [{ word: "猫" }]);
+    assert.equal(noop.added, 0, "a re-pull of a known word changes nothing");
+
+    console.log("PASS: the iPad vocab file merges additively without overwriting local statuses");
+  }
+
   console.log("ALL SERVICE WORKER TESTS PASSED!");
 })().catch((err) => {
   console.error("SERVICE WORKER TESTS FAILED:", err);
