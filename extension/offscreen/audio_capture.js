@@ -11,6 +11,9 @@
 const BRIDGE_ASR_URL = "http://127.0.0.1:8765/asr/transcribe";
 const SLICE_DURATION_MS = 8000; // 8-second slices for faster throughput & richer context
 const OVERLAP_MS = 1500; // 1.5-second overlap across slice boundaries
+// A slice transcription is the only bridge call without a timeout otherwise: a
+// hung bridge would keep the request (and the slice) alive forever.
+const ASR_TIMEOUT_MS = 60_000;
 
 let currentStream = null;
 let currentAudioCtx = null;
@@ -19,6 +22,8 @@ let isCapturing = false;
 let activeTabId = null;
 let activeVideoId = null;
 let sliceStartTime = 0;
+/** Backstop timer for the current slice — cleared when the recorder stops it. */
+let sliceBackstop = null;
 
 function getSupportedMimeType() {
   const types = [
@@ -113,6 +118,10 @@ function recordNextSlice() {
   };
 
   recorder.onstop = async () => {
+    if (sliceBackstop) {
+      clearTimeout(sliceBackstop);
+      sliceBackstop = null;
+    }
     if (chunks.length > 0 && isCapturing) {
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
       dispatchSliceToBridge(blob, startTimestamp, expectedEnd, activeTabId, activeVideoId);
@@ -128,7 +137,8 @@ function recordNextSlice() {
   // while page timers are throttled — that event ends the slice (see above).
   recorder.start(SLICE_DURATION_MS);
   // Backstop for encoders that never emit a timeslice chunk.
-  setTimeout(() => {
+  sliceBackstop = setTimeout(() => {
+    sliceBackstop = null;
     if (recorder.state === "recording") {
       recorder.stop();
     }
@@ -143,6 +153,7 @@ async function dispatchSliceToBridge(blob, startSec, endSec, tabId, videoId) {
       headers: {
         "Content-Type": blob.type || "audio/webm",
       },
+      signal: AbortSignal.timeout(ASR_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -163,12 +174,20 @@ async function dispatchSliceToBridge(blob, startSec, endSec, tabId, videoId) {
       result: data,
     });
   } catch (err) {
+    if (err?.name === "AbortError") {
+      console.warn(`[AudioCapture] Bridge ASR timed out after ${ASR_TIMEOUT_MS / 1000}s`);
+      return;
+    }
     console.warn("[AudioCapture] Bridge ASR dispatch error:", err);
   }
 }
 
 async function stopCapture() {
   isCapturing = false;
+  if (sliceBackstop) {
+    clearTimeout(sliceBackstop);
+    sliceBackstop = null;
+  }
   if (activeRecorder && activeRecorder.state === "recording") {
     try {
       activeRecorder.stop();

@@ -748,7 +748,7 @@ if (chrome.alarms?.onAlarm) {
             void clearPendingMirror(ids);
           }
         } catch (e) {
-          console.warn("[drive] alarm mirror failed, keeping pending IDs:", e);
+          void logDriveFailure("alarm", e);
         }
       }).catch(() => {});
     }
@@ -937,10 +937,22 @@ async function getTtMiss(videoId) {
     return 0;
   }
 }
+/** Keys whose 5s window is over — they can never be hit again, so drop them. */
+function staleTtMissKeys(all, now = Date.now(), keep = "") {
+  return Object.keys(all || {}).filter(
+    (k) => k.startsWith("ttMiss:") && k !== keep && now - Number(all[k] || 0) >= TT_MISS_TTL_MS
+  );
+}
+
 async function setTtMiss(videoId) {
   try {
     const storage = chrome.storage.session || chrome.storage.local;
-    await storage.set({ [`ttMiss:${videoId}`]: Date.now() });
+    const key = `ttMiss:${videoId}`;
+    await storage.set({ [key]: Date.now() });
+    // Session storage never expires a key on its own; without this the negative
+    // cache grows one entry per throttled video for the life of the session.
+    const stale = staleTtMissKeys(await storage.get(null), Date.now(), key);
+    if (stale.length) await storage.remove(stale);
   } catch (_) {}
 }
 
@@ -1343,7 +1355,7 @@ function dataUrlToBlob(dataUrl) {
 const DRIVE_BACKUP_NAME = "caption-studio-backup.json";
 
 if (globalThis.__JP_CAP_SW_TEST__) {
-  globalThis.__JP_CAP_SW_TEST__.sw = { mergeVocabSnapshot, mergeIosVocab };
+  globalThis.__JP_CAP_SW_TEST__.sw = { mergeVocabSnapshot, mergeIosVocab, staleTtMissKeys, setTtMiss };
 }
 const DRIVE_SETTINGS_NAME = "caption-studio-settings.json";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -2141,6 +2153,20 @@ async function pullDriveIfNewer() {
   }
 }
 
+/** Mirror failures are silent otherwise: AGENTS §6 wants them in the bridge log too. */
+async function logDriveFailure(context, err) {
+  const msg = `Drive mirror failed (${context}): ${String(err?.message || err).slice(0, 300)}`;
+  console.warn(`[drive] ${msg}`);
+  try {
+    await fetch(`${BRIDGE}/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level: "WARNING", message: msg }),
+      signal: AbortSignal.timeout(BRIDGE_FETCH_TIMEOUT_MS),
+    });
+  } catch (_) {}
+}
+
 /** videoIds seen since the last flush — one save burst must not mirror the whole library. */
 const _pendingMirror = new Set();
 /** Serializes pending-list writes so a read-modify-write cannot interleave. */
@@ -2239,7 +2265,7 @@ function scheduleDriveUpload(videoId) {
         void clearPendingMirror(ids);
       }
     } catch (e) {
-      console.warn("[drive] debounced mirror failed, keeping pending IDs:", e);
+      void logDriveFailure("debounce", e);
     }
   }, DRIVE_UPLOAD_DEBOUNCE_MS);
 }
@@ -2261,7 +2287,7 @@ async function uploadDriveNow() {
   try {
     await uploadDriveFromBridge();
   } catch (e) {
-    console.warn("[drive] bridge snapshot skipped:", e);
+    void logDriveFailure("snapshot", e);
   }
   const res = await driveQueued(() => mirrorToDrive());
   // Only a real mirror clears the queue — "not_connected" is not an upload.

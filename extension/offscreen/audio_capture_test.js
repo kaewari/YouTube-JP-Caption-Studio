@@ -60,6 +60,8 @@ function loadOffscreen({ getUserMedia, frozenTimers = false } = {}) {
     async close() {}
   }
 
+  const fetches = [];
+  const cleared = [];
   const sandbox = {
     console,
     Blob,
@@ -72,7 +74,13 @@ function loadOffscreen({ getUserMedia, frozenTimers = false } = {}) {
     Array,
     Set,
     MediaRecorder: FakeRecorder,
-    fetch: async () => ({ ok: true, json: async () => ({ text: "hello", segments: [] }) }),
+    // The real offscreen document has these; the ASR dispatch uses AbortSignal.timeout.
+    AbortSignal,
+    AbortController,
+    fetch: async (url, options) => {
+      fetches.push({ url, options });
+      return { ok: true, json: async () => ({ text: "hello", segments: [] }) };
+    },
     navigator: { mediaDevices: { getUserMedia } },
     window: { AudioContext: FakeAudioContext },
     chrome: {
@@ -92,13 +100,18 @@ function loadOffscreen({ getUserMedia, frozenTimers = false } = {}) {
   // A frozen timer never fires — that is what a suspended offscreen document
   // looks like to the slice timer.
   sandbox.setTimeout = frozenTimers ? () => 0 : setTimeout;
-  sandbox.clearTimeout = frozenTimers ? () => {} : clearTimeout;
+  sandbox.clearTimeout = (id) => {
+    cleared.push(id);
+    if (!frozenTimers) clearTimeout(id);
+  };
   sandbox.globalThis = sandbox;
 
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(SOURCE, "utf8"), context, { filename: SOURCE });
 
   return {
+    cleared,
+    fetches,
     sent,
     recorders,
     state,
@@ -196,6 +209,32 @@ function fakeStream(env) {
     assert.equal(env.recorders[0].state, "inactive");
     assert.ok(env.state.trackStopped, "tab capture tracks must be released");
     console.log("PASS: Test 3 STOP_CAPTURE releases recorder and tab stream");
+  }
+
+  // Test 4: the ASR dispatch has a timeout, and the backstop timer is cleared
+  // once the media pipeline ends the slice (no dangling timer per slice).
+  {
+    const env = loadOffscreen({
+      getUserMedia: async () => fakeStream(env),
+    });
+    await env.send({
+      target: "offscreen",
+      type: "START_CAPTURE",
+      streamId: "stream-1",
+      tabId: 7,
+      videoId: "vid1",
+    });
+    env.recorders[0].emitTimeslice();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const asr = env.fetches.find((f) => f.url.endsWith("/asr/transcribe"));
+    assert.ok(asr, "the slice must reach POST /asr/transcribe");
+    assert.ok(asr.options.signal, "the ASR call must carry an AbortSignal");
+    assert.equal(asr.options.signal.aborted, false, "the timeout must not fire immediately");
+    assert.ok(env.cleared.length > 0, "the slice backstop timer must be cleared");
+    // Stop capture so the next slice's backstop timer cannot keep the runner alive.
+    await env.send({ target: "offscreen", type: "STOP_CAPTURE" });
+    console.log("PASS: Test 4 ASR dispatch is bounded by a timeout and clears its backstop");
   }
 
   console.log("ALL OFFSCREEN AUDIO CAPTURE TESTS PASSED!");

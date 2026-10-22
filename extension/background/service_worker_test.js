@@ -69,6 +69,8 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
     storage: {
       local: {
         get: async (keys) => {
+          // chrome.storage returns every key when asked for null/undefined.
+          if (keys == null) return { ...localStore };
           const list = Array.isArray(keys) ? keys : [keys];
           return Object.fromEntries(list.map((k) => [k, localStore[k]]));
         },
@@ -79,6 +81,7 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       },
       session: {
         get: async (keys) => {
+          if (keys == null) return { ...sessionStore };
           const list = Array.isArray(keys) ? keys : [keys];
           return Object.fromEntries(list.map((k) => [k, sessionStore[k]]));
         },
@@ -299,9 +302,13 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
   // 5. A failed bridge read must not drop the queued Drive mirror.
   {
     const sw = loadServiceWorker({
-      route: (url) => (url.includes("127.0.0.1:8765")
-        ? makeResponse({ status: 500, body: "bridge down" })
-        : makeResponse({ status: 404, body: "" })),
+      route: (url) => {
+        // The failure report itself must still reach the bridge log route.
+        if (url.endsWith("/log")) return makeResponse({ status: 200, body: '{"ok":true}' });
+        return url.includes("127.0.0.1:8765")
+          ? makeResponse({ status: 500, body: "bridge down" })
+          : makeResponse({ status: 404, body: "" });
+      },
     });
     sw.sessionStore.drivePendingMirror = ["vid-1"];
     // Drive is connected, so the mirror really tries to read the bridge.
@@ -313,7 +320,21 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
       ["vid-1"],
       "a bridge failure must keep the video in the Drive mirror queue",
     );
-    console.log("PASS: a failed bridge read keeps the video queued for the Drive mirror");
+    // C-19: the failure must reach errors.log, not only console.warn.
+    const logCall = sw.fetches.find((f) => f.url.endsWith("/log"));
+    assert.ok(logCall, "a Drive mirror failure must POST /log");
+    assert.equal(logCall.options.method, "POST");
+    const logged = JSON.parse(logCall.options.body);
+    assert.equal(logged.level, "WARNING");
+    assert.ok(
+      logged.message.includes("Drive mirror failed"),
+      `the log message must name the failure: ${logged.message}`,
+    );
+    assert.ok(
+      logged.message.includes("HTTP 500"),
+      `the log message must carry the cause: ${logged.message}`,
+    );
+    console.log("PASS: a failed bridge read keeps the video queued and reports to /log");
   }
 
   // mergeVocabSnapshot: a Drive upload from the bridge must not destroy iPad data.
@@ -400,6 +421,43 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
     assert.equal(noop.added, 0, "a re-pull of a known word changes nothing");
 
     console.log("PASS: the iPad vocab file merges additively without overwriting local statuses");
+  }
+
+  // staleTtMissKeys: the negative cache must not grow one key per video forever.
+  {
+    const sw = loadServiceWorker({ route: () => makeResponse({ status: 404, body: "" }) });
+    const stale = sw.seam?.sw?.staleTtMissKeys;
+    assert.equal(typeof stale, "function", "the worker must expose staleTtMissKeys");
+
+    const now = 1_000_000;
+    const all = {
+      "ttMiss:fresh": now - 1000,
+      "ttMiss:old": now - 6000,
+      "ttMiss:keep": now - 9999,
+      other: now - 9999,
+    };
+    const keys = stale(all, now, "ttMiss:keep").sort();
+    assert.equal(JSON.stringify(keys), JSON.stringify(["ttMiss:old"]), JSON.stringify(keys));
+    assert.equal(JSON.stringify(stale({}, now)), "[]", "an empty cache is not an error");
+    assert.equal(JSON.stringify(stale(undefined, now)), "[]", "a missing store is not an error");
+    console.log("PASS: expired negative-cache keys are identifiable for pruning");
+  }
+
+  // setTtMiss: writing a new miss must also drop the ones whose window is over.
+  {
+    const sw = loadServiceWorker({ route: () => makeResponse({ status: 404, body: "" }) });
+    const setTtMiss = sw.seam?.sw?.setTtMiss;
+    assert.equal(typeof setTtMiss, "function", "the worker must expose setTtMiss");
+    const expired = Date.now() - 60_000;
+    sw.sessionStore["ttMiss:old"] = expired;
+    sw.sessionStore["ttMiss:older"] = expired - 1;
+
+    await setTtMiss("fresh");
+
+    assert.ok(sw.sessionStore["ttMiss:fresh"], "the new miss must be recorded");
+    assert.equal(sw.sessionStore["ttMiss:old"], undefined, "expired keys must be dropped");
+    assert.equal(sw.sessionStore["ttMiss:older"], undefined, "every expired key must be dropped");
+    console.log("PASS: the negative cache drops expired keys instead of growing forever");
   }
 
   console.log("ALL SERVICE WORKER TESTS PASSED!");
