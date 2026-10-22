@@ -3,7 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { chromium } = require('playwright');
+let chromium;
+try {
+  ({ chromium } = require('playwright'));
+} catch (err) {
+  // Playwright is a heavy optional dependency: skip instead of crashing with a
+  // module-not-found stack trace. 77 = skipped, 0 = passed.
+  console.log('SKIP: ' + path.basename(__filename) + ' needs playwright (npm i playwright && npx playwright install chromium)');
+  process.exit(77);
+}
 const Groups = require('../extension/shared/sentence_groups.js');
 
 (async () => {

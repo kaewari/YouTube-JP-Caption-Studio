@@ -6,7 +6,7 @@ const [beforePath,afterPath]=process.argv.slice(2);
 // standalone test. Without the files there is nothing to check.
 if(!beforePath||!afterPath){
   console.log('SKIP: sentence_native_backup_sanity.js needs the original and updated native JSON backup paths');
-  process.exit(0);
+  process.exit(77);
 }
 const before=JSON.parse(fs.readFileSync(beforePath,'utf8')),bytes=fs.readFileSync(afterPath),after=JSON.parse(bytes);
 assert.equal(after.format,'caption-studio-sentence-backup');assert.equal(after.version,1);

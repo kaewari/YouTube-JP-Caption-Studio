@@ -6,7 +6,7 @@ let rawInput = '';
 try { rawInput = fs.readFileSync(0, 'utf8'); } catch (_) { rawInput = ''; }
 if (!rawInput.trim()) {
   console.log('SKIP: sentence_drive_mirror_sanity.js needs the JSON payload on stdin (see scripts/sentence_script_store_sanity.py)');
-  process.exit(0);
+  process.exit(77);
 }
 const input = JSON.parse(rawInput);
 const source = fs.readFileSync(require.resolve('../extension/background/service_worker.js'), 'utf8');
@@ -60,6 +60,8 @@ const context = vm.createContext({
   bridgeJson,
   notifyDriveRestored: async ids => restored.push(...ids),
   pullVocabSnapshot: async () => ({}), syncSettingsOnConnect: async () => null,
+  // The iPad vocab file is pulled next to the vocab snapshot; isolate it here.
+  pullIosVocabSnapshot: async () => ({ skipped: "absent" }),
   driveQueued: async fn => fn(), setDriveStatus: async text => statuses.push(text),
 });
 vm.runInContext(`const BRIDGE=${JSON.stringify(input.address)},DRIVE_FOLDER_ID='fixture',DRIVE_FOLDER_MIME='application/vnd.google-apps.folder';

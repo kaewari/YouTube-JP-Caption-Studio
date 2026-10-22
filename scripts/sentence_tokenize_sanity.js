@@ -41,7 +41,7 @@ const run = expression => vm.runInContext(expression, ctx);
     if (!probe.ok) throw new Error(`HTTP ${probe.status}`);
   } catch (err) {
     console.log(`SKIP: sentence_tokenize_sanity.js needs the local bridge on ${bridgeUrl} (${err.message})`);
-    process.exit(0);
+    process.exit(77);
   }
   const original = run('JSON.stringify(cues)');
   await run('enrichSentenceGroups()');

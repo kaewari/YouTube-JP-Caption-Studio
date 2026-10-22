@@ -2113,8 +2113,13 @@ async function pullDriveIfNewer() {
   try {
     if (!(await driveConnected())) return { ok: true, skipped: "not_connected" };
     const vocab = await pullVocabSnapshot();
-    // Absent/extra file must never fail the whole sync.
-    const iosVocab = await pullIosVocabSnapshot().catch(() => ({ skipped: "error" }));
+    // Absent/extra file must never fail the whole sync — catch a throw, not just a rejection.
+    let iosVocab = { skipped: "error" };
+    try {
+      iosVocab = await pullIosVocabSnapshot();
+    } catch (err) {
+      iosVocab = { skipped: "error" };
+    }
     const settings = await syncSettingsOnConnect();
     const mirror = await driveQueued(() => mirrorFromDrive());
     const restored = !!mirror.pulled?.length;
