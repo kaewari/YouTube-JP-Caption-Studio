@@ -21,7 +21,7 @@ Raw review đã file và **không sửa** (§4).
 | B-5 `wipeAll()` hard-delete → Drive hồi sinh script | **đã sửa** (tombstone + dirty) | `9248d8388` |
 | B-2 self-check chết (3 file test không được pytest collect) | **đã sửa** | `cf58aaefa` |
 | A-3 iPhone không bundle `user_script.js` | **hạ P0 → P2: là thiết kế, không phải bug** | — |
-| B-15, B-16 | **còn mở** | — |
+| B-15, B-16 sanity scripts không chạy trong CI | **đã sửa** (job `sanity-scripts`, skip ≠ pass) | `c90f3a082` |
 
 ## Raw
 

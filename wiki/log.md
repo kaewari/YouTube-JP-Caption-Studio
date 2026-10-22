@@ -762,3 +762,26 @@ cả hai headless trên macOS.
 
 Proof: `scripts/swift_store_smoke.sh ipad-app` + `iphone-app` exit 0 · red proof (bản wipe cũ)
 fail *"wipe keeps the rows"* exit 133 · build Debug + Release iPad/iPhone đều BUILD SUCCEEDED.
+
+## [2026-10-22] ingest | B-15/B-16 — sanity scripts vào CI, skip không còn giả vờ pass
+
+`review/codebase-audit-2026-10-22.md` B-15/B-16 **đã sửa** ở `c90f3a082`.
+
+- `scripts/run_sanity_suite.sh` chạy toàn bộ `scripts/*sanity*` và tách pass/skip/fail:
+  exit 0 = pass, **77 = skip**, khác = fail; summary in ra script bị skip để CI thấy rõ
+  phần nào **chưa chạy**.
+- 4 script "cần input ngoài" đổi exit 0 → 77; 2 script playwright thiếu dependency thì skip
+  kèm hướng dẫn thay vì crash `Cannot find module 'playwright'`.
+- CI thêm job `sanity-scripts` (ubuntu) và `ios-build` chạy thêm `scripts/swift_store_smoke.sh`
+  cho cả 2 app.
+
+Quan trọng: suite này **bắt được regression do chính commit A-2 gây ra** — harness
+`sentence_drive_mirror_sanity.js` cắt riêng `pullDriveIfNewer()` khỏi worker và stub các hàm
+lân cận, nên lời gọi `pullIosVocabSnapshot()` mới không tồn tại → cả lần pull chết với
+"pullIosVocabSnapshot is not defined" thay vì HTTP409 mong đợi. Đã stub trong harness, và worker
+đổi `.catch()` → `try/catch` (throw đồng bộ không phải promise reject, `.catch()` không bắt được —
+nếu không sửa thì một lỗi helper có thể làm hỏng cả Drive sync).
+
+Proof: `scripts/run_sanity_suite.sh` → **21 passed, 6 skipped, 0 failed**, exit 0 ·
+`scripts/sentence_script_store_sanity.py` exit 0 (trước đó fail) · 15/15 extension suite exit 0 ·
+anti-fake gate exit 0.
