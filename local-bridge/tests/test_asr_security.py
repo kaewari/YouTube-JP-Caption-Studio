@@ -17,6 +17,7 @@ import types
 import numpy as np
 import pytest
 import soundfile as sf
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -233,3 +234,107 @@ def test_metal_peak_is_reset_before_every_transcription(fake_mlx):
     second = asr_service.transcribe_audio(audio, preprocess=False)
     assert second["metalPeakBytes"] == 1234
     assert fake_mlx["resets"] >= 2
+
+# ---------------------------------------------------------------------------
+# payload size cap
+# ---------------------------------------------------------------------------
+
+def test_oversized_raw_body_is_rejected_without_reading_all_of_it(monkeypatch, fake_mlx):
+    """The bridge must stop reading at the limit, not buffer the whole body first."""
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+    resp = client.post(
+        "/asr/transcribe",
+        params={"preprocess": "false"},
+        content=b"a" * 4096,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert resp.status_code == 413, resp.text
+    assert fake_mlx["calls"] == [], "an oversized payload must not reach the engine"
+
+@pytest.mark.asyncio
+async def test_capped_body_reader_stops_early(monkeypatch):
+    """The raw-body reader must stop at the limit instead of buffering everything."""
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+    yielded = {"n": 0}
+
+    class FakeRequest:
+        async def stream(self):
+            for _ in range(8):
+                yielded["n"] += 1
+                yield b"a" * 512
+
+    with pytest.raises(HTTPException) as exc:
+        await asr_api._read_capped_body(FakeRequest())
+    assert exc.value.status_code == 413
+    assert yielded["n"] < 8, f"the reader kept pulling ({yielded['n']} chunks)"
+
+@pytest.mark.asyncio
+async def test_capped_body_reader_returns_a_small_body(monkeypatch):
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+
+    class FakeRequest:
+        async def stream(self):
+            yield b"a" * 10
+            yield b"b" * 20
+
+    assert await asr_api._read_capped_body(FakeRequest()) == b"a" * 10 + b"b" * 20
+
+def test_declared_content_length_over_the_limit_is_rejected_unread(monkeypatch, fake_mlx):
+    """A declared size above the limit must be refused without touching the body."""
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+    resp = client.post(
+        "/asr/transcribe",
+        params={"preprocess": "false"},
+        content=b"x" * 4096,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert resp.status_code == 413, resp.text
+    assert fake_mlx["calls"] == []
+
+@pytest.mark.asyncio
+async def test_capped_upload_reader_stops_early(monkeypatch):
+    """The upload reader must not pull the whole file before it says no."""
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+
+    class FakeUpload:
+        def __init__(self, data: bytes):
+            self.data = data
+            self.reads = 0
+
+        async def read(self, size: int = -1) -> bytes:
+            self.reads += 1
+            chunk, self.data = self.data[:size], self.data[size:]
+            return chunk
+
+    upload = FakeUpload(b"y" * 8192)
+    with pytest.raises(HTTPException) as exc:
+        await asr_api._read_capped_upload(upload)
+    assert exc.value.status_code == 413
+    assert upload.reads <= 3, f"the reader kept pulling ({upload.reads} reads)"
+
+@pytest.mark.asyncio
+async def test_capped_upload_reader_returns_a_small_file(monkeypatch):
+    from app.api import asr as asr_api
+
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 1024)
+
+    class FakeUpload:
+        def __init__(self, data: bytes):
+            self.data = data
+
+        async def read(self, size: int = -1) -> bytes:
+            chunk, self.data = self.data[:size], self.data[size:]
+            return chunk
+
+    payload = await asr_api._read_capped_upload(FakeUpload(b"z" * 100))
+    assert payload == b"z" * 100

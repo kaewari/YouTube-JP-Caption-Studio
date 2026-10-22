@@ -23,6 +23,47 @@ logger = logging.getLogger("bridge.asr_api")
 router = APIRouter(prefix="/asr", tags=["asr"])
 
 
+_READ_CHUNK_BYTES = 1024 * 1024
+
+
+def _payload_too_large() -> HTTPException:
+    return HTTPException(
+        status_code=413,
+        detail=f"Audio payload exceeds maximum size limit ({MAX_AUDIO_BYTES // (1024 * 1024)} MB)",
+    )
+
+
+async def _read_capped_upload(file: UploadFile) -> bytes:
+    """Read an upload in chunks and stop as soon as the limit is passed.
+
+    Reading the whole file first and checking the size afterwards lets a client
+    make the bridge buffer an arbitrary amount of memory before it says no.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_AUDIO_BYTES:
+            raise _payload_too_large()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def _read_capped_body(request: Request) -> bytes:
+    """Same cap for a raw body: read the stream, stop at the limit."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_AUDIO_BYTES:
+            raise _payload_too_large()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.get("/status")
 def asr_status() -> Dict[str, Any]:
     """Get runtime status and memory statistics of the ASR engine."""
@@ -62,14 +103,22 @@ async def transcribe(
     # 1. Read from uploaded file if present
     if file is not None:
         try:
-            audio_bytes = await file.read()
+            audio_bytes = await _read_capped_upload(file)
+        except HTTPException:
+            raise
         except Exception:
             logger.exception("Failed reading the uploaded audio file")
             raise HTTPException(status_code=400, detail="Failed to read audio file")
     else:
         # 2. Otherwise read raw request body
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_AUDIO_BYTES:
+            # The client declared the size: reject without reading a single byte.
+            raise _payload_too_large()
         try:
-            audio_bytes = await request.body()
+            audio_bytes = await _read_capped_body(request)
+        except HTTPException:
+            raise
         except Exception:
             logger.exception("Failed reading the ASR request body")
             raise HTTPException(status_code=400, detail="Failed to read request body")
@@ -77,13 +126,6 @@ async def transcribe(
     # Validate non-empty payload
     if not audio_bytes or len(audio_bytes) == 0:
         raise HTTPException(status_code=400, detail="Audio data cannot be empty")
-
-    # Validate maximum size limit
-    if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio payload exceeds maximum size limit ({MAX_AUDIO_BYTES // (1024 * 1024)} MB)",
-        )
 
     # Heavy path: take a governor slot like /tokenize does, otherwise several
     # MLX transcriptions can pile up on the Metal allocator.
