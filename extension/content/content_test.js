@@ -135,4 +135,29 @@ assert.strictEqual(content.normalizeSettings({}).sourceLang, settings.sourceLang
 assert.strictEqual(content.normalizeSettings({}).levelHighlightEnabled, true,
   "the level highlight default must be filled in");
 
+// -------------------------------------------------------------------------
+// capAcceptsReply: a reply that OMITS the capability token must be rejected
+// -------------------------------------------------------------------------
+// The gate used to be `expected && provided && provided !== expected`, which
+// let a forged MAIN-world reply through simply by leaving `cap` out. Omitting
+// the token is the cheapest thing an attacker can do, so it must fail closed.
+const capAcceptsReply = content.capAcceptsReply;
+assert.strictEqual(typeof capAcceptsReply, "function", "the capability gate must be exposed");
+
+assert.strictEqual(capAcceptsReply("secret", undefined), false,
+  "a reply with no capability token must be rejected");
+assert.strictEqual(capAcceptsReply("secret", ""), false,
+  "an empty capability token must be rejected");
+assert.strictEqual(capAcceptsReply("secret", null), false,
+  "a null capability token must be rejected");
+assert.strictEqual(capAcceptsReply("secret", "wrong"), false,
+  "a wrong capability token must be rejected");
+assert.strictEqual(capAcceptsReply("secret", "secret"), true,
+  "the correct capability token must be accepted");
+// Documented, deliberate escape: before the first inject the expected token is
+// "" and a token-bearing reply is still accepted. Closing it needs the token
+// minted before injectPageScript() early-returns.
+assert.strictEqual(capAcceptsReply("", "anything"), true,
+  "the pre-inject window still accepts a token-bearing reply");
+
 console.log("content_test: all assertions passed");

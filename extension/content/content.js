@@ -191,6 +191,22 @@
   // source:"hardsub-ocr-page" (it never sees this token).
   let pageCapToken = "";
 
+  /**
+   * Capability gate for MAIN-world replies. A *missing* token must be rejected
+   * exactly like a wrong one: the previous `expected && provided && provided !==
+   * expected` form only rejected a wrong token, so a forged reply got through by
+   * simply omitting `cap`.
+   *
+   * ponytail: `expected` is still "" when injectPageScript() early-returns on an
+   * already-present script element (content-script reload without a re-inject), so
+   * in that one window any token-bearing reply is accepted. Upgrade by minting the
+   * token before that early return, then drop the `!expected` escape.
+   */
+  function capAcceptsReply(expected, provided) {
+    if (!provided) return false;
+    return !expected || provided === expected;
+  }
+
   function injectPageScript(force = false) {
     const existing = document.getElementById("hardsub-ocr-page-script");
     if (existing && !force) return;
@@ -668,7 +684,7 @@
     const { requestId, result, cap } = ev.data;
     // Capability token gate: check top-level cap or result.cap
     const msgCap = cap || result?.cap;
-    if (pageCapToken && msgCap && msgCap !== pageCapToken) return;
+    if (!capAcceptsReply(pageCapToken, msgCap)) return;
     const resolve = pending.get(requestId);
     if (resolve) {
       pending.delete(requestId);
@@ -6127,7 +6143,7 @@
       // MAIN-world message may trigger caption reloads.
       if (e.source !== window) return;
       if (e.data?.type !== "__HARDSUB_TIMEDTEXT_CAPTURED__") return;
-      if (pageCapToken && e.data.cap && e.data.cap !== pageCapToken) return;
+      if (!capAcceptsReply(pageCapToken, e.data.cap)) return;
 
       const payloadCues = e.data.cues;
       if (Array.isArray(payloadCues) && payloadCues.length) {
@@ -6282,6 +6298,7 @@
     globalThis.__JP_CAP_CONTENT_TEST__.content = {
       normalizeSettings,
       normalizeCueText,
+      capAcceptsReply,
       resolveCueIndex,
       onNavigate,
       getCues: () => cues,
