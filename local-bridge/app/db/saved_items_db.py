@@ -125,7 +125,29 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
-def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> dict[str, Any]:
+_UPSERT_SQL = """
+    INSERT INTO saved_items (
+        id, type, video_id, source, reading, translation_vi, translation_en,
+        start_time, end_time, metadata_json, is_deleted, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        type = excluded.type,
+        video_id = CASE WHEN excluded.video_id != '' THEN excluded.video_id ELSE saved_items.video_id END,
+        source = excluded.source,
+        reading = excluded.reading,
+        translation_vi = excluded.translation_vi,
+        translation_en = excluded.translation_en,
+        start_time = excluded.start_time,
+        end_time = excluded.end_time,
+        metadata_json = excluded.metadata_json,
+        is_deleted = excluded.is_deleted,
+        updated_at = excluded.updated_at
+    WHERE excluded.updated_at >= saved_items.updated_at;
+"""
+
+
+def _upsert_params(item: dict[str, Any]) -> tuple:
+    """Normalize one client item into the upsert parameter tuple."""
     now = time.time()
     item_id = str(item.get("id") or "").strip()
     if not item_id:
@@ -144,42 +166,20 @@ def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> dict[str, Any
     is_deleted = 1 if item.get("is_deleted") else 0
     created_at = float(item.get("created_at") or now)
     updated_at = float(item.get("updated_at") or now)
+    return (
+        item_id, item_type, video_id, source, reading, translation_vi, translation_en,
+        start_time, end_time, metadata_json, is_deleted, created_at, updated_at
+    )
 
+
+def upsert_item(conn: sqlite3.Connection, item: dict[str, Any]) -> dict[str, Any]:
+    params = _upsert_params(item)
     with conn:
-        conn.execute("""
-            INSERT INTO saved_items (
-                id, type, video_id, source, reading, translation_vi, translation_en,
-                start_time, end_time, metadata_json, is_deleted, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                type = excluded.type,
-                video_id = CASE WHEN excluded.video_id != '' THEN excluded.video_id ELSE saved_items.video_id END,
-                source = excluded.source,
-                reading = excluded.reading,
-                translation_vi = excluded.translation_vi,
-                translation_en = excluded.translation_en,
-                start_time = excluded.start_time,
-                end_time = excluded.end_time,
-                metadata_json = excluded.metadata_json,
-                is_deleted = excluded.is_deleted,
-                updated_at = excluded.updated_at
-            WHERE excluded.updated_at >= saved_items.updated_at;
-        """, (
-            item_id, item_type, video_id, source, reading, translation_vi, translation_en,
-            start_time, end_time, metadata_json, is_deleted, created_at, updated_at
-        ))
+        conn.execute(_UPSERT_SQL, params)
 
-    cur = conn.execute("SELECT * FROM saved_items WHERE id = ?", (item_id,))
+    cur = conn.execute("SELECT * FROM saved_items WHERE id = ?", (params[0],))
     row = cur.fetchone()
     return row_to_dict(row) if row else item
-
-
-def upsert_batch(conn: sqlite3.Connection, items: list[dict[str, Any]]) -> int:
-    applied = 0
-    for item in items:
-        if upsert_item(conn, item):
-            applied += 1
-    return applied
 
 
 def get_item(conn: sqlite3.Connection, item_id: str) -> Optional[dict[str, Any]]:
@@ -295,12 +295,21 @@ def sync_items(
     since_rowid: int = 0,
 ) -> dict[str, Any]:
     """Two-way sync: upsert client items using Last-Write-Wins, and return all updates since given timestamp."""
+    # One transaction for the whole page: 5000 items used to cost 5000 commits
+    # (and 5000 extra SELECTs to read each row back).
     applied_count = 0
+    params: list[tuple] = []
     for item in client_items:
         if not item.get("id"):
             continue
-        upsert_item(conn, item)
+        try:
+            params.append(_upsert_params(item))
+        except ValueError:
+            continue
         applied_count += 1
+    if params:
+        with conn:
+            conn.executemany(_UPSERT_SQL, params)
 
     # Fetch updates from server since the cursor (including deleted items as
     # tombstones). The cursor is the pair (updated_at, rowid): a bare

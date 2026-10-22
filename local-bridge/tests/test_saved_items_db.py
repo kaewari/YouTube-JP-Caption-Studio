@@ -495,3 +495,27 @@ def test_the_schema_is_created_only_once(tmp_path, monkeypatch):
     assert not errors, errors
     assert len(calls) == 1, f"the schema must be created once, got {len(calls)}"
     assert peak == 1, f"the schema creation must not overlap, peak was {peak}"
+
+def test_sync_writes_a_page_in_one_transaction(test_db: sqlite3.Connection):
+    """A page of client items must not cost one commit per item."""
+    statements: list[str] = []
+    test_db.set_trace_callback(statements.append)
+    items = [
+        {"id": f"page-{i}", "type": "cue", "source": f"s{i}", "updated_at": 1000.0 + i}
+        for i in range(200)
+    ]
+    result = sync_items(test_db, items)
+    commits = [s for s in statements if s.strip().upper().startswith("COMMIT")]
+    assert result["applied"] == 200, result
+    assert len(commits) == 1, f"{len(commits)} commits for 200 items"
+    rows = test_db.execute("SELECT COUNT(*) FROM saved_items").fetchone()[0]
+    assert rows == 200, rows
+
+def test_sync_still_applies_the_last_write_wins_rule(test_db: sqlite3.Connection):
+    """Batching must not change which row wins."""
+    sync_items(test_db, [{"id": "lww", "type": "cue", "source": "old", "updated_at": 10.0}])
+    sync_items(test_db, [{"id": "lww", "type": "cue", "source": "new", "updated_at": 20.0}])
+    assert get_item(test_db, "lww")["source"] == "new"
+    # An older client row must not overwrite the newer server row.
+    sync_items(test_db, [{"id": "lww", "type": "cue", "source": "stale", "updated_at": 5.0}])
+    assert get_item(test_db, "lww")["source"] == "new"

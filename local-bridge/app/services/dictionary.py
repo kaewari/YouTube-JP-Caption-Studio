@@ -517,14 +517,22 @@ def _get_mazii_details(key: str) -> dict[str, Any] | None:
 
         hanviet = ""
         if "mazii_kanji" in _db_tables:
-            hanviet_parts: list[str] = []
-            for ch in expr:
-                if "\u4e00" <= ch <= "\u9fff":
-                    cur.execute("SELECT mean FROM mazii_kanji WHERE kanji = ?", (ch,))
-                    k_row = cur.fetchone()
-                    if k_row and k_row[0]:
-                        hanviet_parts.append(k_row[0].split(",")[0].strip().upper())
-            hanviet = " ".join(hanviet_parts)
+            # One query for the whole word, not one per kanji: a 4-kanji entry
+            # used to cost 4 round trips to the same table.
+            kanji_chars = [ch for ch in expr if "\u4e00" <= ch <= "\u9fff"]
+            if kanji_chars:
+                placeholders = ",".join("?" for _ in kanji_chars)
+                cur.execute(
+                    f"SELECT kanji, mean FROM mazii_kanji WHERE kanji IN ({placeholders})",
+                    kanji_chars,
+                )
+                means = {k: m for k, m in cur.fetchall()}
+                hanviet_parts: list[str] = []
+                for ch in kanji_chars:
+                    mean = means.get(ch)
+                    if mean:
+                        hanviet_parts.append(mean.split(",")[0].strip().upper())
+                hanviet = " ".join(hanviet_parts)
 
         pos_clean = [p.strip() for p in (pos or "").split(",") if p.strip()]
         pos_vi = [_POS_VI_MAP.get(p, p) for p in pos_clean]
