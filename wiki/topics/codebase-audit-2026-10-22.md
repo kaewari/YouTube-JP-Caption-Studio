@@ -60,6 +60,31 @@ web apply snapshot cũ (B-20) · `_get_mazii_details` N+1 SQL (B-23) · `/saved/
   (cùng 1 câu, bridge sống/chết cho 2 furigana khác nhau) · **C-5**: settings default lệch 4 key.
 - B-3: JLPT band resolution ×4 với dataset khác nhau (JS 403 mục vs PY 60 mục; iOS thiếu 14k).
 
+## Đính chính chính báo cáo (2026-10-22, trong lúc sửa A-8)
+
+`review/` là immutable (§4), nên đính chính nằm ở đây thay vì sửa file đã file.
+
+**A-8 được hạ mức P0 → P2 và mô tả lại.** Khi viết báo cáo tôi kết luận "player pill
+`[ (LR) ON ⚙ ]` không tồn tại, 0 hit trong `extension/`" và "pill thật là
+`.hardsub-bridge-pill`". Cả hai đều **SAI**:
+
+- Pill **có thật**: `extension/content/content.js:4000-4013` `createPlayerToggleButton()`
+  dựng `.hardsub-ytp-toggle` gồm badge `LR` + nhãn `playerToggleLabel()` trả `"ON"`/`"OFF"`
+  (`:3891-3893`) + bánh răng `⚙` gọi `openSettingsModal()`. Nó chèn vào
+  `.ytp-left-controls` sau `.ytp-time-display` (`:4040`) hoặc nổi trên video.
+- `.hardsub-bridge-pill` (`content.js:4991`) là **thứ khác**: chấm trạng thái bridge
+  nằm trong overlay, không phải nút ON/OFF.
+
+Lỗi thật của tài liệu chỉ là **cách viết**: `[ (LR) ON ⚙ ]` với ngoặc vuông không có
+trong DOM, và "dual-card layout"/"lower card" sai vì chỉ có **một** thẻ `.lr-card-ja`
+chứa các dòng `.bar-vi` / `.bar-en` bên trong. Đã sửa `README.md:36,39` và
+`walkthrough.md:204,205,214,221`.
+
+Bài học phương pháp: kết luận "không tồn tại" từ grep chuỗi literal là **suy luận từ
+string matching**, đúng loại lỗi mà chính báo cáo này (A-6/A-7) lên án. Muốn nói một
+control không tồn tại thì phải tìm theo hành vi (class/handler), không phải theo chuỗi
+người viết tài liệu tự đặt.
+
 ## Đã kiểm tra và KHÔNG có phát hiện
 
 XSS/DOM injection trong extension (33 hit `innerHTML`, tất cả đã escape, không `eval`) ·

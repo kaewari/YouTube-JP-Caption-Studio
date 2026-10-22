@@ -636,3 +636,25 @@ Wiki hygiene fixed during this ingest (the lint was **red** before, green after)
 
 `bash scripts/wiki_sync_and_lint.sh` -> **Exit 0, 0 broken links, 0 warnings** (was Exit 1, 4 errors,
 7 warnings).
+
+## [2026-10-22] lint | Correction: the A-8 "pill does not exist" claim was wrong
+
+While fixing A-8 I re-read the toggle path and found my own audit conclusion was wrong.
+`content.js:4000-4013` does build the player pill (`.hardsub-ytp-toggle`: `LR` badge +
+`playerToggleLabel()` -> "ON"/"OFF" + `⚙` -> `openSettingsModal()`), inserted into
+`.ytp-left-controls` after `.ytp-time-display`. `.hardsub-bridge-pill` is a different
+element: the bridge-status dot inside the overlay.
+
+The real documentation defect is narrower: the `[ ... ]` notation in README/walkthrough
+does not match the DOM, and "dual-card / lower card" is wrong because only one
+`.lr-card-ja` is rendered with `.bar-vi` / `.bar-en` rows inside it.
+
+A-8 therefore drops from P0 to P2. Because `review/` is immutable (§4) the correction is
+recorded in [topics/codebase-audit-2026-10-22.md](topics/codebase-audit-2026-10-22.md)
+instead of editing the filed audit.
+
+Method note: concluding "does not exist" from a literal-string grep is string matching —
+the very practice A-6/A-7 of the same audit condemns. Absence claims must be made by
+behaviour (class/handler), not by the wording a doc author invented.
+
+`bash scripts/wiki_sync_and_lint.sh` -> exit 0, 0 broken links.

@@ -201,8 +201,8 @@ Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
    - Module `extension/shared/gemini_translate.js` tích hợp endpoint API `gemini-3.8-flash` của Google AI Studio với tốc độ dịch cực nhanh (batch 25 cues/lần).
    - Người dùng có thể cấu hình và kiểm tra API Key trực tiếp qua modal Cài đặt trong trang (`extension/content/settings_modal.js`).
 3. **Thiết kế Overlay Dual-Card (Language Reactor 5.1.8)**:
-   - Thẻ trên (`.lr-card-ja`): Bên trái là nút phát lại tím `(▶)` (phím tắt `S`), giữa là chữ tiếng Nhật hiển thị Romaji phía trên token tô màu theo thứ hạng (rank/JLPT), bên phải là nút đánh dấu sao `☆`/`★` và nút tùy chọn `⋮`.
-   - Thẻ dưới (`.lr-card-vi`): Hiển thị bản dịch tiếng Việt mượt mà.
+   - Chỉ có **một** thẻ Nhật (`.lr-card-ja`): Bên trái là nút phát lại tím `(▶)` (phím tắt `S`), giữa là chữ tiếng Nhật hiển thị Romaji phía trên token tô màu theo thứ hạng (rank/JLPT), bên phải là nút đánh dấu sao `☆`/`★` và nút tùy chọn `⋮`.
+   - Bản dịch nằm **trong cùng thẻ đó**, xếp thành dòng bên dưới chữ Nhật: `.bar-vi` (tiếng Việt) và `.bar-en` (tiếng Anh). Hai thẻ cũ `.lr-card-vi` / `.lr-card-en` vẫn còn trong CSS nhưng đã bị `display: none !important` và không còn được render.
    - Di chuột qua token để hiển thị Romaji và tra cứu từ điển.
 4. **Hệ thống Điều khiển trên màn hình Video**:
    - Bên trái (`#lr-nav-left`): Các nút điều hướng dọc (`>`, `↻` lặp lại đoạn thoại với tooltip "Repeat ['S' key]", `<`), hỗ trợ phím tắt `S` (repeat), `A` (prev), `D` (next).
@@ -211,14 +211,14 @@ Chi tiết lệnh: `ipad-app/Scripts/COMMANDS.md` (mục OAuth).
    - Tab `Subtitles`: Danh sách câu phụ đề kèm timeline, hiển thị Romaji và nút sao nhanh.
    - Tab `Words`: Tổng hợp toàn bộ từ vựng xuất hiện trong video hiện tại và nhóm theo các bracket xếp hạng tần suất 500-increment (Rank 1 - 500, Rank 501 - 1000, Rank 1001 - 1500, Rank 1501 - 2000, Rank 2001 - 2500, Rank 2501 - 3000, Rank 3001 - 3500, Rank 3501 - 4000, Rank 4001 - 4500, Rank 4501 - 5000, Rank 5000+, Chưa phân hạng), đếm số lần xuất hiện và nút sao lưu từ vựng.
    - Tab `Saved`: Quản lý toàn bộ từ vựng `[W]` và câu thoại `[S]` đã lưu, gồm nút `[ ▤ View All ]` và `[ 🕒 Practice ]`, hiển thị "Last saved:", toggle switch "Show context", hiển thị từ vựng với badge `[W]` và đóng khung cam ngữ cảnh câu thoại.
-6. **Nút gạt Player Bar `[ (LR) ON ⚙ ]`**:
+6. **Nút gạt Player Bar (`.hardsub-ytp-toggle`)** — pill gồm badge `LR`, nhãn `ON`/`OFF` và bánh răng `⚙`:
    - Khi BẬT (ON): Ẩn phụ đề native của YouTube (`body.lr-hide-native-subs`) và hiển thị overlay của Language Reactor.
    - Khi TẮT (OFF): Phục hồi phụ đề native của YouTube và ẩn overlay LR.
    - Bấm vào biểu tượng ⚙ trên thanh điều khiển video mở modal Settings; bấm vào biểu tượng extension trên thanh công cụ của Chrome mở trang quản lý toàn màn hình (`popup/index.html`).
 
 ### Cách thử nghiệm:
 1. Mở bất kỳ video tiếng Nhật nào trên YouTube.
-2. Nhìn vào thanh điều khiển dưới video: bấm vào nút `[ (LR) OFF ⚙ ]` để kích hoạt chế độ `ON`. Phụ đề gốc của YouTube sẽ được ẩn đi và overlay 2 thẻ của Language Reactor xuất hiện.
+2. Nhìn vào thanh điều khiển dưới video: bấm vào pill `LR · OFF · ⚙` để kích hoạt chế độ `ON`. Phụ đề gốc của YouTube sẽ được ẩn đi và overlay 2 thẻ của Language Reactor xuất hiện.
 3. Bấm vào icon `⚙` trên nút hoặc trong overlay để mở Cài đặt, dán Google AI Studio Gemini API Key và kiểm tra kết nối.
 4. Nhấn phím `S` hoặc click nút tím `(▶)` để nghe lặp lại câu thoại đang phát.
 5. Thử bật công tắc `AP` ở bên phải màn hình để video tự dừng lại sau mỗi câu thoại.
