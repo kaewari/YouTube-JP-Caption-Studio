@@ -27,16 +27,6 @@ _loaded = False
 # but an explicit reload (bootstrap) must be able to try again.
 _load_failed = False
 
-# POS prefixes that should not be highlighted as vocab.
-_SKIP_POS_PREFIXES = (
-    "助詞",
-    "助動詞",
-    "補助記号",
-    "記号",
-    "空白",
-)
-
-
 def is_loaded() -> bool:
     return _loaded
 
@@ -160,12 +150,6 @@ def jlpt_of(rank: int | None, lemma: str = "", reading: str = "", surface: str =
         if r <= ceiling:
             return level
     return "n1"
-
-
-def is_skip_pos(pos: str) -> bool:
-    if not pos:
-        return False
-    return any(pos.startswith(p) for p in _SKIP_POS_PREFIXES)
 
 
 def assessment_bands(samples_per: int = SAMPLES_PER_BAND) -> list[dict[str, Any]]:

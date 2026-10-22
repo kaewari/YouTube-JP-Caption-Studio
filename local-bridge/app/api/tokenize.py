@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.governor import governor
 from app.schemas.models import (
-    SegmentCueIn,
     TokenizeBatchItem,
     TokenizeBatchRequest,
     TokenizeBatchResponse,

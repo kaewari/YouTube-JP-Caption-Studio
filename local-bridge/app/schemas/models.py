@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-from typing import Annotated, Any, Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class Token(BaseModel):

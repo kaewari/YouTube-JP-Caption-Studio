@@ -5,11 +5,9 @@ from __future__ import annotations
 import logging
 import shutil
 import ssl
-import sys
 import tempfile
 import threading
 import urllib.request
-import uuid
 from pathlib import Path
 
 from app.schemas.models import BootstrapProgress

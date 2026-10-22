@@ -70,17 +70,6 @@ def _pos_label(morpheme) -> str:
         return ""
 
 
-def iter_morphemes(text: str):
-    """Yield Sudachi morphemes (empty if tokenizer unavailable)."""
-    if not text:
-        return
-    if not is_loaded():
-        load_tokenizer()
-    if _tokenizer is None:
-        return
-    yield from _tokenizer.tokenize(text)
-
-
 def tokenize(text: str) -> list[Token]:
     if not text:
         return []
@@ -121,14 +110,3 @@ def tokenize(text: str) -> list[Token]:
             )
         )
     return tokens
-
-
-def furigana_line(text: str, tokens: list[Token] | None = None) -> str:
-    toks = tokens if tokens is not None else tokenize(text)
-    parts: list[str] = []
-    for t in toks:
-        if t.reading and _KANJI_RE.search(t.surface):
-            parts.append(f"{t.surface}({t.reading})")
-        else:
-            parts.append(t.surface)
-    return "".join(parts)

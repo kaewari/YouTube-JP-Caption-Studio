@@ -766,15 +766,6 @@ def _has_key(key: str) -> bool:
     return False
 
 
-def has_entry(key: str) -> bool:
-    """Public: whether surface/lemma exists in JMdict or JA→VI seed."""
-    k = (key or "").strip()
-    if not k:
-        return False
-    with _db_lock:
-        return _has_key(k)
-
-
 def _longest_prefix_match(text: str) -> str | None:
     t = text.strip()
     if not t:
