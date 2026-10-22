@@ -818,3 +818,23 @@ Proof: bridge suite **155 passed, 5 skipped, exit 0** · red proof B-23: 2 state
 
 Proof: bridge **158 passed, 5 skipped, exit 0** · red proof C-31: 3 dòng log (1 dòng bị giả) thay
 vì 1 · tokenize smoke: `日本語を勉強します` → `日本語/にほんご · 勉強/べんきょう …` (nhánh gộp không đổi hành vi).
+
+## [2026-10-23] ingest | C-18/C-19/C-20 — negative cache, Drive failure log, ASR timeout
+
+Ba finding extension **đã sửa** ở `47d10eef4`:
+
+- **C-18** — mỗi video bị throttle ghi 1 key `ttMiss:<videoId>` vào `chrome.storage.session` và
+  **không bao giờ xoá**. Giờ `setTtMiss` ghi key mới rồi prune các key đã quá TTL 5s (giữ key vừa ghi).
+- **C-19** — 3 chỗ lỗi Drive mirror chỉ `console.warn`, không vào `errors.log` (AGENTS §6). Thêm
+  `logDriveFailure()` đẩy `POST /log`; lỗi log không bao giờ chặn đường retry.
+- **C-20** — ASR slice dispatch là bridge call **duy nhất không timeout**, và backstop timer 8s
+  không được clear → mỗi slice xong để lại 1 timer treo. Giờ có `AbortSignal.timeout(60s)`
+  (abort log riêng "timed out") và backstop được clear khi recorder stop / capture kết thúc.
+
+Test: SW suite prune key hết hạn (giữ key mới) + mirror failure phải `POST /log` có cause; offscreen
+suite thêm test 4 (AbortSignal + backstop cleared). Sandbox test phải thêm `AbortSignal` và
+`get(null)` kiểu chrome (trả mọi key).
+
+Proof: 15/15 extension suite exit 0 · anti-fake gate 0 · sanity suite 21 passed / 6 skipped / 0 failed ·
+red proof từng cái: "expired keys must be dropped" / "a Drive mirror failure must POST /log" /
+"the ASR call must carry an AbortSignal".

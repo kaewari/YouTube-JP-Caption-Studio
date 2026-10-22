@@ -29,6 +29,9 @@ Raw review đã file và **không sửa** (§4).
 | C-31 `/log` chèn newline → log forging | **đã sửa** (sanitize trong helper chung) | `11f1df9b8` |
 | C-32 `build_dict_sqlite` luôn log 0 expression | **đã sửa** | `11f1df9b8` |
 | C-11 comment trỏ `extension/popup/popup.js` đã xoá | **đã sửa** | `e739d4a5f` |
+| C-18 `ttMiss:<videoId>` key tích tụ trong session storage | **đã sửa** (prune key hết hạn) | `47d10eef4` |
+| C-19 Drive mirror lỗi chỉ `console.warn` | **đã sửa** (`logDriveFailure` → `POST /log`) | `47d10eef4` |
+| C-20 ASR dispatch không timeout, backstop timer không clear | **đã sửa** (60s + clear) | `47d10eef4` |
 
 ## Raw
 
