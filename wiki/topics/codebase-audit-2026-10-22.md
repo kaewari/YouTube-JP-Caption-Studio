@@ -4,8 +4,19 @@
 
 ## Status
 
-**Open — 8 P0 / 24 P1 / ~33 P2 / ~10 P3, chưa remediate.** Raw review đã file; chưa có code nào
-được sửa (audit read-only).
+**Đang remediate.** Audit read-only; từ 2026-10-22 đã sửa một phần (xem bảng dưới).
+Raw review đã file và **không sửa** (§4).
+
+| Finding | Trạng thái | Commit |
+|---|---|---|
+| A-1 vocab `meaning`/`status` + merge khi upload Drive | **đã sửa** | `f669bcd9c` |
+| A-4 capability gate nhận message thiếu token | **đã sửa** | `775d275ae` |
+| A-6 test giả `test_bugfixes_qa.js` | **đã sửa** (giữ phần live-Chrome thật) | `561472851` |
+| A-7 anti-fake gate false negative | **đã sửa** (bắt thêm 1 test giả nữa) | `561472851` |
+| A-8 tài liệu overlay/pill | **đã sửa**, hạ P0 → P2 | `28b59d1e4` |
+| B-21 `write_files` không validate `cues.json` | **đã sửa** | `7788db731` |
+| A-3 iPhone không bundle `user_script.js` | **hạ P0 → P2: là thiết kế, không phải bug** | — |
+| A-2, A-5, B-1, B-2, B-10, B-14, B-15, B-16 | **còn mở** | — |
 
 ## Raw
 
@@ -84,6 +95,31 @@ Bài học phương pháp: kết luận "không tồn tại" từ grep chuỗi l
 string matching**, đúng loại lỗi mà chính báo cáo này (A-6/A-7) lên án. Muốn nói một
 control không tồn tại thì phải tìm theo hành vi (class/handler), không phải theo chuỗi
 người viết tài liệu tự đặt.
+
+## Đính chính A-3: iPhone **cố ý** không có page bridge (P0 → P2)
+
+Audit ghi "iPhone không bundle `user_script.js` → toàn bộ bridge WKWebView chết". Đọc lại
+thì đó là **thiết kế**, không phải bug — iPhone có đường fallback native cho cả ba thứ mà
+script lẽ ra cung cấp:
+
+| Việc | Fallback native trên iPhone |
+|---|---|
+| Phụ đề | `CaptionService.fetchCues(videoId:)` — `iphone-app/Views/ContentView.swift:783` |
+| Playhead | `Timer` 0.125 s + nội suy `playheadSync.timeMs + elapsed` — `:92-93, :135` |
+| Khung overlay | `HardsubOverlayView.resolvedVideo` trả cả pane khi `videoFrame == nil` — `HardsubOverlayView.swift:73-75` |
+
+Hai comment trong code nói rõ ý định: `iphone-app/Services/LayoutSmoke.swift:4` ("the iPhone
+app bundles no `user_script.js` … so the check is skipped there") và `iphone-app/project.yml:16`
+("Scripts/ is dev tooling only … nothing ships in the app").
+
+Cái **thật sự** sai chỉ là `iphone-app/Views/YouTubePlayerView.swift:49-59`: một `if let`
+im lặng không tìm thấy file, và 6 message handler (`captionHandler`, `timeHandler`,
+`rectHandler`, `layoutHandler`, `navHandler`, `fullscreenHandler`) được đăng ký nhưng
+không bao giờ chạy. Đó là dead wiring gây hiểu nhầm, không phải hỏng chức năng.
+
+Hệ quả cho B-10: hai `LayoutSmoke.swift` **không được gọi ở đâu cả** (`run()` không có
+call site trong cả 2 app) — chúng là dead code mâu thuẫn nhau. Hướng xử lý đúng là xoá
+cả hai, không phải "gộp rule" rồi giữ tiếp.
 
 ## Đã kiểm tra và KHÔNG có phát hiện
 

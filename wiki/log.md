@@ -658,3 +658,31 @@ the very practice A-6/A-7 of the same audit condemns. Absence claims must be mad
 behaviour (class/handler), not by the wording a doc author invented.
 
 `bash scripts/wiki_sync_and_lint.sh` -> exit 0, 0 broken links.
+
+## [2026-10-22] cleanup | Remediation round 1 + A-3 correction
+
+Fixed and committed (each with its own red-before/green-after evidence):
+
+| Commit | Finding |
+|---|---|
+| `7788db731` | B-21 — `write_files()` accepted a `cues.json` with no `cues` array when the payload had no `meta.json`, writing unreadable JSON to disk. Reproduced, then hoisted the shape check out of the rev branch. |
+| `775d275ae` | A-4 — the capability gate rejected a *wrong* token but accepted a *missing* one (`capAcceptsReply`). Old predicate executed: `('secret', undefined) -> true`; new: `-> false`. |
+| `561472851` | A-6/A-7 — the anti-fake gate hardcoded two variable names, so `test_bugfixes_qa.js` passed CI while being the banned pattern. New rule: assert on a receiver assigned from `readFileSync()` or a literal = fake. It found a **second** fake test the audit missed (`test_scroll_button_qa.js:44,58`). |
+| `28b59d1e4` | A-8 — README/walkthrough now describe the real DOM (one `.lr-card-ja` with `.bar-vi`/`.bar-en` inside; pill `.hardsub-ytp-toggle`). |
+| `f669bcd9c` | A-1 — `vocab[].meaning` no longer carries the status; the Drive upload merges by word instead of replacing the file. |
+
+Correction — **A-3 drops from P0 to P2**: the iPhone deliberately ships no page bridge and
+has native fallbacks for captions (`CaptionService.fetchCues`), playhead (0.125 s timer +
+extrapolation) and the overlay rect (`resolvedVideo` falls back to the full pane). Two code
+comments state the intent. The real defect is only the silent `if let` plus six handlers in
+`YouTubePlayerView.swift:49-59` that can never fire. Consequence for B-10: both
+`LayoutSmoke.swift` files are **never called** in either app, so they are dead, mutually
+contradictory code — delete them, do not "merge the rules".
+
+Still open: A-2 (iOS writes `caption-studio-vocab.json`, nothing reads it), A-5 (popup
+`_next/` not tracked), B-1 (macOS pytest SIGSEGV), B-2 (3 dead self-checks), B-10/B-14
+(delete dead LayoutSmoke, ATS drift in `ipad-app/project.yml`), B-15/B-16 (25 sanity
+scripts outside CI).
+
+Gates after this round: `128 passed` bridge (ignoring the known segfault pair), 15/15
+extension suites exit 0, anti-fake gate exit 0, wiki lint exit 0.
