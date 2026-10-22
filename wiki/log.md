@@ -804,3 +804,17 @@ Ba finding hiệu năng/robustness của bridge **đã sửa**:
 Proof: bridge suite **155 passed, 5 skipped, exit 0** · red proof B-23: 2 statement
 `SELECT ... WHERE kanji =` thay vì 1 · red proof B-24: *"200 commits for 200 items"* · test mới
 đếm statement qua `sqlite3.set_trace_callback`, không đọc source.
+
+## [2026-10-22] ingest | C-11/C-28/C-31/C-32 — vá lỗi nhỏ, xoá code chết
+
+- **C-31** `11f1df9b8` — `append_errors_log()` ghi message nguyên văn, mà `/log` nhận text từ
+  client → chèn newline giả được cả dòng `ERROR:bridge:` (log forging). Sanitize đặt trong helper
+  **dùng chung** nên mọi caller được bảo vệ, không chỉ route: gộp whitespace thành 1 dấu cách.
+- **C-28** `11f1df9b8` — `tokenize()` có `if _KANJI_RE...` với 2 nhánh **byte-identical**; xoá nhánh.
+- **C-32** `11f1df9b8` — `build_dict_sqlite.py` `del m_rows` rồi log `len(m_rows) if ... else 0`
+  → luôn "0 expressions"; giờ log count trước khi xoá.
+- **C-11** `e739d4a5f` — comment `HardsubSettings` trỏ `extension/popup/popup.js` (đã xoá); trỏ
+  `DEFAULTS` trong `extension/content/content.js`.
+
+Proof: bridge **158 passed, 5 skipped, exit 0** · red proof C-31: 3 dòng log (1 dòng bị giả) thay
+vì 1 · tokenize smoke: `日本語を勉強します` → `日本語/にほんご · 勉強/べんきょう …` (nhánh gộp không đổi hành vi).

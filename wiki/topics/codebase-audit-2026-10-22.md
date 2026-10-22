@@ -25,6 +25,10 @@ Raw review đã file và **không sửa** (§4).
 | B-22 `/asr/transcribe` buffer cả body trước khi check 50 MB | **đã sửa** (đọc theo chunk, cap tại chỗ) | `ad20ed44e` |
 | B-23 `_get_mazii_details()` 1 SQL mỗi kanji | **đã sửa** (1 query `IN (...)`) | `a8b0f7c31` |
 | B-24 `/saved/sync` tới 5000 transaction | **đã sửa** (1 `executemany`) | `a8b0f7c31` |
+| C-28 `tokenize()` 2 nhánh if/else giống hệt | **đã sửa** (xoá nhánh chết) | `11f1df9b8` |
+| C-31 `/log` chèn newline → log forging | **đã sửa** (sanitize trong helper chung) | `11f1df9b8` |
+| C-32 `build_dict_sqlite` luôn log 0 expression | **đã sửa** | `11f1df9b8` |
+| C-11 comment trỏ `extension/popup/popup.js` đã xoá | **đã sửa** | `e739d4a5f` |
 
 ## Raw
 
