@@ -850,3 +850,11 @@ red proof từng cái: "expired keys must be dropped" / "a Drive mirror failure 
 
 Proof: bridge **158 passed, 5 skipped, exit 0** · `import app.main` OK · tokenize `勉強` →
 `べんきょう` + `lookup("勉強")` true · `git diff --check` sạch.
+
+## [2026-10-23] ingest | C-21 — test suite không còn ghi vào errors.log thật
+
+`5e185d16f`: thêm fixture autouse `_isolated_errors_log` trong `local-bridge/tests/conftest.py`
+trỏ `logging_utils._ERRORS_LOG` sang tmp của từng test. Trước: mỗi lần chạy pytest là append
+message fixture vào `local-bridge/errors.log` (audit đếm 924 dòng, phần lớn lặp). Sau: file giữ
+nguyên **924 dòng trước và sau** khi chạy suite 158 passed. File cũ **không xoá** — đó là runtime
+data local, không tự ý xoá.
