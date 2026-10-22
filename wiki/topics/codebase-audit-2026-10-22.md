@@ -22,6 +22,9 @@ Raw review đã file và **không sửa** (§4).
 | B-2 self-check chết (3 file test không được pytest collect) | **đã sửa** | `cf58aaefa` |
 | A-3 iPhone không bundle `user_script.js` | **hạ P0 → P2: là thiết kế, không phải bug** | — |
 | B-15, B-16 sanity scripts không chạy trong CI | **đã sửa** (job `sanity-scripts`, skip ≠ pass) | `c90f3a082` |
+| B-22 `/asr/transcribe` buffer cả body trước khi check 50 MB | **đã sửa** (đọc theo chunk, cap tại chỗ) | `ad20ed44e` |
+| B-23 `_get_mazii_details()` 1 SQL mỗi kanji | **đã sửa** (1 query `IN (...)`) | `a8b0f7c31` |
+| B-24 `/saved/sync` tới 5000 transaction | **đã sửa** (1 `executemany`) | `a8b0f7c31` |
 
 ## Raw
 

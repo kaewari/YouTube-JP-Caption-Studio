@@ -785,3 +785,22 @@ nếu không sửa thì một lỗi helper có thể làm hỏng cả Drive sync
 Proof: `scripts/run_sanity_suite.sh` → **21 passed, 6 skipped, 0 failed**, exit 0 ·
 `scripts/sentence_script_store_sanity.py` exit 0 (trước đó fail) · 15/15 extension suite exit 0 ·
 anti-fake gate exit 0.
+
+## [2026-10-22] ingest | B-22/B-23/B-24 — biên nhận payload, N+1 query, 5000 transaction
+
+Ba finding hiệu năng/robustness của bridge **đã sửa**:
+
+- **B-22** `ad20ed44e` — `/asr/transcribe` đọc cả body rồi mới so 50 MB. Giờ đọc theo chunk
+  1 MB, chặn ngay khi vượt hạn mức; request có `Content-Length` khai báo vượt hạn bị từ chối
+  **không đọc byte nào**. Multipart cũng đọc theo chunk thay vì `await file.read()`.
+- **B-23** `a8b0f7c31` — `_get_mazii_details()` chạy 1 SELECT cho **mỗi** kanji (137 statement
+  cho từ dài). Gom thành 1 query `WHERE kanji IN (...)`; giữ nguyên thứ tự chữ và bỏ qua chữ
+  không có dòng.
+- **B-24** `a8b0f7c31` — `/saved/sync` gọi `upsert_item()` từng item: mỗi item 1 transaction +
+  1 SELECT đọc lại → 5000 commit cho 1 page 5000 item. Giờ là 1 `executemany` trong 1
+  transaction; `_upsert_params()` tách phần chuẩn hoá; `upsert_batch()` (không có caller) đã xoá.
+  Vẫn giữ guard Last-Write-Wins `WHERE excluded.updated_at >= saved_items.updated_at`.
+
+Proof: bridge suite **155 passed, 5 skipped, exit 0** · red proof B-23: 2 statement
+`SELECT ... WHERE kanji =` thay vì 1 · red proof B-24: *"200 commits for 200 items"* · test mới
+đếm statement qua `sqlite3.set_trace_callback`, không đọc source.
