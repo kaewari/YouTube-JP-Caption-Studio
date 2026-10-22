@@ -745,3 +745,20 @@ Proof: `scripts/swift_store_smoke.sh ipad-app` + `iphone-app` exit 0 (`[BackupSm
 red proof (bỏ `merge: true`) fail với *"a cue absent from the snapshot is not deleted by a merge"*,
 exit 133 · build Debug + Release cho iPad/iPhone đều `** BUILD SUCCEEDED **` exit 0 ·
 bridge `145 passed, 5 skipped, exit 0` · 15/15 extension suite exit 0 · anti-fake gate exit 0.
+
+## [2026-10-22] ingest | B-5 — wipe tombstone thay vì hard-delete
+
+`review/codebase-audit-2026-10-22.md` B-5 **đã sửa** ở `9248d8388`. `ScriptCue.wipeAll()` xoá
+cứng row `VideoScript` → Drive không biết → lần pull sau hồi sinh đúng script user vừa xoá.
+Giờ wipe đặt tombstone (`isDeleted`) cho mọi cue + đánh dấu dirty; nhánh sync đã có sẵn case
+"mọi cue dirty đều là tombstone → merge không còn dòng nào → đẩy script rỗng" nên không cần
+code Drive mới. Script cache YouTube (unowned) không đánh dấu dirty — trên Drive không có gì
+của user để xoá.
+
+Thêm `ScriptStoreSmoke` (rows còn, mọi cue tombstone, không còn cue sống, script không bị
+xoá, cue ids dirty) và chạy nó từ `App.swift` cùng các smoke DEBUG khác. `BackupSmoke.run()`
+trước đây **không có call site** → giờ chạy ở `App.swift`; `scripts/swift_store_smoke.sh` chạy
+cả hai headless trên macOS.
+
+Proof: `scripts/swift_store_smoke.sh ipad-app` + `iphone-app` exit 0 · red proof (bản wipe cũ)
+fail *"wipe keeps the rows"* exit 133 · build Debug + Release iPad/iPhone đều BUILD SUCCEEDED.
