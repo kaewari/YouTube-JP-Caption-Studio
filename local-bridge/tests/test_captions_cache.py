@@ -22,3 +22,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def test_selfcheck() -> None:
+    """pytest entry point. The body above only ran when this file was executed as a
+    script, so the suite reported "0 tests collected" and nothing ever ran it."""
+    main()
