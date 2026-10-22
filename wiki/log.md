@@ -708,3 +708,15 @@ Round-1 commits: `7788db731` B-21, `775d275ae` A-4, `561472851` A-6/A-7,
 
 Gates: bridge `145 passed, 5 skipped, exit 0` · 15/15 extension suites exit 0 ·
 anti-fake gate exit 0 · wiki lint exit 0.
+
+## [2026-10-22] ingest | A-2 — iPad vocab file đọc được từ extension
+
+`review/codebase-audit-2026-10-22.md` A-2 (iOS ghi `caption-studio-vocab.json`, không ai đọc)
+**đã sửa** ở `cc01eb0ad`. `pullDriveIfNewer` giờ tra file theo tên trong folder sync rồi merge
+cộng thêm vào `userVocab` (`mergeIosVocab`): từ đã có trên PC giữ status, từ lạ vào `learning`,
+entry rỗng bỏ qua, không ghi đè/không xoá. Ponytail ceiling: additive-only, chưa có LWW theo
+từng từ vì wire shape chưa mang `updatedAt` mỗi entry. File phụ là best-effort — thiếu file thì
+`{ skipped: "absent" }`, lỗi Drive bị nuốt để không làm hỏng cả lần pull.
+
+Gates: 15/15 extension suite exit 0 (có block `mergeIosVocab` mới, red → green trên worker
+pre-fix) · anti-fake gate exit 0 · `verify_extension_popup.js` exit 0 · wiki lint exit 0.

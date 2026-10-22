@@ -10,13 +10,14 @@ Raw review đã file và **không sửa** (§4).
 | Finding | Trạng thái | Commit |
 |---|---|---|
 | A-1 vocab `meaning`/`status` + merge khi upload Drive | **đã sửa** | `f669bcd9c` |
+| A-2 đọc `caption-studio-vocab.json` (iPad → extension) | **đã sửa** | `cc01eb0ad` |
 | A-4 capability gate nhận message thiếu token | **đã sửa** | `775d275ae` |
 | A-6 test giả `test_bugfixes_qa.js` | **đã sửa** (giữ phần live-Chrome thật) | `561472851` |
 | A-7 anti-fake gate false negative | **đã sửa** (bắt thêm 1 test giả nữa) | `561472851` |
 | A-8 tài liệu overlay/pill | **đã sửa**, hạ P0 → P2 | `28b59d1e4` |
 | B-21 `write_files` không validate `cues.json` | **đã sửa** | `7788db731` |
 | A-3 iPhone không bundle `user_script.js` | **hạ P0 → P2: là thiết kế, không phải bug** | — |
-| A-2, A-5, B-1, B-2, B-10, B-14, B-15, B-16 | **còn mở** | — |
+| B-15, B-16 | **còn mở** | — |
 
 ## Raw
 
@@ -145,7 +146,6 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 6. **B-4** — `BackupService` merge thay vì wipe-all.
 7. **B-21** — validate `cues.json` vô điều kiện (1 khối code).
 8. **A-8** — sửa 3 dòng doc sai.
-9. **A-2** — extension đọc `caption-studio-vocab.json`.
 
 Sau đó: B-1 (segfault) · B-2 (self-check chết) · B-15/B-16 (CI) · **C-1** (gộp Swift, xoá ~4 000 LOC
 trùng) · C-2..C-5 (1 nguồn sự thật) · push 31 commit đang chờ trên `origin/master`.
