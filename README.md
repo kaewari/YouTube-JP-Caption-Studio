@@ -86,7 +86,15 @@ curl -s http://127.0.0.1:8765/health
 ```
 *Wait a few minutes until `models_loaded.sudachi` and dictionary flags turn `true`.*
 
-**4. Install Chrome Extension**
+**4. Build the Saved Items popup (first time / after changing `web/saved-items`)**
+```bash
+cd web/saved-items && npm ci && npm run build:extension
+```
+The popup chunks are committed, so a fresh clone already works — run this after pulling
+changes to `web/saved-items/` and commit the regenerated `extension/popup/`.
+`node scripts/verify_extension_popup.js` fails if the popup and its assets ever disagree.
+
+**5. Install Chrome Extension**
 1. Open Chrome and go to `chrome://extensions`.
 2. Enable **Developer mode** (top right corner).
 3. Click **Load unpacked** and select the `extension/` folder in this project.

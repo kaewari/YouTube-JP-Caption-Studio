@@ -85,8 +85,11 @@ scripts/*/
 web/saved-items/out/
 web/saved-items/.next/
 
-# Extension popup build output (built via `npm run build:extension` in web/saved-items/, copied — never commit)
-extension/popup/_next/
+# Extension popup build output. COMMITTED on purpose: extension/popup/index.html is a
+# tracked file that references these chunks, and the toolbar icon opens it directly, so
+# ignoring them made a fresh clone render a blank Saved Items page with no error
+# anywhere. Regenerate with `cd web/saved-items && npm run build:extension` and commit
+# the result; scripts/verify_extension_popup.js (run in CI) fails if they drift apart.
 
 # Temporary scripts and agent output
 patch_*.py

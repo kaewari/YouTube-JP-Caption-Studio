@@ -122,6 +122,33 @@ jobs:
       - name: Run the anti-fake test gate
         run: node scripts/verify_no_fake_tests.js
 
+  extension-popup:
+    name: extension-popup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web/saved-items
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/saved-items/package-lock.json
+      - run: npm ci
+      # extension/popup/ is the generated popup the toolbar icon opens. Rebuild it and
+      # compare against what is committed: a stale or incomplete export renders a blank
+      # Saved Items page, and nothing else in CI looks at it.
+      - name: Rebuild the Saved Items popup
+        run: npm run build:extension
+      - name: Every asset the popup references must exist
+        working-directory: .
+        run: node scripts/verify_extension_popup.js
+      # Deliberately NOT a byte comparison against the committed popup: `next build`
+      # embeds a per-build id, so two builds of identical source differ in the HTML and
+      # the __next.*.txt payloads (verified). Comparing them would be a flaky gate.
+
   saved-items-check:
     name: saved-items-check
     runs-on: ubuntu-latest
