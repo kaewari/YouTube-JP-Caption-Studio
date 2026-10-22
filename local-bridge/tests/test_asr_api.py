@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import numpy as np
 import pytest
 import soundfile as sf
@@ -127,6 +128,17 @@ def test_asr_transcribe_invalid_bytes_rejected():
     assert response.status_code == 400
 
 
+
+# Loading a real MLX model in-process crashes the interpreter on exit (native
+# MLX/Metal static destructor, order-dependent — 2026-10-22 audit B-1). These
+# tests exercise the real transcription path, so they are opt-in: without the
+# flag a plain `pytest -q tests/` used to exit 139 after reporting "passed".
+_real_mlx = pytest.mark.skipif(
+    os.environ.get("JP_RUN_MLX_TESTS") != "1",
+    reason="loads a real MLX model; set JP_RUN_MLX_TESTS=1 to run",
+)
+
+@_real_mlx
 def test_asr_transcribe_raw_body_wav():
     """POST /asr/transcribe with raw body WAV should transcribe successfully."""
     pytest.importorskip("mlx_whisper")
@@ -147,6 +159,7 @@ def test_asr_transcribe_raw_body_wav():
     assert data["model"] == DEFAULT_MODEL_NAME
 
 
+@_real_mlx
 def test_asr_transcribe_multipart_upload():
     """POST /asr/transcribe with multipart/form-data upload."""
     pytest.importorskip("mlx_whisper")
@@ -169,6 +182,7 @@ def test_asr_transcribe_duration_too_short():
     assert "too short" in response.json()["detail"]
 
 
+@_real_mlx
 def test_asr_transcribe_fp16_parameter():
     """POST /asr/transcribe should accept fp16 query parameter."""
     pytest.importorskip("mlx_whisper")

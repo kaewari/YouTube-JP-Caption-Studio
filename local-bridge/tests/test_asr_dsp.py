@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import json
 import sys
 import types
@@ -128,6 +129,17 @@ def test_decode_audio_bytes_preprocess_toggle():
 # -------------------------------------------------------------------------
 
 
+
+# Loading a real MLX model in-process crashes the interpreter on exit (native
+# MLX/Metal static destructor, order-dependent — 2026-10-22 audit B-1). These
+# tests exercise the real transcription path, so they are opt-in: without the
+# flag a plain `pytest -q tests/` used to exit 139 after reporting "passed".
+_real_mlx = pytest.mark.skipif(
+    os.environ.get("JP_RUN_MLX_TESTS") != "1",
+    reason="loads a real MLX model; set JP_RUN_MLX_TESTS=1 to run",
+)
+
+@_real_mlx
 def test_transcribe_audio_parameters():
     """transcribe_audio should accept all Tier 2 parameters without error."""
     pytest.importorskip("mlx_whisper")
@@ -145,6 +157,7 @@ def test_transcribe_audio_parameters():
     assert res["durationSec"] == 1.0
 
 
+@_real_mlx
 def test_asr_api_transcribe_with_tuning_params():
     """POST /asr/transcribe should accept query parameters for DSP and decoding."""
     pytest.importorskip("mlx_whisper")
