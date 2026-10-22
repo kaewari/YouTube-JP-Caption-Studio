@@ -104,12 +104,8 @@ def tokenize(text: str) -> list[Token]:
         start = m.begin()
         end = m.end()
         lemma = m.dictionary_form() or surface
-        reading = ""
-        if _KANJI_RE.search(surface):
-            reading = kata_to_hira(m.reading_form() or "")
-        else:
-            # Kana reading for phonetics
-            reading = kata_to_hira(m.reading_form() or "")
+        # Kanji and kana both need the phonetic reading (kata → hira).
+        reading = kata_to_hira(m.reading_form() or "")
         pos = _pos_label(m)
         rank = rank_of(lemma, surface, reading)
         tokens.append(

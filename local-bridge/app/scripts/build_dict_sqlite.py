@@ -248,8 +248,9 @@ def build_sqlite() -> None:
             ]
             cur.executemany("INSERT OR REPLACE INTO mazii (expression, reading, pos, glosses, examples) VALUES (?, ?, ?, ?, ?)", m_rows)
             conn.commit()
+            m_count = len(m_rows)
             del merged, m_rows
-            logger.info("Mazii table inserted (%d expressions).", len(m_rows) if 'm_rows' in locals() else 0)
+            logger.info("Mazii table inserted (%d expressions).", m_count)
 
             # mazii_examples
             cur.execute("""
