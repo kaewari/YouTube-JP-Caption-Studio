@@ -150,6 +150,8 @@ struct ContentView: View {
         .task {
             #if DEBUG
             runAutotestIfRequested()
+            // Opt-in store self-test (assert-based): -CS_AUTOTEST_BACKUP
+            if CommandLine.arguments.contains("-CS_AUTOTEST_BACKUP") { await BackupSmoke.run() }
             #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
@@ -1063,7 +1065,8 @@ struct ContentView: View {
 
     private func clearTranslations() {
         ScriptCue.clearTranslations(videoId: videoID, context: modelContext)
-        currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
+        // Tombstoned cues stay hidden — the iPhone copy already filtered them.
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
         statusMessage = "Đã xóa EN/VI"
     }
 

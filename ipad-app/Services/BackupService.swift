@@ -169,7 +169,7 @@ final class BackupService: ObservableObject {
             let snap = try decodeSnapshot(data)
             guard let remote = snap.updatedAt else { return false }
             if let last = lastAppliedUpdatedAt, remote <= last { return false }
-            try apply(snap, to: context)
+            try apply(snap, to: context, merge: true)
             rememberApplied(remote)
             dirty = false
             status = "Đã sync \(snap.scripts.count) script · \(snap.vocab.count) từ (Drive mới hơn)"
@@ -236,6 +236,11 @@ final class BackupService: ObservableObject {
     func encodeSnapshot(context: ModelContext) throws -> Snapshot {
         let scripts = try context.fetch(FetchDescriptor<VideoScript>())
         let vocab = try context.fetch(FetchDescriptor<Vocabulary>())
+        // `script.cues` can be empty after `cue.video =` inserts even though the rows exist
+        // (see `ScriptCue.load`). Group the cue table so a snapshot never ships a script
+        // without its cues — that empty script was what let a restore delete real subtitles.
+        let allCues = try context.fetch(FetchDescriptor<ScriptCue>())
+        let cuesByVideo = Dictionary(grouping: allCues, by: { $0.video?.videoId ?? "" })
         return Snapshot(
             updatedAt: Date(),
             scripts: scripts.map { s in
@@ -245,7 +250,7 @@ final class BackupService: ObservableObject {
                     owned: s.owned,
                     rev: s.rev,
                     deviceId: s.deviceId,
-                    cues: (s.cues).map { c in
+                    cues: (cuesByVideo[s.videoId] ?? []).map { c in
                         CueDTO(
                             id: c.id,
                             startTime: c.startTime,
@@ -291,27 +296,53 @@ final class BackupService: ObservableObject {
         return derivedDuration(cues: sorted, index: index)
     }
 
-    fileprivate func apply(_ snap: Snapshot, to context: ModelContext) throws {
-        let localIds = (try context.fetch(FetchDescriptor<VideoScript>())).map(\.videoId)
-        for s in (try context.fetch(FetchDescriptor<VideoScript>())) { context.delete(s) }
-        for v in (try context.fetch(FetchDescriptor<Vocabulary>())) { context.delete(v) }
+    /// `merge` upserts instead of replacing: rows the snapshot does not carry survive, and
+    /// cues match by id so a local-only cue is never dropped. The background Drive pull uses
+    /// it — a pull the user never confirmed must not delete their work.
+    fileprivate func apply(_ snap: Snapshot, to context: ModelContext, merge: Bool = false) throws {
+        let localScripts = try context.fetch(FetchDescriptor<VideoScript>())
+        let localIds = localScripts.map(\.videoId)
+        let scriptByVideoId = Dictionary(localScripts.map { ($0.videoId, $0) }, uniquingKeysWith: { a, _ in a })
+        let cueById = Dictionary(
+            (try context.fetch(FetchDescriptor<ScriptCue>())).map { ($0.id, $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let localWords = Set((try context.fetch(FetchDescriptor<Vocabulary>())).map(\.word))
+        if !merge {
+            for s in localScripts { context.delete(s) }
+            for v in (try context.fetch(FetchDescriptor<Vocabulary>())) { context.delete(v) }
+        }
         // Single save at the end: a mid-insert failure must not permanently wipe
         // the existing data (wipe and insert are one transaction on the next save).
 
         do {
             for sd in snap.scripts {
-                let script = VideoScript(videoId: sd.videoId, title: sd.title, owned: sd.owned)
+                let script: VideoScript
+                if merge, let keep = scriptByVideoId[sd.videoId] {
+                    script = keep
+                } else {
+                    script = VideoScript(videoId: sd.videoId, title: sd.title, owned: sd.owned)
+                    context.insert(script)
+                }
+                script.title = sd.title
+                script.owned = sd.owned
                 // Restore Lamport state — otherwise rev resets to 0 and Drive sync
                 // re-pulls (and may overwrite) the just-restored local copy.
-                script.rev = sd.rev ?? 0
-                script.deviceId = sd.deviceId ?? ""
-                context.insert(script)
+                script.rev = sd.rev ?? script.rev
+                script.deviceId = sd.deviceId ?? script.deviceId
                 let ordered = sd.cues.sorted { $0.startTime < $1.startTime }
                 for (i, cd) in ordered.enumerated() {
+                    let duration = Self.resolvedDuration(cues: ordered, index: i)
+                    if merge, let fetched = cueById[cd.id] {
+                        // Replace the row instead of editing it in place: the script's
+                        // relationship keeps a stale copy of an in-place edit, so a pulled
+                        // tombstone would never reach the UI.
+                        context.delete(fetched)
+                    }
                     let cue = ScriptCue(
                         id: cd.id,
                         startTime: cd.startTime,
-                        duration: Self.resolvedDuration(cues: ordered, index: i),
+                        duration: duration,
                         textJA: cd.textJA,
                         textEN: cd.textEN,
                         textVI: cd.textVI,
@@ -322,6 +353,7 @@ final class BackupService: ObservableObject {
                 }
             }
             for vd in snap.vocab {
+                if merge, localWords.contains(vd.word) { continue }
                 let v = Vocabulary(
                     word: vd.word,
                     reading: vd.reading,
@@ -537,6 +569,41 @@ enum BackupSmoke {
         assert(applyThrew, "duplicate videoId must fail the apply")
         assert(ScriptCue.load(videoId: "smoke-dur", context: targetCtx).count == 1,
                "failed apply rolls back — old rows survive")
+
+        // B-4: the background Drive pull merges. A cue the snapshot never carried must
+        // survive, a snapshot cue is upserted, and a snapshot tombstone still applies.
+        let pulled = BackupService.Snapshot(
+            updatedAt: at,
+            scripts: [.init(
+                videoId: "smoke-dur", title: "t2", owned: true, rev: 7, deviceId: "d2",
+                cues: [
+                    .init(id: "c1", startTime: 0, duration: 1234, textJA: "あ",
+                          textEN: nil, textVI: "a", isDeleted: true),
+                    .init(id: "c2", startTime: 3, duration: 900, textJA: "い",
+                          textEN: nil, textVI: nil, isDeleted: false),
+                ]
+            )],
+            vocab: []
+        )
+        try! BackupService.shared.apply(pulled, to: targetCtx, merge: true)
+        let mergedCues = ScriptCue.load(videoId: "smoke-dur", context: targetCtx)
+        assert(mergedCues.count == 2, "merge upserts the pulled cue and keeps the local one")
+        assert(mergedCues.first(where: { $0.id == "c1" })?.isDeleted == true,
+               "a tombstone from the snapshot still applies on merge")
+        assert(mergedCues.first(where: { $0.id == "c2" })?.duration == 900, "pulled cue inserted")
+        let mergedScript = try! targetCtx.fetch(FetchDescriptor<VideoScript>()).first
+        assert(mergedScript?.rev == 7 && mergedScript?.deviceId == "d2",
+               "merge takes the snapshot Lamport state")
+        assert(mergedScript?.title == "t2", "merge takes the snapshot title")
+
+        // A merge must not resurrect a script that only the snapshot drops: local rows stay.
+        let localOnly = ScriptCue(id: "c-local", startTime: 9, duration: 400, textJA: "う")
+        localOnly.video = mergedScript
+        targetCtx.insert(localOnly)
+        try! targetCtx.save()
+        try! BackupService.shared.apply(pulled, to: targetCtx, merge: true)
+        assert(ScriptCue.load(videoId: "smoke-dur", context: targetCtx).count == 3,
+               "a cue absent from the snapshot is not deleted by a merge")
 
         // Walk-up: …/YouTube JP Caption Studio/EiISOvl2_tQ/cues.json → sync root (not videoId).
         let tmp = FileManager.default.temporaryDirectory
