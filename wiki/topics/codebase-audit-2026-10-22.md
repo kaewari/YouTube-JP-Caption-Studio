@@ -32,6 +32,8 @@ Raw review đã file và **không sửa** (§4).
 | C-18 `ttMiss:<videoId>` key tích tụ trong session storage | **đã sửa** (prune key hết hạn) | `47d10eef4` |
 | C-19 Drive mirror lỗi chỉ `console.warn` | **đã sửa** (`logDriveFailure` → `POST /log`) | `47d10eef4` |
 | C-20 ASR dispatch không timeout, backstop timer không clear | **đã sửa** (60s + clear) | `47d10eef4` |
+| C-27 4 hàm bridge không ai gọi (+ 1 hằng chỉ phục vụ chúng) | **đã sửa** (xoá) | `2415162e4` |
+| C-33 6 import bridge không dùng | **đã sửa** (xoá) | `2415162e4` |
 
 ## Raw
 

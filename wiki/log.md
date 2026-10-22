@@ -838,3 +838,15 @@ suite thêm test 4 (AbortSignal + backstop cleared). Sandbox test phải thêm `
 Proof: 15/15 extension suite exit 0 · anti-fake gate 0 · sanity suite 21 passed / 6 skipped / 0 failed ·
 red proof từng cái: "expired keys must be dropped" / "a Drive mirror failure must POST /log" /
 "the ASR call must carry an AbortSignal".
+
+## [2026-10-23] ingest | C-27/C-33 — xoá hàm chết + import thừa của bridge
+
+- **C-27** `2415162e4` — `iter_morphemes()`, `furigana_line()`, `has_entry()`, `is_skip_pos()`
+  không có caller nào trong `app/` lẫn `tests/` (kiểm bằng parse AST toàn bộ module rồi đếm tham
+  chiếu). `_SKIP_POS_PREFIXES` chỉ phục vụ `is_skip_pos()` nên xoá luôn. Route handler FastAPI
+  cùng bị scan báo thì **giữ** — chúng được decorator tham chiếu.
+- **C-33** `2415162e4` — bỏ `SegmentCueIn`, `Annotated`, `StringConstraints`, `sys`, `uuid`,
+  `Tuple`: mỗi cái xuất hiện đúng 1 lần trên dòng import của nó.
+
+Proof: bridge **158 passed, 5 skipped, exit 0** · `import app.main` OK · tokenize `勉強` →
+`べんきょう` + `lookup("勉強")` true · `git diff --check` sạch.
