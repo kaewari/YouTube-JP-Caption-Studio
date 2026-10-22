@@ -16,6 +16,9 @@ Raw review đã file và **không sửa** (§4).
 | A-7 anti-fake gate false negative | **đã sửa** (bắt thêm 1 test giả nữa) | `561472851` |
 | A-8 tài liệu overlay/pill | **đã sửa**, hạ P0 → P2 | `28b59d1e4` |
 | B-21 `write_files` không validate `cues.json` | **đã sửa** | `7788db731` |
+| B-4 `BackupService.apply()` xoá sạch library khi pull Drive | **đã sửa** (merge theo videoId/cue id) | `c6f6097da` |
+| B-6 iPad `clearTranslations()` không filter tombstone | **đã sửa** | `c6f6097da` |
+| B-2 self-check chết (3 file test không được pytest collect) | **đã sửa** | `cf58aaefa` |
 | A-3 iPhone không bundle `user_script.js` | **hạ P0 → P2: là thiết kế, không phải bug** | — |
 | B-15, B-16 | **còn mở** | — |
 

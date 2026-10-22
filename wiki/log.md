@@ -720,3 +720,28 @@ từng từ vì wire shape chưa mang `updatedAt` mỗi entry. File phụ là be
 
 Gates: 15/15 extension suite exit 0 (có block `mergeIosVocab` mới, red → green trên worker
 pre-fix) · anti-fake gate exit 0 · `verify_extension_popup.js` exit 0 · wiki lint exit 0.
+
+## [2026-10-22] ingest | B-4 + B-6 — pull Drive merge thay vì xoá sạch library
+
+`review/codebase-audit-2026-10-22.md` B-4/B-6 **đã sửa** ở `c6f6097da`.
+
+B-4: `BackupService.apply()` xoá toàn bộ `VideoScript`/`Vocabulary` rồi insert lại; nhánh
+`syncFromDriveIfNewer` (auto-pull foreground, không cần user xác nhận) gọi chính hàm đó →
+mất phụ đề đã chỉnh trên iPad mỗi lần pull. Thêm `apply(_:to:merge:)`: pull merge theo
+`videoId`/`cue id`, giữ row mà snapshot không mang; `Restore` thủ công vẫn giữ semantics thay
+thế. `encodeSnapshot` gom từ bảng cue thay vì tin relationship `script.cues` (chính codebase
+ghi relationship này có thể rỗng) → snapshot không còn mang script rỗng cue.
+
+Ponytail ceiling: cue bị pull thay bằng row mới thay vì sửa tại chỗ — sửa tại chỗ thì
+relationship giữ bản sao cũ và tombstone không tới được UI (chính self-test bắt được lỗi này).
+
+B-6: iPad `clearTranslations()` nạp lại cả cue đã tombstone; iPhone đã filter. Đã đồng bộ 1 dòng.
+
+Thêm `scripts/swift_store_smoke.sh` — `BackupSmoke.run()` trước đây **không có call site**
+nên không bao giờ chạy; giờ chạy headless trên macOS (compile cùng source, chỉ bỏ UI picker
+iOS-only). Kèm launch arg `-CS_AUTOTEST_BACKUP` cho cả 2 app.
+
+Proof: `scripts/swift_store_smoke.sh ipad-app` + `iphone-app` exit 0 (`[BackupSmoke] ok`) ·
+red proof (bỏ `merge: true`) fail với *"a cue absent from the snapshot is not deleted by a merge"*,
+exit 133 · build Debug + Release cho iPad/iPhone đều `** BUILD SUCCEEDED **` exit 0 ·
+bridge `145 passed, 5 skipped, exit 0` · 15/15 extension suite exit 0 · anti-fake gate exit 0.
