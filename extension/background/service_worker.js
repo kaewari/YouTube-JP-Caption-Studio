@@ -1341,6 +1341,10 @@ function dataUrlToBlob(dataUrl) {
 
 // --- Drive sync: vocab in caption-studio-backup.json, scripts as <videoId>/ folders ---
 const DRIVE_BACKUP_NAME = "caption-studio-backup.json";
+
+if (globalThis.__JP_CAP_SW_TEST__) {
+  globalThis.__JP_CAP_SW_TEST__.sw = { mergeVocabSnapshot };
+}
 const DRIVE_SETTINGS_NAME = "caption-studio-settings.json";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -2209,6 +2213,44 @@ async function uploadDriveNow() {
   return res;
 }
 
+/**
+ * Vocab merge for the Drive upload.
+ *
+ * The bridge knows only {word -> status}. Uploading its snapshot verbatim used to
+ * wipe the iPad's gloss/reading/JLPT/frequency (the bridge has no such fields) and
+ * drop every word that exists only on the iPad. Keep what the incoming entry does
+ * not own, and keep iPad-only words.
+ */
+function mergeVocabSnapshot(remoteVocab, incomingVocab) {
+  const remote = Array.isArray(remoteVocab) ? remoteVocab : [];
+  const incoming = Array.isArray(incomingVocab) ? incomingVocab : [];
+  const byWord = new Map();
+  for (const v of remote) {
+    if (v && typeof v === "object" && v.word) byWord.set(String(v.word), v);
+  }
+  const out = [];
+  const seen = new Set();
+  for (const inc of incoming) {
+    if (!inc || typeof inc !== "object" || !inc.word) continue;
+    const word = String(inc.word);
+    const prev = byWord.get(word) || {};
+    seen.add(word);
+    out.push({
+      ...prev,
+      ...inc,
+      reading: inc.reading || prev.reading || "",
+      meaning: inc.meaning || prev.meaning || "",
+      jlptLevel: inc.jlptLevel ?? prev.jlptLevel ?? null,
+      frequencyCount: inc.frequencyCount || prev.frequencyCount || 0,
+      status: inc.status || prev.status || "",
+    });
+  }
+  for (const [word, prev] of byWord) {
+    if (!seen.has(word)) out.push(prev);
+  }
+  return out;
+}
+
 async function uploadDriveFromBridge() {
   if (_driveBusy) {
     setTimeout(() => void uploadDriveFromBridge(), 800);
@@ -2229,6 +2271,23 @@ async function uploadDriveFromBridge() {
     }
     const snap = await res.json();
     if (!snap || typeof snap !== "object") throw new Error("bridge snapshot invalid");
+    // Merge with what Drive already holds: the bridge knows statuses only, and a
+    // blind replace wiped the iPad's glosses and iPad-only words. Refuse to upload
+    // when the remote copy cannot be read — an unmergeable write loses data.
+    let remote = null;
+    try {
+      remote = await downloadDriveSnapshot(fileId, false);
+    } catch (_) {
+      return { ok: true, skipped: "remote_unreadable" };
+    }
+    if (remote && typeof remote === "object") {
+      snap.vocab = mergeVocabSnapshot(remote.vocab, snap.vocab);
+      // Scripts travel as folders; a bridge snapshot carries an empty array and
+      // must not blank the iPad's script list.
+      if (Array.isArray(remote.scripts) && !(Array.isArray(snap.scripts) && snap.scripts.length)) {
+        snap.scripts = remote.scripts;
+      }
+    }
     // Stamp write time if bridge omitted updatedAt.
     if (!snap.updatedAt) snap.updatedAt = new Date().toISOString();
     await uploadDriveSnapshot(fileId, snap, false);

@@ -18,7 +18,12 @@ def _utc_now_iso() -> str:
 
 
 def _vocab_from_ext(user_vocab: dict[str, Any] | None, *, saved_at: str) -> list[dict[str, Any]]:
-    """Best-effort: extension_state userVocab {word: status} → Snapshot vocab[]."""
+    """extension_state userVocab {word: status} → Snapshot vocab[].
+
+    `status` carries the vocabulary state and `meaning` carries the gloss. The
+    bridge knows no gloss, so `meaning` stays empty: putting the status there made
+    the extension's whole-file upload overwrite the iPad's glosses.
+    """
     out: list[dict[str, Any]] = []
     if not isinstance(user_vocab, dict):
         return out
@@ -31,7 +36,8 @@ def _vocab_from_ext(user_vocab: dict[str, Any] | None, *, saved_at: str) -> list
             {
                 "word": w,
                 "reading": "",
-                "meaning": st if st in _VOCAB_STATUS else "",
+                "meaning": "",
+                "status": st if st in _VOCAB_STATUS else "",
                 "jlptLevel": None,
                 "frequencyCount": 0,
                 "savedAt": saved_at,
@@ -41,7 +47,12 @@ def _vocab_from_ext(user_vocab: dict[str, Any] | None, *, saved_at: str) -> list
 
 
 def _vocab_to_ext(vocab: list[Any] | None) -> dict[str, str]:
-    """Best-effort: Snapshot vocab[] → userVocab {word: status}."""
+    """Snapshot vocab[] → userVocab {word: status}.
+
+    Reads `status` first. Snapshots written before the split stored the status in
+    `meaning`, so a legacy status word there is still honoured; any other `meaning`
+    is a gloss (iOS writes Vietnamese glosses there) and is NOT a status.
+    """
     cleaned: dict[str, str] = {}
     for v in vocab or []:
         if not isinstance(v, dict):
@@ -49,8 +60,11 @@ def _vocab_to_ext(vocab: list[Any] | None) -> dict[str, str]:
         w = str(v.get("word") or "").strip()
         if not w:
             continue
-        meaning = str(v.get("meaning") or "").strip()
-        cleaned[w] = meaning if meaning in _VOCAB_STATUS else "learning"
+        status = str(v.get("status") or "").strip()
+        if status not in _VOCAB_STATUS:
+            legacy = str(v.get("meaning") or "").strip()
+            status = legacy if legacy in _VOCAB_STATUS else "learning"
+        cleaned[w] = status
     return cleaned
 
 

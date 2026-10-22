@@ -147,6 +147,9 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       }
     },
   };
+  // Test seam: the worker exports its pure helpers only when this flag is set.
+  const seam = {};
+  sandbox.__JP_CAP_SW_TEST__ = seam;
   sandbox.globalThis = sandbox;
   context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(SW_PATH, "utf8"), context, { filename: SW_PATH });
@@ -157,7 +160,8 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       listener(msg, sender, resolve);
     });
 
-  return { fetches, tabMessages, send, chromeStub, sessionStore, localStore, fireAlarm: (name) => alarmListener?.({ name }) };
+  return { fetches, tabMessages, send, chromeStub, sessionStore, localStore, seam,
+    fireAlarm: (name) => alarmListener?.({ name }) };
 }
 
 const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fmt=json3";
@@ -310,6 +314,55 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
       "a bridge failure must keep the video in the Drive mirror queue",
     );
     console.log("PASS: a failed bridge read keeps the video queued for the Drive mirror");
+  }
+
+  // mergeVocabSnapshot: a Drive upload from the bridge must not destroy iPad data.
+  {
+    const sw = loadServiceWorker({ route: () => makeResponse({ status: 404, body: "" }) });
+    const merge = sw.seam?.sw?.mergeVocabSnapshot;
+    assert.equal(typeof merge, "function", "the worker must expose mergeVocabSnapshot to the test seam");
+
+    // Drive already holds an iPad word with a gloss; the bridge only knows statuses.
+    const remote = [
+      { word: "猫", reading: "ねこ", meaning: "con mèo", jlptLevel: 5, frequencyCount: 812, status: "known", savedAt: "2026-10-01T00:00:00Z" },
+      { word: "犬", reading: "いぬ", meaning: "con chó", jlptLevel: 5, frequencyCount: 640, status: "", savedAt: "2026-10-01T00:00:00Z" },
+      { word: "鳥", reading: "とり", meaning: "con chim", jlptLevel: 4, frequencyCount: 500, status: "special", savedAt: "2026-10-01T00:00:00Z" },
+    ];
+    const incoming = [
+      { word: "猫", reading: "", meaning: "", status: "ignored", jlptLevel: null, frequencyCount: 0, savedAt: "2026-10-22T00:00:00Z" },
+      { word: "魚", reading: "", meaning: "", status: "learning", jlptLevel: null, frequencyCount: 0, savedAt: "2026-10-22T00:00:00Z" },
+    ];
+    const merged = merge(remote, incoming);
+    const by = Object.fromEntries(merged.map((v) => [v.word, v]));
+
+    assert.equal(by["猫"].status, "ignored", "the incoming status must win");
+    assert.equal(by["猫"].meaning, "con mèo", "the iPad gloss must survive the upload");
+    assert.equal(by["猫"].reading, "ねこ", "the iPad reading must survive");
+    assert.equal(by["猫"].jlptLevel, 5, "the iPad JLPT level must survive");
+    assert.equal(by["猫"].frequencyCount, 812, "the iPad frequency must survive");
+    assert.equal(by["猫"].savedAt, "2026-10-22T00:00:00Z", "the incoming timestamp must win");
+
+    assert.ok(by["犬"], "a word that exists only on the iPad must not be dropped");
+    assert.equal(by["犬"].meaning, "con chó");
+    assert.ok(by["鳥"], "an iPad-only word with a status must not be dropped");
+    assert.equal(by["鳥"].status, "special");
+
+    assert.equal(by["魚"].status, "learning", "a new desktop word must be added");
+    assert.equal(merged.length, 4, "three remote words plus one new word");
+
+    // Every input is preserved: a blind replace is what caused the data loss.
+    const aWords = merge([], incoming).map((v) => v.word).sort();
+    const bWords = ["猫", "魚"].sort();
+    assert.equal(JSON.stringify(aWords), JSON.stringify(bWords),
+      `an empty remote keeps every incoming word: ${JSON.stringify(aWords)} vs ${JSON.stringify(bWords)}`);
+    const cWords = merge(remote, []).map((v) => v.word).sort();
+    const dWords = ["猫", "犬", "鳥"].sort();
+    assert.equal(JSON.stringify(cWords), JSON.stringify(dWords),
+      `an empty incoming keeps every remote word: ${JSON.stringify(cWords)} vs ${JSON.stringify(dWords)}`);
+    // The merge runs inside the vm realm, so compare its arrays by value, not by prototype.
+    assert.equal(JSON.stringify(merge(undefined, undefined)), "[]", "missing arrays must not throw");
+
+    console.log("PASS: the Drive upload merges vocab instead of replacing it");
   }
 
   console.log("ALL SERVICE WORKER TESTS PASSED!");
