@@ -686,3 +686,25 @@ scripts outside CI).
 
 Gates after this round: `128 passed` bridge (ignoring the known segfault pair), 15/15
 extension suites exit 0, anti-fake gate exit 0, wiki lint exit 0.
+
+## [2026-10-22] cleanup | Remediation round 2: dead self-checks + the segfault
+
+- `cf58aaefa` **B-2** — `test_captions_cache.py`, `test_snapshot_roundtrip.py` and
+  `test_sqlite_parity.py` only had `main()` + `if __name__`, so pytest collected **0**
+  tests and no CI job ran them. Each now exposes `test_selfcheck()`. Caption-cache TTL,
+  the snapshot round-trip and SQLite dictionary parity had no coverage at all while
+  looking covered. Bridge suite 128 -> 131 passed.
+- `105141cc3` **B-1** — `pytest -q tests/` exited **139 (SIGSEGV)** after printing
+  "passed", 3/3 runs. Native crash in the MLX/Metal static destructors after
+  `Py_FinalizeEx`; needs a real `mlx_whisper` load **and** the scipy/ffmpeg DSP path in
+  one process (reversing file order made it vanish — the destructor-ordering signature).
+  The five real-model tests are now opt-in behind `JP_RUN_MLX_TESTS=1`:
+  default run **exit 0** (145 passed, 5 skipped); opt-in still 150 passed + exit 139.
+  This works around a crash inside MLX teardown, it does not fix MLX. CI was never
+  affected because `pytest.importorskip("mlx_whisper")` already skipped these on ubuntu.
+
+Round-1 commits: `7788db731` B-21, `775d275ae` A-4, `561472851` A-6/A-7,
+`28b59d1e4` A-8, `178a04bc4` A-1.
+
+Gates: bridge `145 passed, 5 skipped, exit 0` · 15/15 extension suites exit 0 ·
+anti-fake gate exit 0 · wiki lint exit 0.
