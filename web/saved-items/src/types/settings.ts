@@ -1,6 +1,7 @@
 /**
- * Matches extension popup `hardsubSettings` in chrome.storage.local
- * (`extension/popup/popup.js` DEFAULTS).
+ * Matches the extension `hardsubSettings` in chrome.storage.local. The defaults
+ * live in `DEFAULTS` in `extension/content/content.js` (the old
+ * `extension/popup/popup.js` was removed when the popup became this app).
  */
 import { DEFAULT_LEVEL_COLORS, type LevelColors } from "@/lib/level-colors";
 
