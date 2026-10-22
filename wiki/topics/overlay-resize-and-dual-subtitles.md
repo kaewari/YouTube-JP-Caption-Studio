@@ -9,7 +9,8 @@
 ## Raw Plan & Review
 
 - [plan/fix-overlay-resize-and-subtitles-2026-09-19.md](../../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
-- [review/code-review-2026-09-19.md](../../review/code-review-2026-09-19.md)
+- *(the filed `review/code-review-2026-09-19.md` was never committed — no review file exists for this
+  work; the raw plan above is the only artifact)*
 
 ## Root Causes & Shipped Solutions
 

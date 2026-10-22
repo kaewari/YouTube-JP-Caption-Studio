@@ -1,7 +1,7 @@
 # Topic: VI caption load fixes + Netflix parallel fetch
 
 **Status:** shipped (code done 2026-08-21, chờ test thật trên Netflix/YouTube)
-**Plan:** [plan/vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
+**Plan:** [plan/vietnamese-caption-fixes-2026-08-21.md](../../plan/vietnamese-caption-fixes-2026-08-21.md)
 **Code anchors:**
 
 - `extension/background/service_worker.js` → `matchLangFamily()`, `LANG_FAMILY_ALIASES`,

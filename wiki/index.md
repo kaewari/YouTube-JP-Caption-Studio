@@ -10,6 +10,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/code-taste-migration.md](topics/code-taste-migration.md) | Plan + native hooks installed; full IDE coverage **NOT VERIFIED** |
 | [log.md](log.md) | Append-only ingest / query / lint timeline |
 | [topics/repo-layout.md](topics/repo-layout.md) | Folder map + skill catalog + knowledge map §G — **xong** (flatten 2026-08-05) |
+| [topics/flatten-repo-layout.md](topics/flatten-repo-layout.md) | Flatten repo layout execution — **xong** (2026-08-05) |
 | [topics/p0-data-loss.md](topics/p0-data-loss.md) | Drive cue-merge + backup + extension rev guard — **done** (2026-08-05) |
 | [topics/local-bridge-audit.md](topics/local-bridge-audit.md) | Bridge audit 2026-08-06 — **5/10 fixed, LB-6 tracked in perf audit, 4/10 open** |
 | [topics/plans-completion.md](topics/plans-completion.md) | Inventory 17 plans — **product plans done / YAGNI cancelled** (2026-08-07) |
@@ -24,6 +25,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/youtube-sentence-enhancement-mvp.md](topics/youtube-sentence-enhancement-mvp.md) | YouTube sentence MVP — isolated real Chrome restore/Undo/reload/API PASS; main delivered; native activation/Gemini/Drive/full MVP open |
 | [topics/audio-listening-model.md](topics/audio-listening-model.md) | Audio Listening Model — gated M0-M3 implemented; waiting human auditory ground truth review |
 | [topics/p0-remediation-2026-10-20.md](topics/p0-remediation-2026-10-20.md) | P0 + P1 + P2 remediation of the 2026-10-18 full-codebase audit — **merged into `master`** (2fff75c48, all rows fixed + verified) |
+| [topics/codebase-audit-2026-10-22.md](topics/codebase-audit-2026-10-22.md) | New full-repo audit — **8 P0 / 24 P1 open, not remediated** (2026-10-22) |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
@@ -34,7 +36,8 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | gated M0-M3 implemented | [Audio listening model](topics/audio-listening-model.md) | [gated plan](../plan/audio-listening-model-2026-10-12.md) | [audio feasibility M0](../review/audio-access-feasibility-2026-10-12.md), [ASR benchmark M1/M2](../review/asr-benchmark-2026-10-12.md) |
 | active / legacy TXT deployed; isolated UI Undo reload fixed/main delivered; native activation/Drive/gold/Gemini/KPI open | [YouTube sentence enhancement MVP](topics/youtube-sentence-enhancement-mvp.md) | [latest revised plan](../plan/youtube-sentence-enhancement-mvp-2026-10-10.md), [prior filed plan](../plan/youtube-sentence-enhancement-mvp-2026-10-09.md), [execution decisions](../plan/youtube-sentence-mvp-execution-decisions-2026-10-09.md) | [source audit](../review/youtube-sentence-mvp-source-audit-2026-10-10.md), [queue/NLP/restore](../review/youtube-sentence-mvp-queue-nlp-backup-2026-10-10.md), [broker lifecycle](../review/youtube-sentence-mvp-broker-lifecycle-2026-10-10.md), [native cache identity](../review/youtube-sentence-mvp-native-cache-identity-2026-10-10.md), [source fingerprint](../review/youtube-sentence-mvp-source-fingerprint-2026-10-10.md), [runtime metrics](../review/youtube-sentence-mvp-runtime-metrics-2026-10-10.md), [selected track](../review/youtube-sentence-mvp-selected-track-2026-10-10.md), [script clock precision](../review/youtube-sentence-mvp-script-clock-precision-2026-10-10.md), [annotation candidates](../review/youtube-sentence-mvp-annotation-candidates-2026-10-10.md), [usage/cost](../review/youtube-sentence-mvp-cost-instrumentation-2026-10-10.md), [native metrics activation](../review/youtube-sentence-mvp-native-metrics-activation-2026-10-10.md), [metric clock](../review/youtube-sentence-mvp-metric-clock-2026-10-10.md), [TXT warning](../review/youtube-sentence-mvp-txt-export-warning-2026-10-10.md), [flags/native follow-up](../review/youtube-sentence-mvp-flags-native-followup-2026-10-10.md), [lifecycle](../review/youtube-sentence-mvp-lifecycle-instrumentation-2026-10-10.md), [native lifecycle](../review/youtube-sentence-mvp-native-lifecycle-2026-10-10.md), [bridge regression/runtime](../review/youtube-sentence-mvp-bridge-regression-runtime-2026-10-10.md), [native confirmation/source guard](../review/youtube-sentence-mvp-native-confirmation-source-guard-2026-10-10.md), [partial creator reference](../review/youtube-sentence-mvp-creator-reference-partial-2026-10-10.md), [Backrooms frame readiness/reference](../review/youtube-sentence-mvp-rra-reference-readiness-2026-10-10.md), [ordinal continuation](../review/youtube-sentence-mvp-ordinal-continuation-2026-10-10.md), [bilingual active-cue JLPT](../review/youtube-sentence-mvp-bilingual-active-cue-2026-10-10.md), [native latest reload/cost-clock](../review/youtube-sentence-mvp-native-latest-reload-cost-clock-2026-10-10.md), [semantic/runtime authority follow-up](../review/youtube-sentence-mvp-semantic-runtime-authority-2026-10-10.md), [live tokenizer recheck](../review/youtube-sentence-mvp-semantic-tokenizer-recheck-2026-10-10.md), [native bilingual package follow-up](../review/youtube-sentence-mvp-native-bilingual-package-followup-2026-10-10.md), [Enhanced default](../review/youtube-sentence-mvp-enhanced-default-2026-10-11.md), [delivery/evidence correction](../review/youtube-sentence-mvp-default-delivery-2026-10-11.md), [runtime/import clocks](../review/youtube-sentence-mvp-runtime-and-import-clocks-2026-10-11.md), [renderer independent](../review/youtube-sentence-mvp-renderer-independent-2026-10-11.md), [caller correction](../review/youtube-sentence-mvp-renderer-callers-correction-2026-10-11.md), [cue provenance/exact revision](../review/youtube-sentence-mvp-cue-provenance-2026-10-11.md), [source restore/runtime deployment](../review/youtube-sentence-mvp-source-restore-runtime-2026-10-11.md), [partial native reload and current data delta](../review/youtube-sentence-mvp-native-reload-partial-2026-10-11.md), [stale revision guard](../review/youtube-sentence-mvp-stale-revision-guard-2026-10-11.md), [revision deployment/mirror validation](../review/youtube-sentence-mvp-revision-deploy-mirror-validation-2026-10-11.md), [mirror deployment/revision race](../review/youtube-sentence-mvp-mirror-deploy-revision-race-2026-10-11.md), [equal-revision conflict](../review/youtube-sentence-mvp-equal-revision-conflict-2026-10-11.md), [conflict deployment / legacy TXT](../review/youtube-sentence-mvp-conflict-deploy-legacy-txt-2026-10-11.md), [legacy JSON/TXT candidate](../review/youtube-sentence-mvp-legacy-txt-sync-2026-10-11.md), [authorized legacy TXT deployment](../review/youtube-sentence-mvp-legacy-txt-deployment-2026-10-11.md), [native legacy checkpoint](../review/youtube-sentence-mvp-native-legacy-checkpoint-2026-10-11.md), [Chrome storage restart](../review/youtube-sentence-mvp-chrome-storage-restart-2026-10-11.md), [content Undo reload](../review/youtube-sentence-mvp-content-undo-reload-2026-10-11.md) |
 | partial | Code taste: migration plan and edit hooks | [plan](../plan/migrate-codebase-to-house-style-2026-09-20.md) | [Live client evidence and gaps](../review/code-taste-other-clients-live-2026-09-20.md) |
-| done | Studio Caption Fixes, Performance & UX Optimization | [plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md) | [review/code-review-2026-09-19.md](../review/code-review-2026-09-19.md) |
+| done | Studio Caption Fixes, Performance & UX Optimization | [fix-overlay-resize-and-subtitles](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md), [fix-sidepanel-format-and-jp-only-overlay](../plan/fix-sidepanel-format-and-jp-only-overlay-2026-09-19.md) | (filed `code-review-2026-09-19.md` was never committed — no review exists for this work) |
+| open — 8 P0 / 24 P1, not yet remediated | [Codebase audit 2026-10-22](topics/codebase-audit-2026-10-22.md) | — | [audit](../review/codebase-audit-2026-10-22.md) |
 
 ## Raw catalogs (immutable)
 
@@ -45,6 +48,12 @@ Do not rewrite these from the wiki. Link only.
 - [youtube-sentence-enhancement-mvp-2026-10-10.md](../plan/youtube-sentence-enhancement-mvp-2026-10-10.md) — latest byte-preserved user revision
 - [youtube-sentence-enhancement-mvp-2026-10-09.md](../plan/youtube-sentence-enhancement-mvp-2026-10-09.md)
 - [youtube-sentence-mvp-execution-decisions-2026-10-09.md](../plan/youtube-sentence-mvp-execution-decisions-2026-10-09.md)
+
+- [caption-bugs-ui-and-auto-modes-2026-10-12.md](../plan/caption-bugs-ui-and-auto-modes-2026-10-12.md)
+- [enhance-audio-db-sync-overhaul-2026-10-16.md](../plan/enhance-audio-db-sync-overhaul-2026-10-16.md)
+- [fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
+- [ja-vi-studio-dictionary-2026-08-26.md](../plan/ja-vi-studio-dictionary-2026-08-26.md)
+- [whisper-turbo-audio-evaluation-2026-10-17.md](../plan/whisper-turbo-audio-evaluation-2026-10-17.md)
 
 - [agent-code-taste-migration-research-2026-09-20.md](../plan/agent-code-taste-migration-research-2026-09-20.md)
 - [migrate-codebase-to-house-style-2026-09-20.md](../plan/migrate-codebase-to-house-style-2026-09-20.md)
@@ -77,7 +86,7 @@ Do not rewrite these from the wiki. Link only.
 - [overlay-multi-sub-2026-08-02.md](../plan/overlay-multi-sub-2026-08-02.md)
 - [p0-data-loss-fixes-2026-08-04.md](../plan/p0-data-loss-fixes-2026-08-04.md)
 - [p0-data-loss-fixes-2026-08-05.md](../plan/p0-data-loss-fixes-2026-08-05.md)
-- [studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md)
+- [studio-caption-fixes-and-ux-optimization-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md) — filed plan was never committed; links to the two real 2026-09-19 plans that cover the same work
 - [sub-load-furigana-100ms-2026-08-08.md](../plan/sub-load-furigana-100ms-2026-08-08.md)
 - [timeline-yt-multi-sub-2026-08-02.md](../plan/timeline-yt-multi-sub-2026-08-02.md)
 - [vietnamese-caption-fixes-2026-08-21.md](../plan/vietnamese-caption-fixes-2026-08-21.md)
@@ -158,7 +167,9 @@ Do not rewrite these from the wiki. Link only.
 - [code-taste-hooks-verification-2026-09-20.md](../review/code-taste-hooks-verification-2026-09-20.md)
 - [bridge-refactor-review-pass-2026-07-29.md](../review/bridge-refactor-review-pass-2026-07-29.md)
 - [bugbot-review-2026-08-01.md](../review/bugbot-review-2026-08-01.md)
-- [code-review-2026-09-19.md](../review/code-review-2026-09-19.md)
+- [caption-bugs-ui-and-auto-modes-review-2026-10-12.md](../review/caption-bugs-ui-and-auto-modes-review-2026-10-12.md)
+- [enhance-audio-db-sync-overhaul-review-2026-10-16.md](../review/enhance-audio-db-sync-overhaul-review-2026-10-16.md)
+- [codebase-audit-2026-10-22.md](../review/codebase-audit-2026-10-22.md) — **8 P0 / 24 P1**; vocab data-loss both directions, iPhone bridge dead, popup broken on fresh clone
 - [codebase-review-2026-07-29.md](../review/codebase-review-2026-07-29.md)
 - [codebase-review-2026-08-04.md](../review/codebase-review-2026-08-04.md)
 - [codebase-review-2026-08-07.md](../review/codebase-review-2026-08-07.md)

@@ -1,0 +1,92 @@
+<!-- date: 2026-10-22 -->
+
+# Topic: Codebase Audit 2026-10-22
+
+## Status
+
+**Open — 8 P0 / 24 P1 / ~33 P2 / ~10 P3, chưa remediate.** Raw review đã file; chưa có code nào
+được sửa (audit read-only).
+
+## Raw
+
+- [review/codebase-audit-2026-10-22.md](../../review/codebase-audit-2026-10-22.md) — báo cáo đầy đủ,
+  kèm lệnh kiểm chứng và exit code thật.
+
+## Ngữ cảnh
+
+Audit 2026-10-18 (`review/full-codebase-improvement-audit-2026-10-18.md`) đã được remediate và merge
+(`2fff75c48`). Audit này **không lặp lại** phần đó — mọi P0 của audit cũ đã verify là đã đóng
+(CI giờ chạy extension tests + root tests, `test_tokenize_import_enrich.py` đã đọc `BRIDGE_URL`,
+`verify_no_fake_tests.js` đã quét `local-bridge/tests` + `tests/`). Đây là phần **còn lại**.
+
+## Nguyên nhân gốc (không phải triệu chứng)
+
+Schema của "bản ghi vocab" và "tên file backup" được định nghĩa ở **4 nơi với 4 nghĩa khác nhau**,
+không có nguồn sự thật duy nhất. Sửa từng lỗi riêng lẻ sẽ tạo lỗi mới. Cần 1 contract file +
+1 script validate.
+
+## P0 (8)
+
+| ID | Vấn đề | File:line |
+|---|---|---|
+| A-1 | `vocab[].meaning` mang **2 nghĩa** (status vs gloss) trong cùng file → mất gloss/JLPT/tần suất 2 chiều | `local-bridge/app/services/snapshot.py:34,53` ↔ `ipad-app/Services/BackupService.swift:265` |
+| A-2 | iOS ghi `caption-studio-vocab.json`, **không ai đọc** file đó → kênh sync iOS↔extension chết | `iphone-app/Services/VocabSync.swift:10` ↔ `extension/background/service_worker.js:1343` |
+| A-3 | iPhone **không bundle** `user_script.js` → toàn bộ bridge WKWebView của iPhone chết | `iphone-app/project.yml:10-22` ↔ `iphone-app/Views/YouTubePlayerView.swift:49` |
+| A-4 | Capability-token gate **không chặn** message thiếu token; token còn nằm trong URL của DOM | `extension/content/content.js:671,6130,216-222` |
+| A-5 | `extension/popup/` được track nhưng `_next/` bị gitignore → **popup trắng sau fresh clone** | `.gitignore:89` ↔ `extension/popup/index.html` |
+| A-6 | `scripts/test_bugfixes_qa.js` là test giả (đọc source + assert chuỗi) — vi phạm AGENTS.md | `scripts/test_bugfixes_qa.js:66-78,99-108` |
+| A-7 | Anti-fake gate có **false negative** → đã PASS trong khi A-6 tồn tại | `scripts/verify_no_fake_tests.js:45-48` |
+| A-8 | README/walkthrough mô tả UI **không tồn tại** (`(LR) ON ⚙` pill, `.lr-card-vi`) | `README.md:39`, `walkthrough.md:205,214,221` |
+
+## P1 (24) — tiêu đề
+
+segfault test suite (B-1) · `write_files` không validate `cues.json` (B-21, **đã repro runtime**) ·
+ASR buffer toàn bộ body trước khi check 50 MB (B-22) · 3 self-check bridge không ai chạy (B-2) ·
+`jlptLevel` Int/string/null drift (B-3) · `BackupService` wipe-all (B-4) · `wipeAll` không tombstone (B-5) ·
+iPad `clearTranslations` thiếu filter tombstone (B-6) · `url_hash.js` + `dfxp_parser.js` code chết (B-7) ·
+`/tokenize_batch` unbounded → N request tuần tự (B-8) · `chrome.storage.local` quota mất script (B-9) ·
+2 bộ rule `LayoutSmoke` khác nhau (B-10) · `CueEditorRow` iPhone mất 210 LOC (B-11) ·
+dict lookup ~480 round-trip SQLite trên main thread (B-12) · `NLPTagger` cache thrash (B-13) ·
+ATS drift trong `project.yml` (B-14) · 25 sanity script không vào CI (B-15) ·
+sanity script exit 0 khi SKIP (B-16) · `macos-bridge-app` không được compile (B-17) ·
+web `pendingDeletes` không retire (B-18) · web nuốt lỗi `persistSettingsAsync` (B-19) ·
+web apply snapshot cũ (B-20) · `_get_mazii_details` N+1 SQL (B-23) · `/saved/sync` 5000 transaction (B-24)
+
+## P2 trùng lặp (rủi ro drift thật, không phải "style")
+
+- **C-1**: 20/26 file Swift giữa iPad và iPhone **giống hệt** (4 028 LOC = 59% app iPad);
+  6 file đã lệch → **nguyên nhân trực tiếp** của B-6, B-10, B-11.
+- **C-2**: level-colour map ×6 · **C-3**: TXT import parse ×4 · **C-4**: tokenize JP ×4
+  (cùng 1 câu, bridge sống/chết cho 2 furigana khác nhau) · **C-5**: settings default lệch 4 key.
+- B-3: JLPT band resolution ×4 với dataset khác nhau (JS 403 mục vs PY 60 mục; iOS thiếu 14k).
+
+## Đã kiểm tra và KHÔNG có phát hiện
+
+XSS/DOM injection trong extension (33 hit `innerHTML`, tất cả đã escape, không `eval`) ·
+secret thật trong git (4 hit, tất cả false positive) · egress chỉ 2 đích (Google Gemini + Drive) ·
+bridge path traversal / command injection / SQL injection / SSRF / cache leak / deadlock ·
+iOS Keychain + ATS trong binary ship + force-unwrap + retain cycle · web type safety (0 `any`,
+`tsc --noEmit` exit 0, ESLint exit 0) · extension 15/15 test exit 0 · iOS 2 app `BUILD SUCCEEDED`.
+
+## Chưa verify (nói thẳng)
+
+segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web (ghi `out/`, vi phạm
+read-only) · 23/25 sanity script chưa chạy hết · **chưa chạy browser thật** nên mọi claim UI
+là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API thật.
+
+## Thứ tự nên làm
+
+1. **A-1 + B-3** — 1 contract cho vocab (`meaning`/`status` tách, `jlptLevel` → string, `version: 2` + migration).
+2. **A-3 + B-10** — bundle script cho iPhone **và** gộp `LayoutSmoke` trước khi build.
+3. **A-5** — build extension trong CI hoặc track `_next/`.
+4. **A-4** — siết capability gate + bỏ token khỏi URL.
+5. **A-6 + A-7** — xoá test giả + sửa anti-fake gate.
+6. **B-4** — `BackupService` merge thay vì wipe-all.
+7. **B-21** — validate `cues.json` vô điều kiện (1 khối code).
+8. **A-8** — sửa 3 dòng doc sai.
+9. **A-2** — extension đọc `caption-studio-vocab.json`.
+
+Sau đó: B-1 (segfault) · B-2 (self-check chết) · B-15/B-16 (CI) · **C-1** (gộp Swift, xoá ~4 000 LOC
+trùng) · C-2..C-5 (1 nguồn sự thật) · push 31 commit đang chờ trên `origin/master`.
+
+Ponytail: sửa 1 nguồn sự thật, xoá phần còn lại — không thêm framework, không thêm abstraction.

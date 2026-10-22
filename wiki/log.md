@@ -590,3 +590,49 @@ Checked per AGENTS.md §4 (lint):
 - **Layer rule**: no file under `plan/` or `review/` was rewritten after filing; the one
   exception (the cursor contract and the verification commands) was reverted and re-filed in
   the wiki layer.
+
+## [2026-10-22] ingest | Codebase audit 2026-10-22 — 8 P0 / 24 P1
+
+Filed [review/codebase-audit-2026-10-22.md](../review/codebase-audit-2026-10-22.md); topic page
+[topics/codebase-audit-2026-10-22.md](topics/codebase-audit-2026-10-22.md).
+
+Read-only audit of the whole repo by 6 parallel agents (bridge / extension / web / iOS /
+infra+docs / cross-cutting), each P0/P1 re-verified by hand against disk with a real command.
+Distinct from the 2026-10-18 audit: that one's P0s were remediated and merged (`2fff75c48`) and were
+re-verified here as **closed**; this audit covers what remains.
+
+Top findings (full detail + evidence in the raw review):
+
+- **A-1** `vocab[].meaning` carries two incompatible meanings (bridge packs *status*,
+  iOS packs *gloss*) in the same `caption-studio-backup.json` -> silent vocabulary data loss in
+  **both** directions. Root cause of the cluster: no single source of truth for the vocab record.
+- **A-2** iOS writes `caption-studio-vocab.json`; **nothing reads it** -> the documented
+  iPad->extension vocab path is dead.
+- **A-3** iPhone does not bundle `user_script.js` -> the whole WKWebView bridge is dead on iPhone.
+- **A-4** the capability-token gate rejects a *wrong* token but never a *missing* one.
+- **A-5** `extension/popup/` is tracked but `_next/` is gitignored -> blank Saved Items UI on a
+  fresh clone; no CI job builds the extension.
+- **A-6/A-7** `scripts/test_bugfixes_qa.js` is a banned string-matching test, and the anti-fake
+  gate has a false negative that let it pass.
+- **A-8** README/walkthrough document UI that does not exist (`[ (LR) ON ⚙ ]` pill, `.lr-card-vi`).
+- **B-1** `pytest -q local-bridge/tests/` exits **139 (SIGSEGV)** after "140 passed" on macOS/arm64
+  (native MLX/Metal static-destructor teardown, order-dependent). Reproduced 3/3.
+
+Also verified clean and recorded: XSS sweep, secret scan, network-egress inventory, bridge
+path/command/SQL injection, iOS Keychain + ATS, web type safety, extension 15/15 suites.
+
+Wiki hygiene fixed during this ingest (the lint was **red** before, green after):
+
+- 4 broken links: `plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md` and
+  `review/code-review-2026-09-19.md` never existed on disk. Re-pointed to the two real 2026-09-19
+  plans; the missing review is now stated as missing instead of linked.
+- 7 catalog warnings: 5 plans + 2 reviews added to the `wiki/index.md` catalogs.
+- `topics/flatten-repo-layout.md` was an orphan topic -> now in the navigation table.
+- `topics/vietnamese-caption-loading.md:4` link depth `../plan/` -> `../../plan/`.
+- 5 absolute `file:///Users/hoangson/...` links -> relative.
+- `topics/studio-caption-fixes-and-ux-optimization.md` claimed "0 broken links, 0 warnings, Exit 0"
+  and "pytest -> Exit 0"; both were false on 2026-10-22. Corrected in place with the real numbers
+  instead of being silently dropped.
+
+`bash scripts/wiki_sync_and_lint.sh` -> **Exit 0, 0 broken links, 0 warnings** (was Exit 1, 4 errors,
+7 warnings).

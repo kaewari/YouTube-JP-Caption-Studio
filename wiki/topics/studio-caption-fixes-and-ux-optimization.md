@@ -8,8 +8,11 @@
 
 ## Raw Plan & Review
 
-- [plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md](../../plan/studio-caption-fixes-and-ux-optimization-2026-09-19.md)
-- [review/code-review-2026-09-19.md](../../review/code-review-2026-09-19.md)
+- [plan/fix-overlay-resize-and-subtitles-2026-09-19.md](../../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
+- [plan/fix-sidepanel-format-and-jp-only-overlay-2026-09-19.md](../../plan/fix-sidepanel-format-and-jp-only-overlay-2026-09-19.md)
+- *(the filed `studio-caption-fixes-and-ux-optimization-2026-09-19.md` plan and `code-review-2026-09-19.md`
+  review were never committed — the two plans above are the real 2026-09-19 artifacts covering this work;
+  no dedicated review file exists)*
 
 ## Summary of Shipped Improvements
 
@@ -48,11 +51,11 @@
 
 ## Code Anchors
 
-- Overlay styling & resize: [`extension/styles/panel.css`](file:///Users/hoangson/Projects/YouTube%20JP%20Caption%20Studio/extension/styles/panel.css#L7-L14)
-- Visibility & hotkeys & sync: [`extension/content/content.js`](file:///Users/hoangson/Projects/YouTube%20JP%20Caption%20Studio/extension/content/content.js#L2742-L2765)
-- Sidepanel virtualization & scroll: [`extension/sidepanel/sidepanel.js`](file:///Users/hoangson/Projects/YouTube%20JP%20Caption%20Studio/extension/sidepanel/sidepanel.js#L780-L860)
-- Bilingual JLPT renderer: [`extension/shared/vocab_style.js`](file:///Users/hoangson/Projects/YouTube%20JP%20Caption%20Studio/extension/shared/vocab_style.js#L370-L415)
-- Backend dictionary fallback: [`local-bridge/app/services/dictionary.py`](file:///Users/hoangson/Projects/YouTube%20JP%20Caption%20Studio/local-bridge/app/services/dictionary.py#L425-L465)
+- Overlay styling & resize: [`extension/styles/panel.css`](../../extension/styles/panel.css#L7-L14)
+- Visibility & hotkeys & sync: [`extension/content/content.js`](../../extension/content/content.js#L2742-L2765)
+- Sidepanel virtualization & scroll: [`extension/sidepanel/sidepanel.js`](../../extension/sidepanel/sidepanel.js#L780-L860)
+- Bilingual JLPT renderer: [`extension/shared/vocab_style.js`](../../extension/shared/vocab_style.js#L370-L415)
+- Backend dictionary fallback: [`local-bridge/app/services/dictionary.py`](../../local-bridge/app/services/dictionary.py#L425-L465)
 
 ## Verification Proof
 
@@ -68,5 +71,12 @@
   - `node extension/shared/vocab_style_test.js` -> 100% PASS (Exit 0).
 - **Backend Local Bridge Pytest Suite**:
   - `PYTHONPATH=. .venv/bin/pytest -q tests/` -> 20 passed in 3.27s (Exit 0).
+  - **Correction 2026-10-22:** as of 2026-10-22 the same command reports `140 passed` but exits
+    **139 (SIGSEGV)** on macOS/arm64 — a native MLX/Metal static-destructor crash, order-dependent.
+    See [codebase-audit-2026-10-22.md](codebase-audit-2026-10-22.md) §B-1. The "Exit 0" above was
+    true on 2026-09-19 and is **no longer reproducible**.
 - **Wiki Integrity**:
   - `./scripts/wiki_sync_and_lint.sh` -> 0 broken links, 0 warnings, Exit 0.
+  - **Correction 2026-10-22:** the real run on 2026-10-22 was **4 errors, 7 warnings, Exit 1**
+    (the two filed files above did not exist on disk). Those errors and warnings are now **fixed**
+    by this ingest; re-run the script to confirm.
