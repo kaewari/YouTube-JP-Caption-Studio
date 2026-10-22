@@ -137,10 +137,6 @@ struct ContentView: View {
             refreshActiveCueId(at: playheadMs)
         }
         .task {
-            #if DEBUG
-            // Opt-in store self-test (assert-based): -CS_AUTOTEST_BACKUP
-            if CommandLine.arguments.contains("-CS_AUTOTEST_BACKUP") { await BackupSmoke.run() }
-            #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
                 currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }

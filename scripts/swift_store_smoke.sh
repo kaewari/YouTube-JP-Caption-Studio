@@ -45,7 +45,10 @@ SW
 
 cat > "$TMP/main.swift" <<'SW'
 import Foundation
-MainActor.assumeIsolated { BackupSmoke.run() }
+MainActor.assumeIsolated {
+    BackupSmoke.run()
+    ScriptStoreSmoke.run()
+}
 print("swift_store_smoke: ok")
 SW
 

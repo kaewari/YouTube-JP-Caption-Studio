@@ -9,6 +9,8 @@ struct YouTubeJPCaptionStudioApp: App {
         try? AVAudioSession.sharedInstance().setActive(true)
         #if DEBUG
         DriveScriptsSmoke.run()
+        BackupSmoke.run()
+        ScriptStoreSmoke.run()
         DriveAPISmoke.run()
         SettingsSyncSmoke.run()
         VocabSyncSmoke.run()

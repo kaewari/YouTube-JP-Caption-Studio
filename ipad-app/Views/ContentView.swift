@@ -150,8 +150,6 @@ struct ContentView: View {
         .task {
             #if DEBUG
             runAutotestIfRequested()
-            // Opt-in store self-test (assert-based): -CS_AUTOTEST_BACKUP
-            if CommandLine.arguments.contains("-CS_AUTOTEST_BACKUP") { await BackupSmoke.run() }
             #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {

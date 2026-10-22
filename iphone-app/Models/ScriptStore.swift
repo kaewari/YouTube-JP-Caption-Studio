@@ -148,7 +148,16 @@ extension ScriptCue {
     static func wipeAll(videoId: String, context: ModelContext) {
         let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
         if let script = try? context.fetch(descriptor).first {
-            context.delete(script)
+            let cues = load(videoId: videoId, context: context)
+            // Tombstone, never hard-delete: a hard delete leaves Drive untouched and the
+            // next pull brings the whole script back. The tombstones reach Drive as an
+            // intentional delete-all (empty cues.json).
+            for cue in cues where !cue.isDeleted {
+                cue.isDeleted = true
+            }
+            if script.owned {
+                DriveDirty.mark(videoId: videoId, cueIds: cues.map(\.id))
+            }
             context.saveAndScheduleBackup()
         }
     }
@@ -720,3 +729,38 @@ enum ImportSmoke {
         print("[ImportSmoke] ok")
     }
 }
+
+#if DEBUG
+/// Store-level self-test — the wipe rule that keeps Drive from resurrecting a script.
+enum ScriptStoreSmoke {
+    @MainActor
+    static func run() {
+        let container = try! ModelContainer(
+            for: VideoScript.self, ScriptCue.self, Vocabulary.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let ctx = ModelContext(container)
+        let script = VideoScript(videoId: "smoke-wipe", title: "t", owned: true)
+        ctx.insert(script)
+        for i in 0..<3 {
+            let cue = ScriptCue(id: "w\(i)", startTime: Double(i), duration: 100, textJA: "あ")
+            cue.video = script
+            ctx.insert(cue)
+        }
+        try! ctx.save()
+
+        ScriptCue.wipeAll(videoId: "smoke-wipe", context: ctx)
+
+        let after = ScriptCue.load(videoId: "smoke-wipe", context: ctx)
+        assert(after.count == 3, "wipe keeps the rows")
+        assert(after.allSatisfy { $0.isDeleted }, "wipe must tombstone every cue")
+        assert(after.filter { !$0.isDeleted }.isEmpty, "wipe leaves no live cue")
+        let kept = (try? ctx.fetch(FetchDescriptor<VideoScript>()))?.first
+        assert(kept != nil, "wipe must not hard-delete the script — the next pull would restore it")
+        assert(DriveDirty.dirtyIds(videoId: "smoke-wipe").count == 3,
+               "wipe must mark the cues dirty so the tombstone reaches Drive")
+        DriveDirty.clear(videoId: "smoke-wipe")
+        print("[ScriptStoreSmoke] ok")
+    }
+}
+#endif
