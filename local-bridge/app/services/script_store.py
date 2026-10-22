@@ -739,6 +739,14 @@ def write_files(video_id: str, files: dict[str, Any]) -> dict[str, Any]:
                 parsed = json.loads(content)
             except ValueError as exc:
                 raise ValueError(f"{name} is not valid JSON: {exc}") from exc
+            if name == "cues.json":
+                # Shape is enforced here, not in the rev branch below: a payload that
+                # carries cues.json but no meta.json never reaches that branch, and its
+                # cues.json used to land on disk unreadable.
+                if not isinstance(parsed, dict) or not isinstance(parsed.get("cues"), list):
+                    raise ValueError("cues.json must contain a cues array")
+                if not all(isinstance(cue, dict) for cue in parsed["cues"]):
+                    raise ValueError("cues.json cues must be objects")
         if name == "meta.json" and isinstance(parsed, dict) and parsed.get("rev") is not None:
             incoming_rev = parsed["rev"]
             if type(incoming_rev) is not int or incoming_rev < 0:
@@ -760,13 +768,8 @@ def write_files(video_id: str, files: dict[str, Any]) -> dict[str, Any]:
                     raise ScriptRevisionConflict(current_rev)
         if incoming_rev is not None and incoming_rev > current_rev and "cues.json" in validated:
             # Old clients push JSON only; unchanged TXT must not undo their newer edit.
-            incoming = json.loads(validated["cues.json"])
             old = _read_json(folder / "cues.json")
-            if not isinstance(incoming, dict) or not isinstance(incoming.get("cues"), list):
-                raise ValueError("cues.json must contain a cues array")
-            cues = incoming["cues"]
-            if not all(isinstance(cue, dict) for cue in cues):
-                raise ValueError("cues.json cues must be objects")
+            cues = json.loads(validated["cues.json"])["cues"]
             try:
                 for cue in cues:
                     for key in ("start_media_time", "end_media_time", "start", "end"):

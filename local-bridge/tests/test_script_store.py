@@ -199,6 +199,26 @@ def test_files_mirror_roundtrip(root: Path) -> None:
         except ValueError:
             pass
 
+def test_mirror_rejects_cues_json_without_a_cues_array(root: Path) -> None:
+    """The structural check used to live inside the rev-comparison branch, so a
+    payload that carried cues.json but no meta.json skipped it entirely and any
+    valid JSON landed on disk — after which load_script() returned None."""
+    save_script(VID, [cue(1)], title="cat")
+    before = read_files(VID)
+    for bad in (
+        {"cues.json": json.dumps({"totally": "not a cues array"})},
+        {"cues.json": json.dumps({"cues": "nope"})},
+        {"cues.json": json.dumps({"cues": ["not-an-object"]})},
+        {"cues.json": json.dumps([1, 2, 3])},
+    ):
+        try:
+            write_files(VID, bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"write_files accepted {bad!r}")
+    assert read_files(VID) == before, "a rejected payload must not touch disk"
+    assert load_script(VID) is not None, "the existing script must stay readable"
+
 
 def test_mirror_read_and_delete_share_video_lock(root: Path, *, actions=("read", "delete")) -> None:
     for action in actions:
