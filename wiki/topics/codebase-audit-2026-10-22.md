@@ -56,6 +56,7 @@ Raw review đã file và **không sửa** (§4).
 | C-8 Bridge thay cả `meta.json` bằng template riêng, key lạ mất | **đã sửa** (`setdefault` merge key ngoại) | `803e10385` |
 | C-3 TXT parse: extension JS + bridge port | **đã sửa**: parity test tìm ra bug thật — bridge hiểu `1:02:03` thành **62 s** thay vì 3723 s | `d5873bd80` |
 | C-1 gộp 20 file Swift trùng (4 141 LOC) thành package `CaptionShared` 19 file | **HOÀN TẤT A–E**: mỗi app còn `App.swift` + 5 file riêng + `DriveScriptsService`; migration module-move chứng minh headless (`MIGRATION_OK`); Swift 6 mode bắt thêm race cache + `Sendable` | `939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10` |
+| C-22 `.git` 1.6 GB (heap snapshot + object mồ côi) | **đã sửa, không rewrite history**: `git gc --prune=now` → pack 1.14 GiB còn 155 MiB; còn lại là `.git/cursor` IDE (388M, không đụng) + submodule (50M) | — (local-only, không commit) |
 
 ## Raw
 

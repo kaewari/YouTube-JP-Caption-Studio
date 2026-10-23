@@ -1389,3 +1389,15 @@ Test `test_meta_union.py`: seed meta có key iOS + 1 key tương lai, save, asse
 4 → 5; đồng thời pin semantics refresh: deviceId/updated_at do writer đóng dấu lại.
 
 Proof: bridge **170 passed, 5 skipped** · red proof (bỏ merge) → `KeyError: 'future_key'`.
+
+## [2026-10-23] ingest | C-22 — `.git` 1.6 GB → 595 MB mà không rewrite history
+
+Đo: `.git` 1.6G, pack 1.14 GiB; top blob 338 MB. Kiểm tra từng blob lớn bằng
+`git rev-list --all --objects`: **không blob nào còn ref nào trỏ tới** (cành debug đã xoá,
+reflog cũ). Vậy không cần filter-repo + force-push như lo ban đầu.
+
+Chạy `git gc --prune=now` (an toàn: chỉ xoá object mồ côi, mọi ref — gồm worktree đang gắn và
+3 stash — giữ nguyên): pack còn **155 MiB**, `.git` còn 595M. `git fsck` sạch, log/status nguyên.
+
+Phần còn lại không phải git data, không đụng: `.git/cursor` 388M (metadata của IDE) +
+`.git/modules` 50M (submodule `tools/open-code-review`, đã gc riêng — clone đầy đủ nên giữ).
