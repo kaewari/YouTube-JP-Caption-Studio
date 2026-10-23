@@ -938,3 +938,18 @@ fallback giữ Models ở lại 2 app. Thứ tự A→E, mỗi bước 1 commit 
 
 Kèm quyết định khác cùng lúc: **C-23 push xong** (78 commit → `origin/master` = `54eca76fc`, cả 2
 remote) và **C-25 giữ nguyên** `saved_items` SQLite, chỉ ghi chú.
+
+## [2026-10-23] query | C-17 — phân tích + hướng sửa, chưa code
+
+`service_worker.js:216` `chrome.tabs.onUpdated` gọi `syncSidePanelForTab()` cho **mọi** event của
+một lần load (loading/title/favicon/URL…), và mỗi lần đều `isPlatformEnabledForUrl()` (đọc
+storage) + `chrome.sidePanel.setOptions()` (IPC). Hướng sửa đã nghĩ xong, **chưa áp dụng**:
+
+- Thêm `Map` tabId → `${url}|${enabled}` đã áp; nếu trùng thì `return` trước `setOptions` (bỏ IPC
+  thừa). Vẫn phải đọc storage để tính `enabled` → **chỉ giảm một nửa chi phí**, đó là mức trung
+  thực, không phóng đại.
+- Muốn bỏ luôn storage read thì memo theo `url` — nhưng khi user bật/tắt platform cho Netflix,
+  panel sẽ không cập nhật cho tới lần điều hướng kế tiếp → **chưa làm** vì đổi hành vi.
+- Cần dọn `Map` khi tab đóng (`chrome.tabs.onRemoved?.addListener`) để không rò rỉ.
+- Test khả thi: mở rộng stub `chrome.tabs.onUpdated` trong `service_worker_test.js` để bắt listener,
+  bắn cùng URL 2 lần → assert `setOptions` chỉ 1 lần; URL khác → 2 lần.
