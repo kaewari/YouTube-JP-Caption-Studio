@@ -3,7 +3,7 @@
 
 # Kế hoạch: gộp 20 file Swift trùng giữa `ipad-app` và `iphone-app` (C-1)
 
-Trạng thái: **bước A + B + C + D (một phần) đã merge** (`939637b04`, `6a1762ec1`, `e80278883`) — package có 16 file (8 + 3 + 5); Models + BackupService + VocabSync đã vào; DictionaryService + 3 Views còn lại. (`939637b04`, `6a1762ec1`) — package có 11 file, 2 app build Debug+Release xanh. — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
+Trạng thái: **HOÀN TẤT A–E** (`939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10`) — package 19 file; mỗi app chỉ còn `App.swift` (26 dòng, giữ vì `@main`), 5 file khác nhau, và `DriveScriptsService.swift`; `Models/` đã xoá khỏi cả 2 app; `grep MIRRORED FILE` = 0.
 
 ## 1. Vấn đề (đo trên disk 2026-10-23)
 
@@ -94,11 +94,9 @@ B-11 cùng loại): sửa một bên, quên bên kia.
   cùng phụ thuộc models). Migration đã chứng minh headless: binary module-cũ ghi store file, binary
   module-package đọc lại đủ rows + tombstone (`MIGRATION_OK`). Test trên máy thật với store cũ vẫn
   nên làm khi có máy (plan gốc bước 3), nhưng cơ chế đã được chứng minh, không còn là giả thuyết.
-- **D. Views dùng chung** — `TokenizedJAView` (**xong**, `a76c7ae94`). `DictPopupView` ở lại vì
-  gọi `DictionaryService` (đợi sqlite-bridging); `HardsubOverlayView` ở lại vì dùng modifier
-  `.dictPopup` định nghĩa trong `DictPopupView` — move nó sẽ kéo cả chuỗi popup, tức là couple
-  package ngược về app. Cả hai đi cùng bước sqlite-bridging.
-- **E. Dọn** — xoá 19 bản copy + header `MIRRORED FILE`, grep phải = 0; cập nhật `wiki` + plan.
+- **D. Views dùng chung** — cả 3 đã vào (`TokenizedJAView` ở `a76c7ae94`; `DictPopupView` +
+  `HardsubOverlayView` ở `4286cec10` sau khi blockers của chúng vào package).
+- **E. Dọn** — **xong**: chỉ còn `App.swift` giống hệt nhau; `Models/` đã xoá; `grep MIRRORED FILE` = 0.
 
 ## 5. Acceptance criteria
 
