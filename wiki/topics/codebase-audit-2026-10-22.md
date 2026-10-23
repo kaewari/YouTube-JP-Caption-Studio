@@ -38,6 +38,7 @@ Raw review đã file và **không sửa** (§4).
 | C-26 bootstrap build `en_vi.json` không ai đọc + `_en_vi_cache` thừa | **đã sửa** (xoá) | `7b77ee337` |
 | C-24 Gemini cost table thiếu giá model fallback | **để mở có chủ ý** — không có giá thật thì trả `null` + `PARTIAL ESTIMATE`, không bịa số | `21577b8a7` (chỉ ghi chú) |
 | C-29 lỗi ASR/saved-items/bootstrap không vào `errors.log` | **đã sửa** (3/3 chỗ; bootstrap không có test tự động vì ghi vào data thật) | `d43d41820`, `9b3580a09`, `7a3eafc26` |
+| C-30 nhánh `watch_html` chết khi Android trả non-JSON | **đã sửa** (fall through + `_parse_srv_xml` chịu json3) | `497c04c74` |
 
 ## Raw
 
@@ -174,7 +175,7 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | C-7..C-9 | Lệch shape saved-cue, `meta` Drive, env var `BRIDGE_URL`/`CAPTION_BRIDGE_URL` | cần đổi contract + migration |
 | C-12..C-17 | Web bundle mock-data, virtualization, a11y label; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
 | C-23 | 68 commit chưa push `origin/master..master` | cần user quyết định push |
-| C-25, C-30 | `saved_items` SQLite không client nào dùng, 2 chỗ còn lại chưa log `errors.log`, nhánh `watch_html` trong `fetch_captions()` chết | P3 nhỏ, làm lẻ |
+| C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng — code chết vẫn phải bảo trì | cần bạn quyết: xoá hay giữ làm API tương lai |
 
 ## Chưa verify (nói thẳng)
 
