@@ -37,6 +37,11 @@ class ScriptCue {
     var textJA: String
     var textEN: String?
     var textVI: String?
+    // WARNING: do not rename this back to `isDeleted` and do not drop
+    // `originalName:` (it keeps existing stores readable). `isDeleted` collides
+    // with NSManagedObject.isDeleted: on some OS versions reads return the live
+    // object's deletion state (always false) instead of the stored value, silently
+    // dropping every tombstone. The wire name stays `isDeleted` (see CueDTO).
     @Attribute(originalName: "isDeleted") var tombstoned: Bool // Tombstone flag
     
     var video: VideoScript?
