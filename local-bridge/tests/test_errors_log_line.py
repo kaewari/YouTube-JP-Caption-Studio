@@ -107,3 +107,33 @@ def test_saved_items_500_is_written_to_errors_log(tmp_path, monkeypatch):
     assert "OperationalError" in text, text
     # The SQL/path detail must stay out of the log line.
     assert "database is locked" not in text, text
+
+
+def test_bootstrap_failure_is_logged_without_touching_real_data(tmp_path, monkeypatch):
+    """AGENTS.md §6 for the bootstrap worker, sandboxed to tmp.
+
+    `_bootstrap_worker()` writes into the real `data/dict`, so the fixture points
+    DICT at tmp first: the test must never touch the developer's dictionary.
+    """
+    from app.scripts import bootstrap as bootstrap_mod
+
+    log = tmp_path / "errors.log"
+    monkeypatch.setattr(logging_utils, "_ERRORS_LOG", log)
+    monkeypatch.setattr(bootstrap_mod, "DICT", tmp_path / "dict")
+    monkeypatch.setattr(bootstrap_mod, "MIN_JMDICT_KEYS", 1)
+    monkeypatch.setattr(bootstrap_mod, "_jmdict_key_count", lambda path: 0)
+
+    def offline(url, dest):
+        raise OSError("network is down")
+
+    monkeypatch.setattr(bootstrap_mod, "_download", offline)
+
+    bootstrap_mod._bootstrap_worker()
+
+    text = log.read_text(encoding="utf-8")
+    assert "bootstrap" in text, text
+    # The offline download lands in the "JMdict incomplete" exit, which is the one
+    # this test can reach without a real network.
+    assert "jmdict incomplete" in text, text
+    assert bootstrap_mod._progress.done is True
+    assert (tmp_path / "dict").exists(), "the worker must be sandboxed to tmp"
