@@ -12,6 +12,8 @@ from pathlib import Path
 
 from app.schemas.models import BootstrapProgress
 
+from app.utils.logging_utils import append_errors_log
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -152,6 +154,7 @@ def _bootstrap_worker() -> None:
                 + (f": {jmdict_error}" if jmdict_error else "")
             )
             logger.error(msg)
+            append_errors_log("ERROR", f"bootstrap jmdict incomplete ({keys} keys)")
             _set("error", 100, msg, done=True)
             return
 
@@ -160,6 +163,7 @@ def _bootstrap_worker() -> None:
             _rebuild_sqlite()
         except Exception as exc:
             logger.exception("SQLite rebuild failed")
+            append_errors_log("ERROR", f"bootstrap sqlite rebuild failed: {type(exc).__name__}")
             _set("error", 100, f"SQLite rebuild failed: {exc}", done=True)
             return
 
@@ -175,6 +179,7 @@ def _bootstrap_worker() -> None:
         _set("done", 100, "Bootstrap complete", done=True)
     except Exception as exc:
         logger.exception("Bootstrap failed")
+        append_errors_log("ERROR", f"bootstrap failed: {type(exc).__name__}")
         _set("error", 100, f"Bootstrap failed: {exc}", done=True)
     finally:
         with _lock:
