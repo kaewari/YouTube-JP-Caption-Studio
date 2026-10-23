@@ -899,3 +899,15 @@ detail chung cho client; text gốc (có thể chứa SQL/path) giữ ở traceb
 → GET `/saved/items` thật → assert HTTP 500, log có `api_list_saved error`/`OperationalError`,
 và **không** chứa `database is locked`. Proof: bridge **160 passed, 5 skipped, exit 0**. Còn chỗ
 **bootstrap** → C-29 vẫn mở một phần.
+
+## [2026-10-23] ingest | C-29 (chỗ cuối) — bootstrap vào errors.log
+
+`7a3eafc26`: 3 nhánh lỗi của bootstrap (JMdict thiếu, rebuild SQLite, catch-all) chỉ log stderr
+và set progress error, **không** ghi `errors.log`. Giờ mỗi nhánh append 1 dòng `ERROR:bridge:`
+kèm loại exception; message progress cho UI giữ nguyên.
+
+**Không có test tự động** cho chỗ này: `_bootstrap_worker()` ghi vào `local-bridge/data/dict` thật
+và tải JMdict — tôi đã thử viết test, thấy nó sẽ sửa data thật nên **xoá test đó** thay vì ship
+một test phá dữ liệu. Hai chỗ kia (ASR, saved-items) có test ở mức route.
+
+Proof: bridge **160 passed, 5 skipped, exit 0** · `import app.scripts.bootstrap` OK · diff check sạch.
