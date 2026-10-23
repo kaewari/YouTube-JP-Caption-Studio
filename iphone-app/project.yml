@@ -6,6 +6,10 @@ packages:
   CaptionShared:
     path: ../ios-shared
 schemes:
+  YouTubeJPCaptionStudioiPhone:
+    build:
+      targets:
+        YouTubeJPCaptionStudioiPhone: [run]
   YouTubeJPCaptionStudioiPhoneUITests:
     build:
       targets:
