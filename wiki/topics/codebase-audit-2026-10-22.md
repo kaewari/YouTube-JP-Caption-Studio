@@ -43,6 +43,7 @@ Raw review đã file và **không sửa** (§4).
 | C-9 env var `BRIDGE_URL` vs `CAPTION_BRIDGE_URL` | **đã sửa** (đọc cả hai tên, default giữ nguyên) | `e75ec298e` |
 | C-12 `mock-data.ts` vào bundle production (72 KB demo) | **đã sửa** (`NODE_ENV` conditional → build xoá literal) | `b1a2a3f74` |
 | C-14 search/colour input thiếu accessible name, SVG thiếu `aria-hidden` | **đã sửa code** (chưa có screen reader/AT tree để đo) | `b0153ddeb` |
+| C-17 `onUpdated` đọc storage + `setOptions` mỗi event | **đã sửa một phần** (memo bỏ IPC; vẫn đọc storage) | `a23252017` |
 
 ## Raw
 
@@ -177,7 +178,7 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
 | C-2..C-5 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize | chạm cả 4 tầng (extension, bridge, web, iOS) |
 | C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
-| C-13, C-15..C-17 | Web virtualization; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
+| C-13, C-15, C-16 | Web virtualization; extension O(cues) scan mỗi frame | perf/UX, cần đo thật trong browser |
 | C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
 

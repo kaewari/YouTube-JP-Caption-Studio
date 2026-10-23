@@ -1000,3 +1000,17 @@ Sửa: `aria-label` cho 2 search + ô màu, `aria-hidden="true"` cho SearchIcon.
 Proof: `tsc --noEmit` exit 0 · `eslint` exit 0 · `npm test` 7 passed · grep thấy đủ 4 attribute.
 **Chưa verify**: không chạy screen reader / dump accessibility tree ở môi trường này → đây là sửa ở
 mức code, **không phải** kết quả audit a11y đã đo.
+
+## [2026-10-23] ingest | C-17 (một phần) — panel state áp 1 lần/trang
+
+`chrome.tabs.onUpdated` bắn nhiều event cho một lần load (loading/complete/title/favicon…) và mỗi
+event gọi `syncSidePanelForTab()` → IPC `sidePanel.setOptions()` dù kết quả không thể đổi. Thêm memo
+`url|enabled` theo tab, xoá memo khi tab đóng.
+
+**Giới hạn nói thẳng:** `isPlatformEnabledForUrl()` (đọc storage) **vẫn chạy mỗi event** — fix này bỏ
+IPC thừa, **không** bỏ storage read. Memo theo `url` sẽ bỏ được read nhưng khi user bật/tắt platform
+thì panel không cập nhật tới lần điều hướng sau → không đáng đổi hành vi.
+
+Test: sandbox SW ghi lại `sidePanel.setOptions` + giữ listener `onUpdated`; 3 event cùng trang → 1
+call, URL mới → call thứ 2 với `enabled:false`. Red proof: bỏ memo → *"three events for one page must
+set the panel once, got 3"*. **Chưa đo** timing trên browser thật.
