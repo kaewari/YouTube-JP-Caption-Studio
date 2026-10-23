@@ -352,6 +352,23 @@ final class BackupService: ObservableObject {
                     context.insert(cue)
                 }
             }
+            if merge, !scriptByVideoId.isEmpty {
+                // Rebuild each kept script's in-memory relationship from the store.
+                // Delete+insert leaves the persisted rows right, but on some OS
+                // versions a deleted row's ghost (or a stale copy) survives in the
+                // relationship array — and ScriptCue.load (what the UI reads)
+                // prefers that array. Reconciling here makes the merge read the
+                // same rows on every version.
+                let freshCues = try context.fetch(FetchDescriptor<ScriptCue>())
+                for keep in scriptByVideoId.values {
+                    // Union by id, store wins: keeps relationship-only members (nil
+                    // video) while a stale copy loses to its replacement row.
+                    var byId = [String: ScriptCue]()
+                    for cue in keep.cues { byId[cue.id] = cue }
+                    for cue in freshCues where cue.video === keep { byId[cue.id] = cue }
+                    keep.cues = Array(byId.values)
+                }
+            }
             for vd in snap.vocab {
                 if merge, localWords.contains(vd.word) { continue }
                 let v = Vocabulary(

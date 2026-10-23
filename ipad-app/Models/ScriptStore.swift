@@ -74,11 +74,17 @@ extension ScriptCue {
         let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
         guard let script = try? context.fetch(descriptor).first else { return [] }
         let related = script.cues
-        if !related.isEmpty { return related.sorted { $0.startTime < $1.startTime } }
         // SwiftData sometimes leaves script.cues empty after cue.video= inserts; scan in memory.
         let all = (try? context.fetch(FetchDescriptor<ScriptCue>())) ?? []
-        return all.filter { $0.video?.videoId == videoId || $0.video?.persistentModelID == script.persistentModelID }
-            .sorted { $0.startTime < $1.startTime }
+        let scanned = all.filter { $0.video?.videoId == videoId || $0.video?.persistentModelID == script.persistentModelID }
+        if scanned.isEmpty { return related.sorted { $0.startTime < $1.startTime } }
+        // Union by id with the store scan winning: a delete+insert can leave a stale
+        // member behind in the in-memory relationship on some OS versions, and the
+        // stale copy (e.g. isDeleted=false) would otherwise reach the UI.
+        var byId = [String: ScriptCue]()
+        for cue in related { byId[cue.id] = cue }
+        for cue in scanned { byId[cue.id] = cue }
+        return byId.values.sorted { $0.startTime < $1.startTime }
     }
 
     @MainActor

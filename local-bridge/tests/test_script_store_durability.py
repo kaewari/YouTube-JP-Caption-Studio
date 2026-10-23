@@ -8,6 +8,7 @@ and cues.json rewritten on every GET even when nothing changed.
 from __future__ import annotations
 
 import os
+import pathlib
 
 from app.services import script_store
 
@@ -26,6 +27,7 @@ def _record_fs_calls(monkeypatch) -> list[str]:
     order: list[str] = []
     real_fsync = os.fsync
     real_replace = os.replace
+    real_path_replace = pathlib.Path.replace
 
     def spy_fsync(fd):
         order.append("fsync")
@@ -35,8 +37,16 @@ def _record_fs_calls(monkeypatch) -> list[str]:
         order.append("replace")
         return real_replace(src, dst)
 
+    def spy_path_replace(self, target):
+        order.append("replace")
+        return real_path_replace(self, target)
+
     monkeypatch.setattr(os, "fsync", spy_fsync)
     monkeypatch.setattr(os, "replace", spy_replace)
+    # Production renames via pathlib (`tmp_path.replace(path)`), and on Python
+    # 3.10 that goes through the C accessor, bypassing the `os.replace`
+    # attribute entirely. Spying the method covers 3.10 and 3.12 alike.
+    monkeypatch.setattr(pathlib.Path, "replace", spy_path_replace)
     return order
 
 
