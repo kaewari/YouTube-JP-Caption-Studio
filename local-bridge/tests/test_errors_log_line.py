@@ -47,3 +47,37 @@ def test_the_log_route_keeps_one_line(tmp_path, monkeypatch):
     lines = log.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1, lines
     assert lines[0] == "ERROR:bridge:boom ERROR:bridge:fake", lines
+
+
+def test_asr_runtime_failure_is_written_to_errors_log(tmp_path, monkeypatch):
+    """AGENTS.md §6: a 500 must land in errors.log, not only on stderr."""
+    import sys
+    import types
+
+    from fastapi.testclient import TestClient
+
+    from app.api import asr as asr_api
+    from app.main import app
+
+    log = tmp_path / "errors.log"
+    monkeypatch.setattr(logging_utils, "_ERRORS_LOG", log)
+    monkeypatch.setattr(asr_api, "MAX_AUDIO_BYTES", 10_000)
+
+    def boom(**kwargs):
+        raise RuntimeError("metal exploded")
+
+    monkeypatch.setattr(asr_api, "transcribe_audio", boom)
+    monkeypatch.setattr(asr_api.governor, "try_acquire", lambda: True)
+    monkeypatch.setattr(asr_api.governor, "release", lambda: None)
+
+    resp = TestClient(app).post(
+        "/asr/transcribe",
+        params={"preprocess": "false"},
+        content=b"RIFFnot-really-wav" * 10,
+        headers={"Content-Type": "audio/wav"},
+    )
+
+    assert resp.status_code == 500, resp.text
+    text = log.read_text(encoding="utf-8")
+    assert "asr transcribe runtime failure" in text, text
+    assert "RuntimeError" in text, text

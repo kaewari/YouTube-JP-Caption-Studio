@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
 from app.core.governor import governor
+from app.utils.logging_utils import append_errors_log
 from app.services.asr import (
     DEFAULT_INITIAL_PROMPT,
     DEFAULT_MODEL_NAME,
@@ -153,11 +154,14 @@ async def transcribe(
         # sanitized in the service so no ffmpeg internals reach the caller.
         logger.warning("Invalid audio payload for ASR: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError:
+    except RuntimeError as e:
         logger.exception("ASR runtime failure")
+        # AGENTS.md §6: a runtime failure also belongs in errors.log, not only stderr.
+        append_errors_log("ERROR", f"asr transcribe runtime failure: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="ASR transcription failed")
-    except Exception:
+    except Exception as e:
         logger.exception("Unexpected ASR error")
+        append_errors_log("ERROR", f"asr transcribe unexpected error: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="ASR transcription failed")
     finally:
         governor.release()
