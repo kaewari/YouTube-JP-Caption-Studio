@@ -1279,3 +1279,12 @@ Job bridge ở run trước **timeout đúng 15:00** trong step `sudo apt-get up
 install -y -qq ffmpeg`, **không một dòng output** — dạng treo của prompt tương tác (needrestart /
 service) khi cài unattended. `cd70c6b2b` chốt `DEBIAN_FRONTEND=noninteractive` +
 `--no-install-recommends` (chuẩn cho CI). Sẽ xác nhận bằng run CI kế tiếp, không claim trước.
+
+## [2026-10-23] ci | apt treo lần 2 — nguyên nhân là sudo làm mất proxy
+
+Step ffmpeg treo **lần thứ hai**, vẫn 0 output tới timeout 15:00 — nên không phải prompt tương tác
+(giả thuyết ở commit trước sai). Đọc log timestamp: step bắt đầu 03:00:35, cancel 03:15:46, giữa hai
+mốc không có gì. Runner GitHub ra mạng qua proxy env var; `sudo` thường **làm mất** các biến đó →
+apt treo chờ kết nối trực tiếp không bao giờ tới. Fix: `sudo -E` cho cả `update` lẫn `install`,
+kèm `timeout 180` / `timeout 600` để lần sau (nếu còn treo) fail nhanh, rõ, thay vì đốt thêm 15 phút.
+Ghi lại để không ai quay về bản `sudo` trơn.
