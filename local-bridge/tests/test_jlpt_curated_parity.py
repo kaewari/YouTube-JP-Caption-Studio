@@ -62,3 +62,22 @@ def test_bridge_only_keys_stay_documented():
         f"bridge-only set changed: added={sorted(bridge_only - KNOWN_BRIDGE_ONLY)} "
         f"removed={sorted(KNOWN_BRIDGE_ONLY - bridge_only)}"
     )
+
+
+def test_every_extension_curated_key_resolves_identically():
+    """Reverse direction: the bridge must honor the shared curated table.
+
+    The extension's map is the source of truth (see _COMMON_JLPT_WORDS header);
+    this locks the unification so a future dataset/freq change cannot silently
+    re-band a curated word.
+    """
+    from app.services.vocab_freq import jlpt_of
+
+    ext = _extension_map()
+    assert len(ext) >= 400, f"extension map collapsed to {len(ext)}"
+    bad = [
+        (key, band, jlpt_of(None, lemma=key, reading="", surface=key))
+        for key, band in ext.items()
+        if jlpt_of(None, lemma=key, reading="", surface=key) != band
+    ]
+    assert bad == [], f"{len(bad)} curated words re-banded by dataset/freq: {bad[:8]}"
