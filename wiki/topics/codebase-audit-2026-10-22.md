@@ -51,6 +51,7 @@ Raw review đã file và **không sửa** (§4).
 | C-7 saved-cue wire (`start_media_time` giây) | **guard** cross-layer test extension ↔ web + bridge route | `37a64a20a` |
 | C-8 `meta.rev` trên wire Drive | **guard** bridge route test | `37a64a20a` |
 | C-5 settings defaults lệch (barShowVi, roi.height, maxSentences, barBgOpacity) | **đã sửa** (1 bảng chung `extension/shared/hardsub_defaults.js` + contract test) | `b2f38cf6c` |
+| C-3 TXT parse: extension JS + bridge port | **đã sửa**: parity test tìm ra bug thật — bridge hiểu `1:02:03` thành **62 s** thay vì 3723 s | `d5873bd80` |
 
 ## Raw
 
@@ -183,7 +184,7 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | Nhóm | Việc | Vì sao chưa làm |
 |---|---|---|
 | C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
-| C-3, C-4 | TXT-parse và tokenize còn nhiều bản (bridge + JS + iOS) | cần thống nhất 1 tầng làm chuẩn; iOS ngoài phạm vi phiên này |
+| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
 | C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
 
 | C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |

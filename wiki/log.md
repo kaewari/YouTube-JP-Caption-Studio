@@ -1146,3 +1146,22 @@ test; harness `scripts/browser_probe.js` zero-dep.
 
 Gates cuối: `verify_all.sh` **12 passed, 0 skipped, 0 failed** · extension **15/15** · bridge
 **165 passed, 5 skipped** · web **19 passed** · popup rebuild + verify OK.
+
+## [2026-10-23] ingest | C-3 — parity test extension ↔ bridge, tìm ra bug timing thật
+
+`parse_script_txt()` tự ghi là "port of extension import_parse.parseExportTxt" nhưng **chưa ai so**.
+`local-bridge/tests/test_txt_parse_parity.py` chạy parser JS thật trong Node (skip nếu không có node)
+và parser Python thật trên 7 fixture.
+
+**Bug thật tìm được ngay:** bridge chỉ hiểu `m:ss`, nên `[3] 1:02:03 → 1:02:04` nhập thành **62 s**
+thay vì **3723 s** — export của video dài 1 giờ sẽ lệch toàn bộ timeline. `_TIME_TOKEN` +
+`_parse_time_token()` giờ nhận phần giờ tuỳ chọn như parser gốc.
+
+Khác biệt **có chủ ý** được assert tường minh thay vì bỏ qua: bridge luôn materialise
+`end_media_time` (wire model cần float), extension để lớp cue-timing điền.
+
+Proof: bridge **167 passed, 5 skipped**; red proof: trả `_TIME_TOKEN` về dạng 2 phần → fail
+*"parsers disagree … 62.0 vs 3723.0"*. CI job bridge giờ cài Node để guard chạy trên CI.
+
+**C-4** ghi rõ: tokenize bridge (Sudachi) vs extension (`Intl.Segmenter` fallback) là **2 engine khác
+nhau có chủ ý**, không phải port trùng; bản Swift ngoài phạm vi phiên này.
