@@ -1128,3 +1128,21 @@ fallback `start_media_time` → fail cue contract; đổi tên field wire ở br
 
 Gates: `bash scripts/verify_all.sh` → **12 passed, 0 skipped, 0 failed** (thêm `browser self-test`
 + `web tests`); bridge **165 passed, 5 skipped**; web **16 passed**; popup verify OK.
+
+## [2026-10-23] ingest | C-5 — một bảng settings defaults; đo C-13; guard C-2/C-7/C-8
+
+**C-5** `b2f38cf6c`: defaults của overlay tồn tại **2 bản** và đã lệch **4 giá trị** —
+`barShowVi` (web true / ext false), `roi.height` (0.22 / 0.2), `maxSentences` (500 / 2000),
+`barBgOpacity` (0.82 / 0.4). Tạo `extension/shared/hardsub_defaults.js` làm **bảng duy nhất** (gồm cả
+`DEFAULT_VOCAB_SETTINGS`), `content.js` chỉ còn spread nó + các key content-only; manifest load ngay
+sau `vocab_style.js`; `content_test.js` load 2 file shared vào sandbox để vẫn chạy code thật. Web giữ
+interface TS (extension là bên tô màu → giá trị extension thắng) và có test so **giá trị thật**:
+scalar, `roi`/`barPos`/`enabledPlatforms`, và default JLPT highlight (vắng = bật).
+Red proof: bật lại `barShowVi: true` → fail *"every shared settings default matches the extension"*.
+Web tests 16 → **19 passed**.
+
+Bổ sung trong cùng đợt (đã ghi ở entry trước): C-13 đo bằng Chrome thật; C-2/C-7/C-8 có contract
+test; harness `scripts/browser_probe.js` zero-dep.
+
+Gates cuối: `verify_all.sh` **12 passed, 0 skipped, 0 failed** · extension **15/15** · bridge
+**165 passed, 5 skipped** · web **19 passed** · popup rebuild + verify OK.

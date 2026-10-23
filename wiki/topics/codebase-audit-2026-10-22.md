@@ -46,6 +46,11 @@ Raw review đã file và **không sửa** (§4).
 | C-17 `onUpdated` đọc storage + `setOptions` mỗi event | **đã sửa một phần** (memo bỏ IPC; vẫn đọc storage) | `a23252017` |
 | C-15 build stale (`out/`, `extension/popup/`) | **đã đóng**: `out/` không track; popup rebuild `2026-10-23T00:15Z` + CI job `extension-popup` verify | `b1a2a3f74` |
 | C-16 `sentence_benchmark.js` quét O(cues) mỗi frame kể cả khi pause | **đã sửa** (chỉ rescan khi list instance đổi; **không có red proof**, chưa đo frame time) | `b3b412b87` |
+| C-13 web list không virtualize | **đã sửa** cửa sổ 100 row + đo Chrome thật: 5000 → 100 row, 622 918 → 12 941 px | `97a5c85df` |
+| C-2 level-colour/JLPT table lệch giữa extension và web | **đã sửa** (contract test; `unknown` #c5c5d0 → #94a3b8) | `37a64a20a` |
+| C-7 saved-cue wire (`start_media_time` giây) | **guard** cross-layer test extension ↔ web + bridge route | `37a64a20a` |
+| C-8 `meta.rev` trên wire Drive | **guard** bridge route test | `37a64a20a` |
+| C-5 settings defaults lệch (barShowVi, roi.height, maxSentences, barBgOpacity) | **đã sửa** (1 bảng chung `extension/shared/hardsub_defaults.js` + contract test) | `b2f38cf6c` |
 
 ## Raw
 
@@ -178,9 +183,9 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | Nhóm | Việc | Vì sao chưa làm |
 |---|---|---|
 | C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
-| C-2..C-5 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize | chạm cả 4 tầng (extension, bridge, web, iOS) |
+| C-3, C-4 | TXT-parse và tokenize còn nhiều bản (bridge + JS + iOS) | cần thống nhất 1 tầng làm chuẩn; iOS ngoài phạm vi phiên này |
 | C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
-| C-13 | Web: danh sách dài không virtualize | cần đo thật trong browser |
+
 | C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
 
