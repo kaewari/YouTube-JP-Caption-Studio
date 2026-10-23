@@ -57,6 +57,7 @@ Raw review đã file và **không sửa** (§4).
 | C-3 TXT parse: extension JS + bridge port | **đã sửa**: parity test tìm ra bug thật — bridge hiểu `1:02:03` thành **62 s** thay vì 3723 s | `d5873bd80` |
 | C-1 gộp 20 file Swift trùng (4 141 LOC) thành package `CaptionShared` 19 file | **HOÀN TẤT A–E**: mỗi app còn `App.swift` + 5 file riêng + `DriveScriptsService`; migration module-move chứng minh headless (`MIGRATION_OK`); Swift 6 mode bắt thêm race cache + `Sendable` | `939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10` |
 | C-22 `.git` 1.6 GB (heap snapshot + object mồ côi) | **đã sửa, không rewrite history**: `git gc --prune=now` → pack 1.14 GiB còn 155 MiB; còn lại là `.git/cursor` IDE (388M, không đụng) + submodule (50M) | — (local-only, không commit) |
+| P0 `ScriptCue.isDeleted` đụng `NSManagedObject.isDeleted`, mất tombstone trên macOS 26 | **đã sửa**: stored property thành `tombstoned` + `@Attribute(originalName:)`, wire giữ nguyên; migration chứng minh bằng 2 binary chung 1 store | `3e7a9dbc9` |
 
 ## Raw
 
@@ -200,10 +201,7 @@ ngoại lệ ghi rõ):
 | Nhóm | Việc | Vì sao chưa làm |
 |---|---|---|
 | C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
-
-| C-23 | commit chưa push tồn đọng | **đã push hết**, tree sạch, CI 7/7 xanh | — |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
-| P0 mới: `ScriptCue.isDeleted` đụng `NSManagedObject.isDeleted`, mất tombstone trên macOS 26 | **đã sửa**: stored property thành `tombstoned` + `@Attribute(originalName:)`, wire giữ nguyên; migration chứng minh bằng 2 binary chung 1 store | `3e7a9dbc9` |
 
 ## Chưa verify (nói thẳng)
 
