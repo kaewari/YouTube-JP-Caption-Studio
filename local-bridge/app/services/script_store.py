@@ -32,7 +32,7 @@ _DEVICE_ID_PATH = ROOT / "data" / "config" / "device_id.txt"
 FILE_NAMES = ("cues.json", "meta.json", "script.txt")
 
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
-_TIME_TOKEN = r"\d+(?::\d{1,2})?(?:\.\d+)?"
+_TIME_TOKEN = r"(?:\d+:)?\d+:\d{1,2}(?:\.\d+)?|\d+(?:\.\d+)?"
 _HEAD_RE = re.compile(
     rf"^\[(\d+(?:-\d+)?)\]\s+({_TIME_TOKEN})(?:\s*(?:→|->|–|—|-)\s*({_TIME_TOKEN}))?"
 )
@@ -167,16 +167,22 @@ def render_script_txt(
 
 
 def _parse_time_token(raw: str) -> float:
-    """m:ss(.frac) or plain seconds — port of import_parse.parseTimeToken."""
+    """[(h:)]m:ss(.frac) or plain seconds — port of import_parse.parseTimeToken.
+
+    The hour form matters: a 3-part timestamp used to match the 2-part regex and
+    lose its hour part (1:02:03 parsed as 62 s instead of 3723 s).
+    """
     s = str(raw or "").strip().replace(",", ".")
     if not s:
         return float("nan")
     if re.fullmatch(r"\d+(\.\d+)?", s):
         return float(s)
-    m = re.fullmatch(r"(\d+):(\d{1,2})(?:\.(\d+))?", s)
+    m = re.fullmatch(r"(?:(\d+):)?(\d+):(\d{1,2})(?:\.(\d+))?", s)
     if not m:
         return float("nan")
-    return float(f"{int(m.group(1)) * 60 + int(m.group(2))}.{m.group(3) or '0'}")
+    hours = int(m.group(1) or 0)
+    whole = hours * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    return float(f"{whole}.{m.group(4) or '0'}")
 
 
 def parse_script_txt(text: str) -> list[dict[str, Any]]:
