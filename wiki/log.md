@@ -1178,3 +1178,17 @@ không assert — thêm chúng vào là quyết định product, không phải v
 
 Proof: bridge **169 passed, 5 skipped** (167 + 2). Red proof (dựng tạm): 私 n5→n4 fail
 *"band drift on 1 words: [('私', 'n4', 'n5')]"*.
+
+## [2026-10-23] measure | C-13 scroll: 21 frames, p95 17.6ms, 0 longtask
+
+`node scripts/browser_probe.js --measure-scroll=5000` (Chrome thật, headless, máy này):
+seed 5000 từ, scroll hết list qua 21 bước, sample rAF gap + longtask trong page:
+
+```
+seeded 5000 · frames 21 · avgGapMs 16.7 · p95GapMs 17.6 · maxGapMs 17.6
+longtasks 0 · exceptions 0 · rows 200 · scrollHeight 25 391 px
+```
+
+Đọc đúng: cadence vsync (16.7ms), không longtask — các bước tăng window (100 row/lần) không gây jank
+trên máy này. Giới hạn: 1 lần chạy, headless, không so trước/sau frame (bản cũ chỉ còn số DOM:
+5000 row / 622 918 px). Mode này chỉ báo số, **không gate** (gate perf cần máy baseline ổn định).
