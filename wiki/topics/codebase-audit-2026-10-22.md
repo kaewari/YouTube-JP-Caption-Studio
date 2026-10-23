@@ -197,6 +197,7 @@ ngoại lệ ghi rõ):
 - **Hai finding do tự verify mà hạ cấp**: A-3 (thiết kế, P0 → P2), A-8 (audit sai, P0 → P2).
 - **Một finding đóng bằng kiểm chứng không đổi code**: B-3/C-6 (YAGNI — không consumer nào vỡ).
 - **Mở có chủ ý, không phải quên**: C-24 (không bịa giá), C-25 (giữ theo quyết định user).
+- **Meta-item process**: C-23 (commit tồn đọng) — đã push hết từ trước, có log; không phải finding code.
 
 ## Còn mở
 
