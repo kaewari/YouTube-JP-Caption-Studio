@@ -2,7 +2,7 @@
 
 ## Status
 
-**Plan filed, chưa sửa code.** Raw plan:
+**HOÀN TẤT A–E.** Raw plan:
 [plan/swift-shared-package-2026-10-23.md](../../plan/swift-shared-package-2026-10-23.md).
 Finding gốc: [review/codebase-audit-2026-10-22.md](../../review/codebase-audit-2026-10-22.md) C-1.
 

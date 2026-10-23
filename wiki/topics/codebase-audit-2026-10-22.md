@@ -53,6 +53,7 @@ Raw review đã file và **không sửa** (§4).
 | C-8 `meta.rev` trên wire Drive | **guard** bridge route test | `37a64a20a` |
 | C-5 settings defaults lệch (barShowVi, roi.height, maxSentences, barBgOpacity) | **đã sửa** (1 bảng chung `extension/shared/hardsub_defaults.js` + contract test) | `b2f38cf6c` |
 | C-3 TXT parse: extension JS + bridge port | **đã sửa**: parity test tìm ra bug thật — bridge hiểu `1:02:03` thành **62 s** thay vì 3723 s | `d5873bd80` |
+| C-1 gộp 20 file Swift trùng (4 141 LOC) thành package `CaptionShared` 19 file | **HOÀN TẤT A–E**: mỗi app còn `App.swift` + 5 file riêng + `DriveScriptsService`; migration module-move chứng minh headless (`MIGRATION_OK`); Swift 6 mode bắt thêm race cache + `Sendable` | `939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10` |
 
 ## Raw
 
@@ -193,9 +194,7 @@ ngoại lệ ghi rõ):
 ## Còn mở
 
 | Nhóm | Việc | Vì sao chưa làm |
-|---|---|---|
-| C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
-| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
+|---|---|---|\n| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
 | C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
 
 | C-23 | commit chưa push tồn đọng | **đã push hết**, tree sạch, CI 7/7 xanh | — |
