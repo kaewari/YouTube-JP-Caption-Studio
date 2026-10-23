@@ -1525,3 +1525,21 @@ Run 39935065686 **success**: cả 2 step UI test mới đều `Executed 1 test, 
 (iPad 45s, iPhone 35s trên simulator của runner). Chuỗi 4 vòng đỏ-xanh của `ios-build`
 trong phiên này: generic destination → thiếu scheme app → thiếu Info.plist → xanh.
 Mỗi vòng đều tái hiện hoặc verify local trước khi push (trừ vòng scheme, đã ghi).
+
+## [2026-10-23] ingest | BUG THẬT: overlay extension chưa bao giờ hiện vì CSP chặn inject MAIN world
+
+Chẩn đoán trên Chromium thật (sau khi chứng minh Chrome brand bỏ qua
+`--load-extension`): content script chạy, `#hardsub-ocr-root` có, nhưng overlay trống và
+console lặp `Unsafe attempt to load URL chrome-extension://…/timedtext_parse.js?api=7 …
+Domains, protocols and ports must match`. `fetch()` đúng 2 URL đó trả **HTTP 200** ⇒ file
+hợp lệ, chỉ thẻ `<script>` bị chặn. YouTube gửi
+`content-security-policy: require-trusted-types-for 'script'` với `script-src` không cho
+scheme `chrome-extension:` → `window.__HARDSubOCRCapture` không tồn tại → bridge MAIN-world
+không trả lời PING → caption không tải → overlay không hiện. **Bug thật, mọi user Chrome.**
+
+Fix `e465a2d`: `chrome.scripting.executeScript({world:"MAIN", files:[...]})` (miễn nhiễm CSP
+trang) + marker element mang `data-cap`/`data-api` + guard-reset khi force-reinject đổi sang
+`executeScript({func})` + thêm permission `scripting`.
+
+Proof sau fix (Chromium + YouTube live): `captureApiVer: 7`, `hasHandler: true`,
+`parser: object`, `markerCap: 36` ký tự, **0 lỗi CSP/Unsafe** (trước: 2 lỗi/inject).
