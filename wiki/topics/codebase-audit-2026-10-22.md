@@ -168,17 +168,27 @@ iOS Keychain + ATS trong binary ship + force-unwrap + retain cycle · web type s
 ## Chưa verify (nói thẳng)
 
 segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web (ghi `out/`, vi phạm
-read-only) · 23/25 sanity script chưa chạy hết · **chưa chạy browser thật** nên mọi claim UI
-là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API thật.
+read-only) · sanity suite chạy trong CI (21 passed / 6 skipped, skip ≠ pass) · browser thật đã
+chạy (`scripts/browser_probe.js`: Chrome 151 qua CDP pipe — popup hydrate, đếm row, đo scroll;
+**chưa** đo fps/paint timing chi tiết, **chưa** screen reader) · Drive round-trip thật ·
+Gemini API thật.
 
 ## Trạng thái 2026-10-23
 
-Đã đóng **25 finding** (xem bảng Status ở trên, mỗi dòng có commit + proof red→green):
+Đã đóng **39 dòng trạng thái** (xem bảng Status ở trên; mỗi fix có commit + proof red→green,
+ngoại lệ ghi rõ):
 
 - **P0/P1 chính**: A-1, A-2, A-4, A-5, A-6, A-7, A-8 (hạ P2), B-1, B-2, B-4, B-5, B-6, B-14,
-  B-15, B-16, B-21, B-22, B-23, B-24.
-- **Hygiene/security**: C-11, C-18, C-19, C-20, C-21, C-27, C-28, C-31, C-32, C-33.
+  B-15, B-16, B-21, B-22, B-23, B-24, **P0 `isDeleted`/NSManagedObject** (rename `tombstoned`).
+- **Hygiene/security**: C-11, C-18, C-19, C-20, C-21, C-26, C-27, C-28, C-29 (đủ 3/3 test),
+  C-30 (+ bug phụ `_parse_srv_xml`), C-31, C-32, C-33.
+- **Cross-layer guards**: C-2 (level-colour + curated JLPT map parity), C-3 (TXT-parse parity,
+  tìm ra bug giờ `1:02:03`→62s), C-5 (1 bảng settings defaults), C-7/C-8 (wire contract tests),
+  C-9 (một env var), C-10 (`freq_ja` parity), C-12 (bỏ demo khỏi bundle), C-13 (window list,
+  đo Chrome thật), C-14 (a11y names, chưa đo screen reader), C-15 (build stale),
+  C-16 (skip rescan khi pause; **không red proof được**), C-17 (memo panel, **một phần**).
 - **Hai finding do tự verify mà hạ cấp**: A-3 (thiết kế, P0 → P2), A-8 (audit sai, P0 → P2).
+- **Mở có chủ ý, không phải quên**: C-24 (không bịa giá), C-25 (giữ theo quyết định user).
 
 ## Còn mở
 
@@ -188,15 +198,17 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
 | C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
 
-| C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
+| C-23 | commit chưa push tồn đọng | **đã push hết**, tree sạch, CI 7/7 xanh | — |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
 | P0 mới: `ScriptCue.isDeleted` đụng `NSManagedObject.isDeleted`, mất tombstone trên macOS 26 | **đã sửa**: stored property thành `tombstoned` + `@Attribute(originalName:)`, wire giữ nguyên; migration chứng minh bằng 2 binary chung 1 store | `3e7a9dbc9` |
 
 ## Chưa verify (nói thẳng)
 
-segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web (ghi `out/`) ·
-**chưa chạy browser thật** nên mọi claim UI là đọc code + CSS, không đo pixel · Drive round-trip
-thật · Gemini API thật · Swift self-test chạy bằng harness macOS, **1 block bị skip** vì SwiftData
-in-memory không enforce unique constraint trên macOS (assert đó vẫn chạy trên iOS).
+segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web (ghi `out/`, vi phạm
+read-only) · browser thật đã chạy (`scripts/browser_probe.js`: Chrome 151 qua CDP pipe — popup
+hydrate, đếm row, đo scroll; **chưa** đo fps/paint timing chi tiết, **chưa** screen reader) ·
+Drive round-trip thật · Gemini API thật · Swift self-test chạy bằng harness macOS, **1 block bị
+skip** vì SwiftData in-memory không enforce unique constraint trên macOS (assert đó vẫn chạy
+trên iOS).
 
 Ponytail: sửa 1 nguồn sự thật, xoá phần còn lại — không thêm framework, không thêm abstraction.
