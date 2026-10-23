@@ -13,7 +13,7 @@ public enum VocabStyle {
     public static let defaultLevelColorsJSON =
         ##"{"n5":{"on":true,"color":"#7fd6a8"},"n4":{"on":true,"color":"#8fd3ff"},"n3":{"on":true,"color":"#f5d76e"},"n2":{"on":true,"color":"#e08a4a"},"n1":{"on":true,"color":"#e74c5c"},"unknown":{"on":true,"color":"#c5c5d0"}}"##
 
-    public struct Entry: Codable, Equatable {
+    public struct Entry: Codable, Equatable, Sendable {
         public var on: Bool
         public var color: String
 

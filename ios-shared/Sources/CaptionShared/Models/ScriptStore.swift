@@ -6,23 +6,23 @@ import SwiftData
 // No shared Swift package yet: apply every change to BOTH copies and keep them byte-identical.
 
 @Model
-class VideoScript {
-    @Attribute(.unique) var videoId: String
-    var title: String
-    var savedAt: Date
+public class VideoScript {
+    @Attribute(.unique) public var videoId: String
+    public var title: String
+    public var savedAt: Date
     /// Import-replace script: reload must not rebuild from YouTube IDs.
-    var owned: Bool = false
+    public var owned: Bool = false
     /// Lamport clock shared with bridge/extension via Drive `meta.json` — never a wall clock.
     /// Default-valued so SwiftData lightweight migration keeps the existing sandbox.
-    var rev: Int = 0
+    public var rev: Int = 0
     /// Device that produced `rev`; tie-break when two devices land on the same rev.
-    var deviceId: String = ""
+    public var deviceId: String = ""
     
     // Relationship
     @Relationship(deleteRule: .cascade, inverse: \ScriptCue.video)
-    var cues: [ScriptCue] = []
+    public var cues: [ScriptCue] = []
     
-    init(videoId: String, title: String, owned: Bool = false) {
+    public init(videoId: String, title: String, owned: Bool = false) {
         self.videoId = videoId
         self.title = title
         self.savedAt = Date()
@@ -31,23 +31,23 @@ class VideoScript {
 }
 
 @Model
-class ScriptCue {
-    var id: String
-    var startTime: Double
-    var duration: Double
-    var textJA: String
-    var textEN: String?
-    var textVI: String?
+public class ScriptCue {
+    public var id: String
+    public var startTime: Double
+    public var duration: Double
+    public var textJA: String
+    public var textEN: String?
+    public var textVI: String?
     // WARNING: do not rename this back to `isDeleted` and do not drop
     // `originalName:` (it keeps existing stores readable). `isDeleted` collides
     // with NSManagedObject.isDeleted: on some OS versions reads return the live
     // object's deletion state (always false) instead of the stored value, silently
     // dropping every tombstone. The wire name stays `isDeleted` (see CueDTO).
-    @Attribute(originalName: "isDeleted") var tombstoned: Bool // Tombstone flag
+    @Attribute(originalName: "isDeleted") public var tombstoned: Bool // Tombstone flag
     
-    var video: VideoScript?
+    public var video: VideoScript?
     
-    init(id: String, startTime: Double, duration: Double, textJA: String, textEN: String? = nil, textVI: String? = nil, tombstoned: Bool = false) {
+    public init(id: String, startTime: Double, duration: Double, textJA: String, textEN: String? = nil, textVI: String? = nil, tombstoned: Bool = false) {
         self.id = id
         self.startTime = startTime
         self.duration = duration
@@ -61,7 +61,7 @@ class ScriptCue {
 extension ScriptCue {
     /// Playhead match — hold through gaps until next cue starts (YT durations often end early).
     /// Last cue: +150ms grace past duration. Last match wins on ties.
-    static func active(in cues: [ScriptCue], atMs: Double) -> ScriptCue? {
+    public static func active(in cues: [ScriptCue], atMs: Double) -> ScriptCue? {
         let graceMs = 150.0
         let live = cues.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         var hit: ScriptCue? = nil
@@ -75,7 +75,7 @@ extension ScriptCue {
     }
 
     @MainActor
-    static func load(videoId: String, context: ModelContext) -> [ScriptCue] {
+    public static func load(videoId: String, context: ModelContext) -> [ScriptCue] {
         // Fetch parent first — optional-relationship predicates miss after insert.
         let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
         guard let script = try? context.fetch(descriptor).first else { return [] }
@@ -94,7 +94,7 @@ extension ScriptCue {
     }
 
     @MainActor
-    static func mergeWithLocal(videoId: String, youtubeCues: [Cue], context: ModelContext) -> [ScriptCue] {
+    public static func mergeWithLocal(videoId: String, youtubeCues: [Cue], context: ModelContext) -> [ScriptCue] {
         let localCues = load(videoId: videoId, context: context)
         // Duplicate ids (e.g. YT JSON3 events sharing a tStartMs) must not trap —
         // first row wins, later duplicates keep their own rows.
@@ -138,14 +138,14 @@ extension ScriptCue {
         return merged.sorted { $0.startTime < $1.startTime }
     }
     
-    func softDelete() {
+    public func softDelete() {
         self.tombstoned = true
         // Tombstone must win over Drive on the next merge — never resurrect locally-deleted cues.
         if let videoId = video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [id]) }
     }
 
     @MainActor
-    static func clearTranslations(videoId: String, context: ModelContext) {
+    public static func clearTranslations(videoId: String, context: ModelContext) {
         let live = load(videoId: videoId, context: context).filter { !$0.tombstoned }
         for cue in live {
             cue.textEN = nil
@@ -157,7 +157,7 @@ extension ScriptCue {
     }
 
     @MainActor
-    static func wipeAll(videoId: String, context: ModelContext) {
+    public static func wipeAll(videoId: String, context: ModelContext) {
         let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == videoId })
         if let script = try? context.fetch(descriptor).first {
             let cues = load(videoId: videoId, context: context)
@@ -175,7 +175,7 @@ extension ScriptCue {
     }
 
     @MainActor
-    static func addCueAtPlayhead(videoId: String, atMs: Double, context: ModelContext) -> ScriptCue {
+    public static func addCueAtPlayhead(videoId: String, atMs: Double, context: ModelContext) -> ScriptCue {
         let script = ensureScript(videoId: videoId, context: context)
         script.owned = true
         let start = max(0, atMs)
@@ -194,7 +194,7 @@ extension ScriptCue {
 
     /// Insert empty cue right after `after` (desktop `add_cue` + afterId).
     @MainActor
-    static func addCue(after: ScriptCue, context: ModelContext) -> ScriptCue? {
+    public static func addCue(after: ScriptCue, context: ModelContext) -> ScriptCue? {
         guard let videoId = after.video?.videoId else { return nil }
         let script = ensureScript(videoId: videoId, context: context)
         script.owned = true
@@ -227,7 +227,7 @@ extension ScriptCue {
     }
 
     /// Apply start/end from meta inputs (ms). Clamps lightly to neighbors.
-    func applyTimeline(startMs: Double, endMs: Double, neighbors: [ScriptCue]) {
+    public func applyTimeline(startMs: Double, endMs: Double, neighbors: [ScriptCue]) {
         let sorted = neighbors.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         let idx = sorted.firstIndex(where: { $0.id == id })
         let prevCue = idx.flatMap { $0 > 0 ? sorted[$0 - 1] : nil }
@@ -245,7 +245,7 @@ extension ScriptCue {
         if let videoId = video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [id]) }
     }
 
-    func copyText(format: String) -> String {
+    public func copyText(format: String) -> String {
         let vi = textVI ?? ""
         let en = textEN ?? ""
         switch format {
@@ -261,7 +261,7 @@ extension ScriptCue {
     }
 
     /// Extension-compatible TXT export.
-    static func exportTXT(_ cues: [ScriptCue]) -> String {
+    public static func exportTXT(_ cues: [ScriptCue]) -> String {
         let live = cues.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         var parts: [String] = []
         for (i, c) in live.enumerated() {
@@ -276,31 +276,40 @@ extension ScriptCue {
     }
 
     /// Parsed cue rows (ms). Shared by import + smoke.
-    struct ImportRow: Equatable {
-        var id = ""
-        var startMs: Double
-        var endMs: Double
-        var ja: String
-        var en: String?
-        var vi: String?
+    public struct ImportRow: Equatable {
+        public var id = ""
+        public var startMs: Double
+        public var endMs: Double
+        public var ja: String
+        public var en: String?
+        public var vi: String?
+
+        public init(id: String = "", startMs: Double, endMs: Double, ja: String, en: String? = nil, vi: String? = nil) {
+            self.id = id
+            self.startMs = startMs
+            self.endMs = endMs
+            self.ja = ja
+            self.en = en
+            self.vi = vi
+        }
     }
 
-    enum ImportMode: Hashable {
+    public enum ImportMode: Hashable {
         case merge
         case replace
     }
 
-    struct ImportResult {
-        var updated = 0
-        var skipped = 0
-        var unmatched = 0
-        var replaced = 0
+    public struct ImportResult {
+        public var updated = 0
+        public var skipped = 0
+        public var unmatched = 0
+        public var replaced = 0
         /// Replace-mode inserts — assign to UI directly; don't re-fetch via relationship.
-        var cues: [ScriptCue] = []
+        public var cues: [ScriptCue] = []
     }
 
     /// Extension-compatible TXT/JSON → rows (times in ms).
-    static func parseImportRows(_ text: String) -> [ImportRow] {
+    public static func parseImportRows(_ text: String) -> [ImportRow] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
             if let rows = parseImportJSON(trimmed), !rows.isEmpty { return rows }
@@ -310,7 +319,7 @@ extension ScriptCue {
 
     /// Desktop-compatible import: merge matched cues, or replace the full script.
     @MainActor
-    static func importRows(
+    public static func importRows(
         videoId: String,
         rows: [ImportRow],
         mode: ImportMode,
@@ -592,33 +601,33 @@ extension ScriptCue {
 /// Per-cue dirty tracking for Drive sync (UserDefaults — not SwiftData, so it survives
 /// any restore/import that rebuilds cue rows). Local edits win over a newer Drive during
 /// merge; cleared only after a successful push.
-enum DriveDirty {
+public enum DriveDirty {
     private static func key(_ videoId: String) -> String { "drive-dirty-cues-\(videoId)" }
 
-    static func mark(videoId: String, cueIds: [String]) {
+    public static func mark(videoId: String, cueIds: [String]) {
         guard !videoId.isEmpty, !cueIds.isEmpty else { return }
         var ids = dirtyIds(videoId: videoId)
         ids.formUnion(cueIds)
         UserDefaults.standard.set(Array(ids), forKey: key(videoId))
     }
 
-    static func dirtyIds(videoId: String) -> Set<String> {
+    public static func dirtyIds(videoId: String) -> Set<String> {
         guard !videoId.isEmpty else { return [] }
         return Set(UserDefaults.standard.stringArray(forKey: key(videoId)) ?? [])
     }
 
-    static func clear(videoId: String) {
+    public static func clear(videoId: String) {
         UserDefaults.standard.removeObject(forKey: key(videoId))
     }
 }
 
 /// Desktop `cue_timing.js` — times stored as ms on iPad, displayed as m:ss.t seconds.
-enum CueTiming {
-    static let minDurMs = 450.0
-    static let gapMs = 50.0
-    static let defaultDurMs = 1650.0 // MIN_DUR + 1.2s
+public enum CueTiming {
+    public static let minDurMs = 450.0
+    public static let gapMs = 50.0
+    public static let defaultDurMs = 1650.0 // MIN_DUR + 1.2s
 
-    static func formatInput(ms: Double) -> String {
+    public static func formatInput(ms: Double) -> String {
         let t = max(0, ms / 1000)
         let m = Int(t) / 60
         let s = t - Double(m * 60)
@@ -630,7 +639,7 @@ enum CueTiming {
     }
 
     /// Parse `m:ss[.t]`, `h:mm:ss[.t]`, or plain seconds → milliseconds.
-    static func parseInput(_ raw: String) -> Double? {
+    public static func parseInput(_ raw: String) -> Double? {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
         guard !s.isEmpty else { return nil }
         if s.range(of: #"[^\d.]"#, options: .regularExpression) == nil, let n = Double(s) {
@@ -664,7 +673,7 @@ enum CueTiming {
         return nil
     }
 
-    static func apply(startMs: Double, endMs: Double, prevEndMs: Double?, nextStartMs: Double?) -> (start: Double, duration: Double) {
+    public static func apply(startMs: Double, endMs: Double, prevEndMs: Double?, nextStartMs: Double?) -> (start: Double, duration: Double) {
         var start = startMs.isFinite ? startMs : 0
         var end = endMs.isFinite ? endMs : start + minDurMs
         if let prev = prevEndMs { start = max(start, prev + gapMs) }
@@ -676,8 +685,8 @@ enum CueTiming {
 }
 
 /// Assert import TXT parse matches extension `import_parse_test.js` (+ softDelete filter).
-enum ImportSmoke {
-    static func run() {
+public enum ImportSmoke {
+    public static func run() {
         let hyphen = ScriptCue.parseImportRows("""
         [001] 0:00 - 0:02
         JA: こんにちは
@@ -744,9 +753,9 @@ enum ImportSmoke {
 
 #if DEBUG
 /// Store-level self-test — the wipe rule that keeps Drive from resurrecting a script.
-enum ScriptStoreSmoke {
+public enum ScriptStoreSmoke {
     @MainActor
-    static func run() {
+    public static func run() {
         let container = try! ModelContainer(
             for: VideoScript.self, ScriptCue.self, Vocabulary.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)

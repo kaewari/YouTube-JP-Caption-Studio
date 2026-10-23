@@ -1,7 +1,7 @@
 import Foundation
 import NaturalLanguage
 
-public struct Token: Identifiable, Hashable {
+public struct Token: Identifiable, Hashable, Sendable {
     public let id: Int
     public let surface: String
     public let lemma: String
@@ -48,15 +48,24 @@ public struct Token: Identifiable, Hashable {
 public enum NLPTagger {
     private static let kanji = try! NSRegularExpression(pattern: "[\\u3400-\\u9fff]")
     // ponytail: string→tokens map sized for a typical script; wipe when full — LRU if thrash grows
-    private static var tokenizeCache: [String: [Token]] = [:]
+    private static let tokenizeCacheLock = NSLock()
+    // nonisolated(unsafe) because every access goes through tokenizeCacheLock above;
+    // the compiler cannot prove that, so the discipline is documented here, not inferred.
+    nonisolated(unsafe) private static var tokenizeCache: [String: [Token]] = [:]
     private static let tokenizeCacheLimit = 256
 
     public static func tokenize(_ text: String) -> [Token] {
         guard !text.isEmpty else { return [] }
-        if let hit = tokenizeCache[text] { return hit }
+        // The cache is read off-main; the NLP work itself stays outside the lock.
+        tokenizeCacheLock.lock()
+        let hit = tokenizeCache[text]
+        tokenizeCacheLock.unlock()
+        if let hit { return hit }
         let out = tokenizeUncached(text)
+        tokenizeCacheLock.lock()
         if tokenizeCache.count >= tokenizeCacheLimit { tokenizeCache.removeAll(keepingCapacity: true) }
         tokenizeCache[text] = out
+        tokenizeCacheLock.unlock()
         return out
     }
 

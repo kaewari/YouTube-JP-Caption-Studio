@@ -2,15 +2,15 @@ import Foundation
 import SwiftData
 
 @Model
-class Vocabulary {
-    @Attribute(.unique) var word: String
-    var reading: String
-    var meaning: String
-    var jlptLevel: Int?
-    var frequencyCount: Int
-    var savedAt: Date
+public class Vocabulary {
+    @Attribute(.unique) public var word: String
+    public var reading: String
+    public var meaning: String
+    public var jlptLevel: Int?
+    public var frequencyCount: Int
+    public var savedAt: Date
     
-    init(word: String, reading: String, meaning: String, jlptLevel: Int? = nil, frequencyCount: Int = 1) {
+    public init(word: String, reading: String, meaning: String, jlptLevel: Int? = nil, frequencyCount: Int = 1) {
         self.word = word
         self.reading = reading
         self.meaning = meaning
@@ -23,7 +23,7 @@ class Vocabulary {
     /// Blind `insert` of a duplicate makes `save()` throw on the unique constraint —
     /// and `saveAndScheduleBackup` swallows it, so the word silently never persists.
     @MainActor
-    static func upsert(word: String, reading: String, meaning: String, jlptLevel: Int? = nil, context: ModelContext) -> Vocabulary {
+    public static func upsert(word: String, reading: String, meaning: String, jlptLevel: Int? = nil, context: ModelContext) -> Vocabulary {
         let descriptor = FetchDescriptor<Vocabulary>(predicate: #Predicate { $0.word == word })
         if let existing = try? context.fetch(descriptor).first {
             existing.reading = reading

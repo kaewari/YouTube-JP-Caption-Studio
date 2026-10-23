@@ -13,7 +13,6 @@ targets:
     sources:
       - path: App.swift
       - path: Views
-      - path: Models
       - path: Services
         excludes:
           - YouTubeURL.swift
@@ -27,6 +26,8 @@ targets:
           - CaptionService.swift
           - SettingsSync.swift
           - SubtitleParserSmoke.swift
+          - BackupService.swift
+          - VocabSync.swift
       - path: Assets.xcassets
       # Scripts/ is dev tooling only (deploy/renew/signing) — nothing ships in the app.
       - path: Resources/dict.sqlite

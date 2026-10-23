@@ -15,14 +15,14 @@ import UniformTypeIdentifiers
 ///    → mở `cues.json` (hoặc meta/script); app bookmarks parent sync root.
 ///    Drive không cho Mở folder — phải chọn file.
 @MainActor
-final class BackupService: ObservableObject {
-    static let shared = BackupService()
+public final class BackupService: ObservableObject {
+    public static let shared = BackupService()
     static let fileName = "caption-studio-backup.json"
     private static let bookmarkKey = "backupFolderBookmark"
     private static let lastAppliedKey = "backupLastAppliedUpdatedAt"
     private static let debounceNs: UInt64 = 1_500_000_000
 
-    @Published private(set) var status: String?
+    @Published public private(set) var status: String?
     @Published private(set) var hasFolder = false
 
     private var debounceTask: Task<Void, Never>?
@@ -88,7 +88,7 @@ final class BackupService: ObservableObject {
     }
 
     /// Flush debounce if a mutation is still pending (scene background).
-    func flushPending(context: ModelContext) {
+    public func flushPending(context: ModelContext) {
         guard dirty else { return }
         backupNow(context: context)
     }
@@ -146,7 +146,7 @@ final class BackupService: ObservableObject {
     }
 
     /// After reinstall: if SwiftData empty and backup file exists, restore once.
-    func autoRestoreIfEmpty(context: ModelContext) {
+    public func autoRestoreIfEmpty(context: ModelContext) {
         let scripts = (try? context.fetch(FetchDescriptor<VideoScript>())) ?? []
         let vocab = (try? context.fetch(FetchDescriptor<Vocabulary>())) ?? []
         guard scripts.isEmpty, vocab.isEmpty else { return }
@@ -158,7 +158,7 @@ final class BackupService: ObservableObject {
 
     /// Pull Drive JSON when remote `updatedAt` is newer than last applied (skip if local dirty).
     @discardableResult
-    func syncFromDriveIfNewer(context: ModelContext) -> Bool {
+    public func syncFromDriveIfNewer(context: ModelContext) -> Bool {
         guard !dirty else { return false }
         guard let folder = resolveFolder() else { return false }
         let access = folder.startAccessingSecurityScopedResource()
@@ -434,7 +434,7 @@ final class BackupService: ObservableObject {
 extension ModelContext {
     /// Save then debounce Drive backup — call after every data mutation.
     @MainActor
-    func saveAndScheduleBackup() {
+    public func saveAndScheduleBackup() {
         do {
             try save()
         } catch {
@@ -456,10 +456,10 @@ extension ModelContext {
 /// Drive File Provider: folder Open is disabled — pick `cues.json` / `meta.json` / `script.txt`
 /// inside a `<videoId>/` folder; normalize walks up to the sync root. `.folder` kept for
 /// iCloud / On My iPad where folder Open still works.
-struct BackupFolderPicker: UIViewControllerRepresentable {
+public struct BackupFolderPicker: UIViewControllerRepresentable {
     var onPick: (URL) -> Void
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+    public func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let types: [UTType] = [.json, .plainText, .text, .folder]
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
         picker.delegate = context.coordinator
@@ -467,15 +467,15 @@ struct BackupFolderPicker: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    public func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+    public func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
 
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+    public final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let onPick: (URL) -> Void
         init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
 
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
             let pickedAccess = url.startAccessingSecurityScopedResource()
             defer { if pickedAccess { url.stopAccessingSecurityScopedResource() } }
@@ -492,9 +492,9 @@ struct BackupFolderPicker: UIViewControllerRepresentable {
 }
 
 #if DEBUG
-enum BackupSmoke {
+public enum BackupSmoke {
     @MainActor
-    static func run() {
+    public static func run() {
         let at = Date(timeIntervalSince1970: 1_754_112_000)
         let cues: [BackupService.CueDTO] = [
             .init(id: "1", startTime: 0, duration: 1500, textJA: "こんにちは", textEN: "Hi", textVI: "Xin chào", isDeleted: false),

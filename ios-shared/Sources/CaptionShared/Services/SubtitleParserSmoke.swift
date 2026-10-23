@@ -1,5 +1,4 @@
 import Foundation
-import CaptionShared
 
 /// Minimal assert-based smoke for normalize + playhead (ponytail: one runnable check).
 public enum SubtitleParserSmoke {

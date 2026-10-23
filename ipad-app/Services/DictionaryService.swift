@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 import SQLite3
 
 struct DictSense: Hashable {

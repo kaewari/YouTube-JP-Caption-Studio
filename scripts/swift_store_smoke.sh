@@ -12,7 +12,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="${1:-ipad-app}"
 APP_DIR="$ROOT/$APP"
-[ -f "$APP_DIR/Services/BackupService.swift" ] || { echo "no such app: $APP" >&2; exit 2; }
+case "$APP" in
+  ipad-app|iphone-app) ;;
+  *) echo "no such app: $APP" >&2; exit 2 ;;
+esac
+SHARED="$ROOT/ios-shared/Sources/CaptionShared"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -27,12 +31,12 @@ awk '
   /^        \/\/ A failing apply must not wipe the store:/ { print "#if !os(macOS)"; fail = 1 }
   fail == 1 && /"failed apply rolls back/ { print; print "#endif"; fail = 0; next }
   skip == 0 { print }
-' "$APP_DIR/Services/BackupService.swift" > "$TMP/BackupService.swift"
+' "$SHARED/Services/BackupService.swift" > "$TMP/BackupService.swift"
 
 # The app files import the CaptionShared module, which does not exist when files
 # are compiled standalone: drop that one line (the package sources below provide
 # the same symbols in the same compilation unit).
-grep -v '^import CaptionShared$' "$APP_DIR/Models/ScriptStore.swift" > "$TMP/ScriptStore.swift"
+grep -v '^import CaptionShared$' "$SHARED/Models/ScriptStore.swift" > "$TMP/ScriptStore.swift"
 
 # VocabSync pulls in the iOS-only OAuth plumbing; stub the one call the
 # snapshot path makes.
@@ -64,9 +68,9 @@ swiftc -swift-version 5 -Onone -D DEBUG \
   "$TMP/stubs.swift" \
   "$TMP/BackupService.swift" \
   "$TMP/ScriptStore.swift" \
-  "$APP_DIR/Models/VocabStore.swift" \
-  "$ROOT/ios-shared/Sources/CaptionShared/Services/SubtitleParser.swift" \
-  "$ROOT/ios-shared/Sources/CaptionShared/Services/NLPTagger.swift" \
-  "$ROOT/ios-shared/Sources/CaptionShared/Services/FreqService.swift"
+  "$SHARED/Models/VocabStore.swift" \
+  "$SHARED/Services/SubtitleParser.swift" \
+  "$SHARED/Services/NLPTagger.swift" \
+  "$SHARED/Services/FreqService.swift"
 
 "$TMP/smoke"

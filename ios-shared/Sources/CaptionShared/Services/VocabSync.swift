@@ -1,13 +1,12 @@
 import Foundation
-import CaptionShared
 import SwiftData
 
 /// Drive `caption-studio-vocab.json` — vocab-only LWW by `updatedAt`. Never touches VideoScript.
 /// Separate file from `BackupService`'s full snapshot so an OAuth push (`scripts: []`)
 /// can't wipe scripts from the shared backup file.
 @MainActor
-final class VocabSync {
-    static let shared = VocabSync()
+public final class VocabSync {
+    public static let shared = VocabSync()
     static let fileName = "caption-studio-vocab.json"
     private static let fileIdKey = "vocabDriveFileId"
     private static let lastAppliedKey = "vocabDriveLastAppliedUpdatedAt"
@@ -23,7 +22,7 @@ final class VocabSync {
     // MARK: - Public
 
     /// Connect: pull if remote newer, else push local (creates file if missing).
-    func syncOnConnect(context: ModelContext) async {
+    public func syncOnConnect(context: ModelContext) async {
         do {
             let remote = try await downloadRemote()
             let localAt = rememberAppliedDate() ?? .distantPast
@@ -44,7 +43,7 @@ final class VocabSync {
         }
     }
 
-    func pullIfNewer(context: ModelContext) async {
+    public func pullIfNewer(context: ModelContext) async {
         guard DriveAuthService.shared.hasToken else { return }
         do {
             guard let remote = try await downloadRemote(),
@@ -199,9 +198,9 @@ final class VocabSync {
 }
 
 #if DEBUG
-enum VocabSyncSmoke {
+public enum VocabSyncSmoke {
     @MainActor
-    static func run() {
+    public static func run() {
         let at = Date(timeIntervalSince1970: 1_754_112_000)
         let snap = BackupService.Snapshot(
             updatedAt: at,
