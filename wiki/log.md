@@ -865,3 +865,11 @@ Thay section "Thứ tự nên làm" (đã lỗi thời — 8/8 việc đầu đ�
 + bảng "Còn mở" đúng thực tế: C-1 (gộp Swift) · C-2..C-5/C-10 · C-7..C-9 · C-12..C-17 ·
 C-23 (63 commit chưa push) · C-24..C-26/C-29/C-30. Giữ nguyên mục "Chưa verify" và bổ sung ghi chú
 1 block Swift smoke bị skip trên macOS.
+
+## [2026-10-23] ingest | C-26 — bỏ bước build `en_vi.json` không ai đọc
+
+`7b77ee337`: bootstrap tải VNEDICT và build `en_vi.json` mỗi lần chạy đầu, nhưng **không lookup
+nào đọc file đó** — ngoài `import_en_vi.py` chỉ còn `dictionary._en_vi_cache`, một global được gán
+trong `close_dictionary()` và không bao giờ đọc. Xoá cả bước bootstrap lẫn biến đó; script build
+vẫn giữ để chạy tay. Proof: bridge **158 passed, 5 skipped, exit 0**, `import app.main` +
+`import app.scripts.bootstrap` OK.

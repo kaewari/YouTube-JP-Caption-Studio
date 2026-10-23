@@ -35,6 +35,7 @@ Raw review đã file và **không sửa** (§4).
 | C-27 4 hàm bridge không ai gọi (+ 1 hằng chỉ phục vụ chúng) | **đã sửa** (xoá) | `2415162e4` |
 | C-33 6 import bridge không dùng | **đã sửa** (xoá) | `2415162e4` |
 | C-21 test suite ghi bẩn `local-bridge/errors.log` | **đã sửa** (fixture autouse → tmp) | `5e185d16f` |
+| C-26 bootstrap build `en_vi.json` không ai đọc + `_en_vi_cache` thừa | **đã sửa** (xoá) | `7b77ee337` |
 
 ## Raw
 
