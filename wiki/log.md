@@ -1375,3 +1375,17 @@ Những gì compiler bắt thêm dọc đường (đều có lý do, không ph�
 Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh
 · migration module-move đã chứng minh trước (`MIGRATION_OK`). Chưa test trên máy thật có store cũ
 (nói thẳng như plan yêu cầu).
+
+## [2026-10-23] ingest | C-8 — bridge merge key lạ trong `meta.json` thay vì thay cả file
+
+`meta.json` có 2 tác giả (bridge: url/title/translated_count/…; iOS: rev/deviceId/updated_at/…),
+nhưng bridge **dựng lại file từ template cố định** mỗi lần save. Key nào nó không biết — hôm nay
+giả định, mai chỉ cần iOS thêm 1 key — bị lặng lẽ xoá.
+
+Sửa: sau khi dựng dict mới, `setdefault` mọi key cũ vào. Mọi key bridge quản lý đã set trước nên
+merge chỉ mang key ngoại đi tiếp, **không bao giờ** hồi sinh rev/deviceId cũ.
+
+Test `test_meta_union.py`: seed meta có key iOS + 1 key tương lai, save, assert tất cả còn, rev
+4 → 5; đồng thời pin semantics refresh: deviceId/updated_at do writer đóng dấu lại.
+
+Proof: bridge **170 passed, 5 skipped** · red proof (bỏ merge) → `KeyError: 'future_key'`.

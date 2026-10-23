@@ -195,7 +195,8 @@ ngoại lệ ghi rõ):
 
 | Nhóm | Việc | Vì sao chưa làm |
 |---|---|---|\n| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
-| C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
+| C-7 | Saved cue thiếu `videoTitle` → cột Video Anki trống | **đã sửa** (snapshot ghi title, worker lưu nguyên object) | `d20193830` |
+| C-8 | Bridge thay cả `meta.json` bằng template riêng, key lạ mất | **đã sửa** (`setdefault` merge key ngoại) | `803e10385` |
 
 | C-23 | commit chưa push tồn đọng | **đã push hết**, tree sạch, CI 7/7 xanh | — |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
