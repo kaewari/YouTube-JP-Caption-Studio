@@ -37,18 +37,18 @@ class ScriptCue {
     var textJA: String
     var textEN: String?
     var textVI: String?
-    var isDeleted: Bool // Tombstone flag
+    @Attribute(originalName: "isDeleted") var tombstoned: Bool // Tombstone flag
     
     var video: VideoScript?
     
-    init(id: String, startTime: Double, duration: Double, textJA: String, textEN: String? = nil, textVI: String? = nil, isDeleted: Bool = false) {
+    init(id: String, startTime: Double, duration: Double, textJA: String, textEN: String? = nil, textVI: String? = nil, tombstoned: Bool = false) {
         self.id = id
         self.startTime = startTime
         self.duration = duration
         self.textJA = textJA
         self.textEN = textEN
         self.textVI = textVI
-        self.isDeleted = isDeleted
+        self.tombstoned = tombstoned
     }
 }
 
@@ -57,7 +57,7 @@ extension ScriptCue {
     /// Last cue: +150ms grace past duration. Last match wins on ties.
     static func active(in cues: [ScriptCue], atMs: Double) -> ScriptCue? {
         let graceMs = 150.0
-        let live = cues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+        let live = cues.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         var hit: ScriptCue? = nil
         for (i, c) in live.enumerated() {
             let end = c.startTime + max(c.duration, 0)
@@ -80,7 +80,7 @@ extension ScriptCue {
         if scanned.isEmpty { return related.sorted { $0.startTime < $1.startTime } }
         // Union by id with the store scan winning: a delete+insert can leave a stale
         // member behind in the in-memory relationship on some OS versions, and the
-        // stale copy (e.g. isDeleted=false) would otherwise reach the UI.
+        // stale copy (e.g. tombstoned=false) would otherwise reach the UI.
         var byId = [String: ScriptCue]()
         for cue in related { byId[cue.id] = cue }
         for cue in scanned { byId[cue.id] = cue }
@@ -107,14 +107,14 @@ extension ScriptCue {
 
         // Owned/import timeline wins — never fall through to YouTube (empty load must not wipe Drive).
         if script?.owned == true {
-            return localCues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+            return localCues.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         }
         
         var merged: [ScriptCue] = []
         
         for yCue in youtubeCues {
             if let local = localMap[yCue.id] {
-                if !local.isDeleted {
+                if !local.tombstoned {
                     merged.append(local)
                 }
             } else {
@@ -133,14 +133,14 @@ extension ScriptCue {
     }
     
     func softDelete() {
-        self.isDeleted = true
+        self.tombstoned = true
         // Tombstone must win over Drive on the next merge — never resurrect locally-deleted cues.
         if let videoId = video?.videoId { DriveDirty.mark(videoId: videoId, cueIds: [id]) }
     }
 
     @MainActor
     static func clearTranslations(videoId: String, context: ModelContext) {
-        let live = load(videoId: videoId, context: context).filter { !$0.isDeleted }
+        let live = load(videoId: videoId, context: context).filter { !$0.tombstoned }
         for cue in live {
             cue.textEN = nil
             cue.textVI = nil
@@ -158,8 +158,8 @@ extension ScriptCue {
             // Tombstone, never hard-delete: a hard delete leaves Drive untouched and the
             // next pull brings the whole script back. The tombstones reach Drive as an
             // intentional delete-all (empty cues.json).
-            for cue in cues where !cue.isDeleted {
-                cue.isDeleted = true
+            for cue in cues where !cue.tombstoned {
+                cue.tombstoned = true
             }
             if script.owned {
                 DriveDirty.mark(videoId: videoId, cueIds: cues.map(\.id))
@@ -173,7 +173,7 @@ extension ScriptCue {
         let script = ensureScript(videoId: videoId, context: context)
         script.owned = true
         let start = max(0, atMs)
-        let live = load(videoId: videoId, context: context).filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+        let live = load(videoId: videoId, context: context).filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         let next = live.first { $0.startTime > start }
         let end = next.map { min($0.startTime - CueTiming.gapMs, start + CueTiming.defaultDurMs) } ?? (start + CueTiming.defaultDurMs)
         let applied = CueTiming.apply(startMs: start, endMs: max(end, start + CueTiming.minDurMs), prevEndMs: nil, nextStartMs: next?.startTime)
@@ -192,7 +192,7 @@ extension ScriptCue {
         guard let videoId = after.video?.videoId else { return nil }
         let script = ensureScript(videoId: videoId, context: context)
         script.owned = true
-        let live = load(videoId: videoId, context: context).filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+        let live = load(videoId: videoId, context: context).filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         let idx = live.firstIndex(where: { $0.id == after.id }) ?? (live.count - 1)
         let next = idx + 1 < live.count ? live[idx + 1] : nil
         let start = after.startTime + max(after.duration, 0)
@@ -222,7 +222,7 @@ extension ScriptCue {
 
     /// Apply start/end from meta inputs (ms). Clamps lightly to neighbors.
     func applyTimeline(startMs: Double, endMs: Double, neighbors: [ScriptCue]) {
-        let sorted = neighbors.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+        let sorted = neighbors.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         let idx = sorted.firstIndex(where: { $0.id == id })
         let prevCue = idx.flatMap { $0 > 0 ? sorted[$0 - 1] : nil }
         let nextCue = idx.flatMap { $0 + 1 < sorted.count ? sorted[$0 + 1] : nil }
@@ -256,7 +256,7 @@ extension ScriptCue {
 
     /// Extension-compatible TXT export.
     static func exportTXT(_ cues: [ScriptCue]) -> String {
-        let live = cues.filter { !$0.isDeleted }.sorted { $0.startTime < $1.startTime }
+        let live = cues.filter { !$0.tombstoned }.sorted { $0.startTime < $1.startTime }
         var parts: [String] = []
         for (i, c) in live.enumerated() {
             let start = formatExportTime(c.startTime)
@@ -371,7 +371,7 @@ extension ScriptCue {
             return result
         }
 
-        let local = load(videoId: videoId, context: context).filter { !$0.isDeleted }
+        let local = load(videoId: videoId, context: context).filter { !$0.tombstoned }
         var result = ImportResult()
         var usedIDs = Set<String>()
         for row in rows {
@@ -759,8 +759,8 @@ enum ScriptStoreSmoke {
 
         let after = ScriptCue.load(videoId: "smoke-wipe", context: ctx)
         assert(after.count == 3, "wipe keeps the rows")
-        assert(after.allSatisfy { $0.isDeleted }, "wipe must tombstone every cue")
-        assert(after.filter { !$0.isDeleted }.isEmpty, "wipe leaves no live cue")
+        assert(after.allSatisfy { $0.tombstoned }, "wipe must tombstone every cue")
+        assert(after.filter { !$0.tombstoned }.isEmpty, "wipe leaves no live cue")
         let kept = (try? ctx.fetch(FetchDescriptor<VideoScript>()))?.first
         assert(kept != nil, "wipe must not hard-delete the script — the next pull would restore it")
         assert(DriveDirty.dirtyIds(videoId: "smoke-wipe").count == 3,

@@ -76,7 +76,7 @@ struct ContentView: View {
 
     private var activeCue: ScriptCue? {
         guard let id = activeCueId else { return nil }
-        return currentCues.first { $0.id == id && !$0.isDeleted }
+        return currentCues.first { $0.id == id && !$0.tombstoned }
     }
 
     /// Live playhead (ms) from last YT sync + short extrapolate — not @State.
@@ -153,7 +153,7 @@ struct ContentView: View {
             #endif
             BackupService.shared.autoRestoreIfEmpty(context: modelContext)
             if BackupService.shared.syncFromDriveIfNewer(context: modelContext) {
-                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
             }
             if let s = BackupService.shared.status { statusMessage = s }
             SettingsSync.shared.startObserving()
@@ -171,7 +171,7 @@ struct ContentView: View {
                 // must run after to re-establish rev.
                 let restored = BackupService.shared.syncFromDriveIfNewer(context: modelContext)
                 if restored {
-                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+                    currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
                 }
                 if let s = BackupService.shared.status { statusMessage = s }
                 Task {
@@ -705,7 +705,7 @@ struct ContentView: View {
 
     private func tabTitle(_ tab: ToolTab) -> String {
         switch tab {
-        case .subtitles: return "Phụ đề (\(currentCues.filter { !$0.isDeleted }.count))"
+        case .subtitles: return "Phụ đề (\(currentCues.filter { !$0.tombstoned }.count))"
         case .vocab: return "Từ vựng (\(vocabularies.count))"
         }
     }
@@ -721,7 +721,7 @@ struct ContentView: View {
                         : "Video này có thể không có CC. Thử video khác hoặc bật phụ đề trên player.")
                 )
             } else {
-                let live = currentCues.filter { !$0.isDeleted }
+                let live = currentCues.filter { !$0.tombstoned }
                 ScrollViewReader { proxy in
                     // List.scrollTo is a no-op when the row is already (partially) visible.
                     // LazyVStack.scrollTo mis-estimates unloaded rows (overshoot past active).
@@ -739,7 +739,7 @@ struct ContentView: View {
                                     onSave: {
                                         saveCues()
                                         currentCues = ScriptCue.load(videoId: videoID, context: modelContext)
-                                            .filter { !$0.isDeleted }
+                                            .filter { !$0.tombstoned }
                                     },
                                     onEditingChanged: { editing in
                                         editingCue = editing
@@ -931,7 +931,7 @@ struct ContentView: View {
         let animNs: UInt64 = 280_000_000
         // ScrollView.scrollTo is a no-op when the row is already (partially) visible —
         // active sits one cue down. Nudge off-screen briefly, then pin to top.
-        let live = currentCues.filter { !$0.isDeleted }
+        let live = currentCues.filter { !$0.tombstoned }
         let prevId: ScriptCue.ID? = {
             guard let i = live.firstIndex(where: { $0.id == id }), i > 0 else { return nil }
             return live[i - 1].id
@@ -995,7 +995,7 @@ struct ContentView: View {
         statusMessage = "Đang lấy phụ đề…"
 
         let keepOwned: Bool = await MainActor.run {
-            let local = ScriptCue.load(videoId: id, context: modelContext).filter { !$0.isDeleted }
+            let local = ScriptCue.load(videoId: id, context: modelContext).filter { !$0.tombstoned }
             let descriptor = FetchDescriptor<VideoScript>(predicate: #Predicate { $0.videoId == id })
             let owned = (try? modelContext.fetch(descriptor).first)?.owned == true
             if !local.isEmpty {
@@ -1046,16 +1046,16 @@ struct ContentView: View {
     /// Prefer cues returned by pull/import — `ScriptCue.load` can miss SwiftData relationship.
     private func applyDriveSync(_ result: DriveScriptsService.SyncResult) {
         if let cues = result.cues, !cues.isEmpty {
-            currentCues = cues.filter { !$0.isDeleted }
+            currentCues = cues.filter { !$0.tombstoned }
         } else {
-            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
         }
         statusMessage = result.message
     }
 
     private func addCueAtPlayhead() {
         let cue = ScriptCue.addCueAtPlayhead(videoId: videoID, atMs: playheadMs, context: modelContext)
-        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
         let total = Int(cue.startTime / 1000)
         statusMessage = String(format: "Đã thêm cue tại %d:%02d", total / 60, total % 60)
         toolTab = .subtitles
@@ -1064,7 +1064,7 @@ struct ContentView: View {
     private func clearTranslations() {
         ScriptCue.clearTranslations(videoId: videoID, context: modelContext)
         // Tombstoned cues stay hidden — the iPhone copy already filtered them.
-        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+        currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
         statusMessage = "Đã xóa EN/VI"
     }
 
@@ -1124,9 +1124,9 @@ struct ContentView: View {
             context: modelContext
         )
         if !result.cues.isEmpty {
-            currentCues = result.cues.filter { !$0.isDeleted }
+            currentCues = result.cues.filter { !$0.tombstoned }
         } else {
-            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.isDeleted }
+            currentCues = ScriptCue.load(videoId: videoID, context: modelContext).filter { !$0.tombstoned }
         }
         statusMessage = importMode == .replace
             ? "Import: đã thay thế \(result.replaced) cue"

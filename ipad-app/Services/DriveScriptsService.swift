@@ -92,7 +92,7 @@ enum DriveScriptsService {
         let driveCueCount = driveArr.count
         let script = fetchScript(videoId: videoId, context: context)
         let allLocal = ScriptCue.load(videoId: videoId, context: context)
-        let live = allLocal.filter { !$0.isDeleted }
+        let live = allLocal.filter { !$0.tombstoned }
         let liveCount = live.count
         let dirty = DriveDirty.dirtyIds(videoId: videoId)
 
@@ -101,7 +101,7 @@ enum DriveScriptsService {
         // reach Drive (intentional wipe), so the branch runs without a live guard.
         if !dirty.isEmpty, let script, script.owned {
             let allTombstones = dirty.allSatisfy { id in
-                allLocal.first { $0.id == id }?.isDeleted == true
+                allLocal.first { $0.id == id }?.tombstoned == true
             }
             if needsPull(
                 driveRev: driveRev, localRev: script.rev, localLiveCount: liveCount,
@@ -224,7 +224,7 @@ enum DriveScriptsService {
               let live = liveCues(videoId: videoId, context: context),
               let patched = patchedCues(original: cuesRoot, cues: live)
         else {
-            let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
+            let live = ScriptCue.load(videoId: videoId, context: context).filter { !$0.tombstoned }
             return SyncResult(
                 changed: false,
                 message: "Drive: \(videoId) đã đồng bộ (\(liveCount) cue · rev \(script?.rev ?? driveRev))",
@@ -294,9 +294,9 @@ enum DriveScriptsService {
         // state, so those marks are stale; next sync would merge old local over Drive.
         DriveDirty.clear(videoId: videoId)
         // Prefer import's inserted array — relationship reload can still be empty.
-        let live = result.cues.filter { !$0.isDeleted }
+        let live = result.cues.filter { !$0.tombstoned }
         let out = live.isEmpty
-            ? ScriptCue.load(videoId: videoId, context: context).filter { !$0.isDeleted }
+            ? ScriptCue.load(videoId: videoId, context: context).filter { !$0.tombstoned }
             : live
         // No tokens.json on device / Drive — warm NLP so JLPT colors + dict taps work after TXT pull.
         for cue in out where !cue.textJA.isEmpty {
@@ -403,7 +403,7 @@ enum DriveScriptsService {
                 out.append(row)
                 continue
             }
-            if local.isDeleted {
+            if local.tombstoned {
                 changed = true      // tombstone drops the Drive row
                 continue
             }
@@ -413,7 +413,7 @@ enum DriveScriptsService {
         // Local-only dirty adds append after Drive rows (start order).
         let driveIds = Set(byId.keys)
         let added = local
-            .filter { !$0.isDeleted && dirty.contains($0.id) && !driveIds.contains($0.id) }
+            .filter { !$0.tombstoned && dirty.contains($0.id) && !driveIds.contains($0.id) }
             .sorted { $0.startTime < $1.startTime }
         for cue in added {
             out.append(mergeRow(base: nil, cue: cue))
@@ -498,7 +498,7 @@ enum DriveScriptsService {
 
     private static func liveCues(videoId: String, context: ModelContext) -> [ScriptCue]? {
         let live = ScriptCue.load(videoId: videoId, context: context)
-            .filter { !$0.isDeleted }
+            .filter { !$0.tombstoned }
             .sorted { $0.startTime < $1.startTime }
         // Never push an empty list over a Drive script — that would be a silent wipe.
         return live.isEmpty ? nil : live
@@ -598,7 +598,7 @@ enum DriveScriptsSmoke {
 
         // Tombstone: soft-deleted dirty cue must not resurrect from Drive.
         var tomb = cue("a", 599, 2000, "あ", "A", "")
-        tomb.isDeleted = true
+        tomb.tombstoned = true
         let tombstoned = DriveScriptsService.mergedCues(original: root, dirty: ["a"], local: [tomb])
         let tombCues = tombstoned?["cues"] as? [[String: Any]]
         assert(tombCues?.count == 1 && tombCues?[0]["id"] as? String == "b", "tombstone drops the Drive row")

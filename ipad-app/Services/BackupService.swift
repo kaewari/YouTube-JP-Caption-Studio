@@ -258,7 +258,7 @@ final class BackupService: ObservableObject {
                             textJA: c.textJA,
                             textEN: c.textEN,
                             textVI: c.textVI,
-                            isDeleted: c.isDeleted
+                            isDeleted: c.tombstoned
                         )
                     }
                 )
@@ -346,7 +346,7 @@ final class BackupService: ObservableObject {
                         textJA: cd.textJA,
                         textEN: cd.textEN,
                         textVI: cd.textVI,
-                        isDeleted: cd.isDeleted
+                        tombstoned: cd.isDeleted
                     )
                     cue.video = script
                     context.insert(cue)
@@ -605,7 +605,7 @@ enum BackupSmoke {
         try! BackupService.shared.apply(pulled, to: targetCtx, merge: true)
         let mergedCues = ScriptCue.load(videoId: "smoke-dur", context: targetCtx)
         assert(mergedCues.count == 2, "merge upserts the pulled cue and keeps the local one")
-        assert(mergedCues.first(where: { $0.id == "c1" })?.isDeleted == true,
+        assert(mergedCues.first(where: { $0.id == "c1" })?.tombstoned == true,
                "a tombstone from the snapshot still applies on merge")
         assert(mergedCues.first(where: { $0.id == "c2" })?.duration == 900, "pulled cue inserted")
         let mergedScript = try! targetCtx.fetch(FetchDescriptor<VideoScript>()).first
