@@ -1445,3 +1445,15 @@ toggleStarCue → worker → storage. Harness này giờ verify wiring end-to-en
 
 Proof: suite **21 passed, 6 skipped, 0 failed** (trước: 20/6/1) · red proof (bỏ videoTitle) →
 fail đúng assertion mới.
+
+## [2026-10-23] ci | apt treo lần 3 — `timeout 180` nổ (exit 124), giả thuyết proxy sai
+
+Step ffmpeg treo **lần thứ ba**, lần này chết nhanh ở `timeout 180 sudo -E apt-get update`
+(exit 124) thay vì treo 15 phút. Nghĩa là `sudo -E` **không** sửa được → giả thuyết proxy ở
+commit trước sai (hoặc không đủ). Còn lại 2 nghi phạm khớp tính chất ngắt quãng (1 run xanh
+2m12s xen giữa 3 lần treo): lock của first-boot maintenance (unattended-upgrades) trên VM mới,
+hoặc mirror treo.
+
+Sửa ở `63e9882`: bỏ qua nếu đã có ffmpeg; chờ lock tối đa 5 phút **có in tiến trình**
+(`fuser` + `sleep`); `-q` thay vì `-qq` để còn output; giữ timeout. Lần treo tới (nếu có) sẽ
+để lại log cho biết đang chờ lock hay đang tải mirror — thay vì 0 output như 3 lần trước.
