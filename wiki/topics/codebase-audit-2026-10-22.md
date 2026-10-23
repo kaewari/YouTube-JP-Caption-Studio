@@ -153,18 +153,31 @@ segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web
 read-only) · 23/25 sanity script chưa chạy hết · **chưa chạy browser thật** nên mọi claim UI
 là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API thật.
 
-## Thứ tự nên làm
+## Trạng thái 2026-10-23
 
-1. **A-1 + B-3** — 1 contract cho vocab (`meaning`/`status` tách, `jlptLevel` → string, `version: 2` + migration).
-2. **A-3 + B-10** — bundle script cho iPhone **và** gộp `LayoutSmoke` trước khi build.
-3. **A-5** — build extension trong CI hoặc track `_next/`.
-4. **A-4** — siết capability gate + bỏ token khỏi URL.
-5. **A-6 + A-7** — xoá test giả + sửa anti-fake gate.
-6. **B-4** — `BackupService` merge thay vì wipe-all.
-7. **B-21** — validate `cues.json` vô điều kiện (1 khối code).
-8. **A-8** — sửa 3 dòng doc sai.
+Đã đóng **25 finding** (xem bảng Status ở trên, mỗi dòng có commit + proof red→green):
 
-Sau đó: B-1 (segfault) · B-2 (self-check chết) · B-15/B-16 (CI) · **C-1** (gộp Swift, xoá ~4 000 LOC
-trùng) · C-2..C-5 (1 nguồn sự thật) · push 31 commit đang chờ trên `origin/master`.
+- **P0/P1 chính**: A-1, A-2, A-4, A-5, A-6, A-7, A-8 (hạ P2), B-1, B-2, B-4, B-5, B-6, B-14,
+  B-15, B-16, B-21, B-22, B-23, B-24.
+- **Hygiene/security**: C-11, C-18, C-19, C-20, C-21, C-27, C-28, C-31, C-32, C-33.
+- **Hai finding do tự verify mà hạ cấp**: A-3 (thiết kế, P0 → P2), A-8 (audit sai, P0 → P2).
+
+## Còn mở
+
+| Nhóm | Việc | Vì sao chưa làm |
+|---|---|---|
+| C-1 | Gộp ~4 028 LOC Swift trùng giữa 2 app thành shared package | refactor lớn, cần local SwiftPM + build lại 2 app + `xcodegen`; rủi ro cao, nên làm thành PR riêng |
+| C-2..C-5, C-10 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize / `freq_ja.json` | chạm cả 4 tầng (extension, bridge, web, iOS) |
+| C-7..C-9 | Lệch shape saved-cue, `meta` Drive, env var `BRIDGE_URL`/`CAPTION_BRIDGE_URL` | cần đổi contract + migration |
+| C-12..C-17 | Web bundle mock-data, virtualization, a11y label; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
+| C-23 | 63 commit chưa push `origin/master..master` | cần user quyết định push |
+| C-24..C-26, C-29, C-30 | Gemini cost table, saved_items SQLite không client, `en_vi.json` thừa, bridge chưa log lỗi ASR/bootstrap, nhánh `watch_html` chết | P3 nhỏ, làm lẻ |
+
+## Chưa verify (nói thẳng)
+
+segfault trên Linux/ubuntu (**không có Docker**) · `npm run build` của web (ghi `out/`) ·
+**chưa chạy browser thật** nên mọi claim UI là đọc code + CSS, không đo pixel · Drive round-trip
+thật · Gemini API thật · Swift self-test chạy bằng harness macOS, **1 block bị skip** vì SwiftData
+in-memory không enforce unique constraint trên macOS (assert đó vẫn chạy trên iOS).
 
 Ponytail: sửa 1 nguồn sự thật, xoá phần còn lại — không thêm framework, không thêm abstraction.

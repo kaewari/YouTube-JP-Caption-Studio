@@ -858,3 +858,10 @@ trỏ `logging_utils._ERRORS_LOG` sang tmp của từng test. Trước: mỗi l�
 message fixture vào `local-bridge/errors.log` (audit đếm 924 dòng, phần lớn lặp). Sau: file giữ
 nguyên **924 dòng trước và sau** khi chạy suite 158 passed. File cũ **không xoá** — đó là runtime
 data local, không tự ý xoá.
+
+## [2026-10-23] cleanup | Cập nhật "Còn mở" của topic audit 2026-10-22
+
+Thay section "Thứ tự nên làm" (đã lỗi thời — 8/8 việc đầu đã xong) bằng "Trạng thái 2026-10-23"
++ bảng "Còn mở" đúng thực tế: C-1 (gộp Swift) · C-2..C-5/C-10 · C-7..C-9 · C-12..C-17 ·
+C-23 (63 commit chưa push) · C-24..C-26/C-29/C-30. Giữ nguyên mục "Chưa verify" và bổ sung ghi chú
+1 block Swift smoke bị skip trên macOS.
