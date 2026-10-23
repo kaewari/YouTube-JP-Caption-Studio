@@ -99,3 +99,14 @@ sample(.9,7400,[unit],{paused:true});sample(1.1,7600,[unit],{paused:true});
 sample(.9,7700,[unit],{hidden:true});sample(1.1,7900,[unit],{hidden:true});
 assert.equal(trace.snapshot().events.filter(e=>e.type==='onset').length,count);
 console.log('PASS: empty metrics remain NOT VERIFIED; cold/warm onset bounds distinguish ready/missing/uncertain; seek/gaps excluded; real receipt IDs deduplicate HTTP attempts; no fabricated cost');
+
+// C-16: a paused frame rescans the cue list only when the list instance changed.
+// The call site (getSortedCues) returns a cached array, so identity is the rule.
+{
+  const {shouldRescanPaused}=require('../extension/shared/sentence_benchmark.js');
+  const units=[{id:'a',source:'字幕'}];
+  assert.equal(shouldRescanPaused(units,units),false,'same list instance: paused frame must not rescan');
+  assert.equal(shouldRescanPaused([...units],units),true,'new list instance: paused frame must rescan once');
+  assert.equal(shouldRescanPaused(units,null),true,'first paused frame must scan');
+  console.log('PASS: paused frames only rescan when the cue list instance changed');
+}

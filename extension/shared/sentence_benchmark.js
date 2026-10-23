@@ -4,6 +4,10 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.HardsubSentenceBenchmark = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  // A paused/seek/hidden frame rescans the cue list only when the list instance
+  // changed: the call site hands back a cached array, so identity is the cheap test.
+  const shouldRescanPaused = (units, scannedUnits) => units !== scannedUnits;
+
   // Paid standard text rates verified 2026-10-10 JST; expire rather than assume future pricing.
   // https://ai.google.dev/gemini-api/docs/pricing (thinking is billed as output).
   const priceEvidence = { source: "https://ai.google.dev/gemini-api/docs/pricing", asOf: "2026-10-10 JST", validUntil: "2026-11-10" };
@@ -29,6 +33,9 @@
     const events = [], readyAt = new Map(), seen = new Set(), requests = new Map(), groupRefs = new Map();
     let groupIdentityBytes = 0;
     let previous = null, pass = 0, loadedAt = null, firstPaint = null, dropped = 0;
+    // The cue list is a cached array at the call site; identity tells paused frames
+    // whether a rescan could possibly see new text.
+    let pausedScanUnits = null;
     const emit = (type, data, now) => {
       if (events.length >= 10000) { dropped++; return; }
       events.push({ type, atMs: now, ...data });
@@ -93,8 +100,16 @@
     function sample({ time, rate, paused, seeking, hidden, mode, languages, units }, now) {
       if (events.length >= 10000) { dropped++; return; }
       if (![time, rate, now].every(Number.isFinite) || rate <= 0) return;
+      if (paused || seeking || hidden) {
+        // A paused/seek/hidden frame must not rescan the whole cue list (units x 3
+        // languages) on every frame. Only a new list instance can carry new text, and
+        // that first paused frame still scans it once.
+        if (shouldRescanPaused(units, pausedScanUnits)) { prepared(units, now); pausedScanUnits = units; }
+        previous = null;
+        return;
+      }
       prepared(units, now);
-      if (paused || seeking || hidden) { previous = null; return; }
+      pausedScanUnits = units;
       const current = { time, rate, mode, now };
       if (previous) {
         const dt = now - previous.now, delta = time - previous.time;
@@ -165,5 +180,5 @@
       } },
     };
   }
-  return { createTrace };
+  return { createTrace, shouldRescanPaused };
 });
