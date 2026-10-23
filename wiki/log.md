@@ -873,3 +873,11 @@ nào đọc file đó** — ngoài `import_en_vi.py` chỉ còn `dictionary._en_
 trong `close_dictionary()` và không bao giờ đọc. Xoá cả bước bootstrap lẫn biến đó; script build
 vẫn giữ để chạy tay. Proof: bridge **158 passed, 5 skipped, exit 0**, `import app.main` +
 `import app.scripts.bootstrap` OK.
+
+## [2026-10-23] query | C-24 — không sửa được trung thực, giữ mở có chủ ý
+
+`21577b8a7`: cost table của `sentence_benchmark.js` chỉ định giá model có rate **đã verify + ghi
+ngày** (`priceEvidence`). Hai model fallback đang chạy (`gemini-3.6-flash`, `gemini-3.5-flash-lite`)
+không có rate đó → `estimateAttemptCost` trả `null` → caller báo PARTIAL ESTIMATE. Viết một con số
+cho chúng mà không fetch + date trang giá thật là **bịa dữ liệu chi phí**, tệ hơn `null` trung thực.
+Comment trong code ghi rõ đây là gap có chủ ý. C-24 **vẫn mở** tới khi có trang pricing thật.

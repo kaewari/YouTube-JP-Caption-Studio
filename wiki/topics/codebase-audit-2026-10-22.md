@@ -36,6 +36,7 @@ Raw review đã file và **không sửa** (§4).
 | C-33 6 import bridge không dùng | **đã sửa** (xoá) | `2415162e4` |
 | C-21 test suite ghi bẩn `local-bridge/errors.log` | **đã sửa** (fixture autouse → tmp) | `5e185d16f` |
 | C-26 bootstrap build `en_vi.json` không ai đọc + `_en_vi_cache` thừa | **đã sửa** (xoá) | `7b77ee337` |
+| C-24 Gemini cost table thiếu giá model fallback | **để mở có chủ ý** — không có giá thật thì trả `null` + `PARTIAL ESTIMATE`, không bịa số | `21577b8a7` (chỉ ghi chú) |
 
 ## Raw
 
