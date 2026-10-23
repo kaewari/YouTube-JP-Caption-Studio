@@ -1457,3 +1457,13 @@ hoặc mirror treo.
 Sửa ở `63e9882`: bỏ qua nếu đã có ffmpeg; chờ lock tối đa 5 phút **có in tiến trình**
 (`fuser` + `sleep`); `-q` thay vì `-qq` để còn output; giữ timeout. Lần treo tới (nếu có) sẽ
 để lại log cho biết đang chờ lock hay đang tải mirror — thay vì 0 output như 3 lần trước.
+
+## [2026-10-23] ci | Bridge integration timeout 30s — runner chậm, không phải crash
+
+Run 39904479686 đỏ ở step integration mới (không phải pytest — suite vẫn **158 passed**):
+uvicorn sống suốt 30s nhưng im lặng → `TimeoutError`. Cùng step này từng xanh trong ~10s.
+`server.poll()` luôn None (không crash) → cơ chế là **khởi động chậm** (load Sudachi/JMdict/freq
+trên runner nghẽn), không phải lỗi code. Local cold start chỉ 2s nên không tái hiện ở nhà.
+
+Sửa ở `68fd1fe` (harness-only, không đụng production): poll 30 → 150 vòng, in tiến trình mỗi
+15s. Vừa khít budget 15 phút của job; lần sau (nếu còn chậm) log cho biết thời gian đi đâu.
