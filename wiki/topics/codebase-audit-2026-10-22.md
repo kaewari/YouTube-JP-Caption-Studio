@@ -52,6 +52,8 @@ Raw review đã file và **không sửa** (§4).
 | C-7 saved-cue wire (`start_media_time` giây) | **guard** cross-layer test extension ↔ web + bridge route | `37a64a20a` |
 | C-8 `meta.rev` trên wire Drive | **guard** bridge route test | `37a64a20a` |
 | C-5 settings defaults lệch (barShowVi, roi.height, maxSentences, barBgOpacity) | **đã sửa** (1 bảng chung `extension/shared/hardsub_defaults.js` + contract test) | `b2f38cf6c` |
+| C-7 Saved cue thiếu `videoTitle` → cột Video Anki trống | **đã sửa** (snapshot ghi title, worker lưu nguyên object) | `d20193830` |
+| C-8 Bridge thay cả `meta.json` bằng template riêng, key lạ mất | **đã sửa** (`setdefault` merge key ngoại) | `803e10385` |
 | C-3 TXT parse: extension JS + bridge port | **đã sửa**: parity test tìm ra bug thật — bridge hiểu `1:02:03` thành **62 s** thay vì 3723 s | `d5873bd80` |
 | C-1 gộp 20 file Swift trùng (4 141 LOC) thành package `CaptionShared` 19 file | **HOÀN TẤT A–E**: mỗi app còn `App.swift` + 5 file riêng + `DriveScriptsService`; migration module-move chứng minh headless (`MIGRATION_OK`); Swift 6 mode bắt thêm race cache + `Sendable` | `939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10` |
 
@@ -184,7 +186,8 @@ ngoại lệ ghi rõ):
 - **Hygiene/security**: C-11, C-18, C-19, C-20, C-21, C-26, C-27, C-28, C-29 (đủ 3/3 test),
   C-30 (+ bug phụ `_parse_srv_xml`), C-31, C-32, C-33.
 - **Cross-layer guards**: C-2 (level-colour + curated JLPT map parity), C-3 (TXT-parse parity,
-  tìm ra bug giờ `1:02:03`→62s), C-5 (1 bảng settings defaults), C-7/C-8 (wire contract tests),
+  tìm ra bug giờ `1:02:03`→62s), C-5 (1 bảng settings defaults), C-7 (snapshot ghi `videoTitle`),
+  C-8 (`setdefault` merge key ngoại trong `meta.json`),
   C-9 (một env var), C-10 (`freq_ja` parity), C-12 (bỏ demo khỏi bundle), C-13 (window list,
   đo Chrome thật), C-14 (a11y names, chưa đo screen reader), C-15 (build stale),
   C-16 (skip rescan khi pause; **không red proof được**), C-17 (memo panel, **một phần**).
@@ -194,9 +197,8 @@ ngoại lệ ghi rõ):
 ## Còn mở
 
 | Nhóm | Việc | Vì sao chưa làm |
-|---|---|---|\n| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
-| C-7 | Saved cue thiếu `videoTitle` → cột Video Anki trống | **đã sửa** (snapshot ghi title, worker lưu nguyên object) | `d20193830` |
-| C-8 | Bridge thay cả `meta.json` bằng template riêng, key lạ mất | **đã sửa** (`setdefault` merge key ngoại) | `803e10385` |
+|---|---|---|
+| C-4 | Tokenize: bridge Sudachi vs extension `Intl.Segmenter` fallback vs Swift (ngoài phạm vi) | hai engine khác nhau **có chủ ý** (fallback), không phải port; bản Swift bỏ khỏi phạm vi phiên này |
 
 | C-23 | commit chưa push tồn đọng | **đã push hết**, tree sạch, CI 7/7 xanh | — |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
