@@ -23,13 +23,21 @@ jobs:
       # decode falls back to plain audio and the DSP assertions fail.
       # The ASR DSP tests drive a real ffmpeg filter chain; without the binary
       # decode falls back to plain audio and the DSP assertions fail.
-      # -E matters: GitHub runners reach the network through proxy env vars and
-      # plain sudo drops them, which hung apt with zero output until the 15-minute
-      # job timeout (twice). The timeouts turn any repeat into a fast, loud error.
+      # apt on a fresh runner VM intermittently hangs with zero output: either a
+      # lock held by first-boot maintenance (unattended-upgrades) or a stalled
+      # mirror. Single -q (not -qq) keeps progress visible; the explicit lock wait
+      # with a cap plus per-command timeouts turn a hang into a fast loud error
+      # instead of a silent 15-minute job timeout (seen three times).
       - name: Install ffmpeg for the ASR DSP tests
         run: |
-          timeout 180 sudo -E apt-get update -qq
-          timeout 600 sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg
+          command -v ffmpeg && exit 0
+          for i in $(seq 1 30); do
+            sudo fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1 || break
+            echo "waiting for apt lock ($i)..."
+            sleep 10
+          done
+          timeout 240 sudo -E apt-get update -q
+          timeout 600 sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends ffmpeg
       # The TXT-parse parity test runs the extension's real JS parser in Node.
       - uses: actions/setup-node@v4
         with:
