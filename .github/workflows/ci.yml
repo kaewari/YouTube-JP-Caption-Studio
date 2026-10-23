@@ -121,6 +121,10 @@ jobs:
           done
       - name: Run the anti-fake test gate
         run: node scripts/verify_no_fake_tests.js
+      - name: Every freq_ja.json copy must stay identical
+        # The bridge ships one copy and each iOS app bundles its own; a rebuilt
+        # table that reaches only one surface is silent data drift.
+        run: node scripts/verify_freq_ja_parity.js
 
   sanity-scripts:
     name: sanity-scripts
