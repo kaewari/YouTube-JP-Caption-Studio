@@ -1304,3 +1304,16 @@ extension (không đọc `isDeleted` ở đâu). Quan trọng nhất: `write_fil
 content` **nguyên bytes**, không strip key — nên validation shape ở B-21 không làm mất tombstone
 khi round-trip qua bridge. Kết luận: rename nằm gọn trong SwiftData, wire iOS↔bridge↔Drive không
 đổi hành vi.
+
+## [2026-10-23] ingest | C-1 bước A — package `CaptionShared` cho 8 file thuần logic
+
+`939637b04`: `ios-shared/` (SwiftPM, library `CaptionShared`, iOS 17) giữ bản duy nhất của
+YouTubeURL, FreqService, NLPTagger, VocabStyle, SubtitleParser, DriveAPIClient, DriveOAuthConfig,
+DriveAuthService — xoá 16 bản copy (8 × 2 app). Hai `project.yml` khai báo package + dependency +
+`excludes`; 2 `.xcodeproj` generate lại. Compiler dẫn đường cho `public`: protocol witness
+(`Identifiable.id`, `LocalizedError.errorDescription`, `presentationAnchor`), member dùng chéo,
+và `public init` tường minh (memberwise init luôn internal). `Bundle.main` vẫn đúng vì resource
+không dời. `swift_store_smoke.sh` compile source trong package.
+
+Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.
+Tiếp: bước B (services còn lại) theo plan.

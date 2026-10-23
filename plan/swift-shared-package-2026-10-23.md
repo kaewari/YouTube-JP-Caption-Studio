@@ -3,7 +3,7 @@
 
 # Kế hoạch: gộp 20 file Swift trùng giữa `ipad-app` và `iphone-app` (C-1)
 
-Trạng thái: **plan only — chưa sửa code.** Finding gốc: `review/codebase-audit-2026-10-22.md` C-1.
+Trạng thái: **bước A đã merge** (`939637b04`) — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
 
 ## 1. Vấn đề (đo trên disk 2026-10-23)
 
