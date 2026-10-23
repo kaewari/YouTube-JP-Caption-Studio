@@ -63,6 +63,11 @@ let diskSaves=[];
 const saveTranscriptToDisk=async payload=>diskSaves.push(structuredClone(payload));
 const downloadCaptionFile=(text,fileName,mimeType)=>{downloaded={text,fileName,mimeType}};
 const toast=()=>{};
+// savedCueSnapshot() (sliced in via starFunctions) calls the real pageTitle(),
+// which lives outside every slice and needs document. Stub it with a known
+// title so this harness still verifies the videoTitle wiring end to end; the
+// real title parsing is covered by extension/content/content_test.js.
+const pageTitle=()=>"Sanity Video Title";
 const isSupportedUrl=url=>url.startsWith('https://www.youtube.com/');
 ${savedWorker}
 ${writes}
@@ -93,6 +98,8 @@ const run = expression => vm.runInContext(expression, context);
   assert.equal(run("getActiveDisplayCue().source"), "どこ行くんですか?");
   await run("toggleStarCue(enhancedCues[1].id)");
   assert.equal(run("Object.values(stored.savedCues).find(c=>c.videoId==='fixture').source"), "どこ行くんですか?");
+  assert.equal(run("Object.values(stored.savedCues).find(c=>c.videoId==='fixture').videoTitle"), "Sanity Video Title",
+    "the starred snapshot must carry the page title through to storage");
   assert.equal(run("Object.values(stored.savedCues)[0].provenance.sourceRefs.length"), 2);
   assert.equal(run("isCueStarred(enhancedCues[0].id)"), true);
   run("sentenceRawTrack={version:1,sourceKey:sentenceTrackKey(),cues:[{text:'どこ',start:0,end:1},{text:'行くんですか?',start:1,end:3}]}");
