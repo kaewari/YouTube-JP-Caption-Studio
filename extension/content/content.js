@@ -1494,6 +1494,22 @@
     return !!savedCues[id];
   }
 
+  /** The exact object stored for a starred cue (also what the Saved Items page reads). */
+  function savedCueSnapshot(cueObj, id) {
+    return {
+      id: id,
+      source: cueObj?.source || "",
+      vi: cueObj?.vi || "",
+      en: cueObj?.en || "",
+      start_media_time: Number(cueObj?.start_media_time) || 0,
+      end_media_time: Number(cueObj?.end_media_time) || 0,
+      videoId: currentVideoId || "",
+      videoTitle: pageTitle() || "",
+      savedAt: Date.now(),
+      ...(cueObj?.enhanced ? { provenance: cueObj.provenance, enhanced: true } : {}),
+    };
+  }
+
   async function toggleStarCue(cueOrId) {
     let id = "";
     let cueObj = null;
@@ -1506,17 +1522,7 @@
     id = cueObj?.savedCueId || cueObj?.id || id;
     if (!id || (!cueObj && !savedCues[id])) return false;
 
-    const snapshot = cueObj ? {
-        id: id,
-        source: cueObj?.source || "",
-        vi: cueObj?.vi || "",
-        en: cueObj?.en || "",
-        start_media_time: Number(cueObj?.start_media_time) || 0,
-        end_media_time: Number(cueObj?.end_media_time) || 0,
-        videoId: currentVideoId || "",
-        savedAt: Date.now(),
-        ...(cueObj?.enhanced ? { provenance: cueObj.provenance, enhanced: true } : {}),
-      } : null;
+    const snapshot = cueObj ? savedCueSnapshot(cueObj, id) : null;
     const result = await chrome.runtime.sendMessage({ type: "SAVED_CUES_MUTATE", id,
       op: snapshot ? "toggle" : "delete", cue: snapshot });
     if (!result?.ok) throw new Error(result?.error || "Saved state unavailable");
@@ -6272,6 +6278,8 @@
     globalThis.__JP_CAP_CONTENT_TEST__.content = {
       normalizeSettings,
       normalizeCueText,
+      pageTitle,
+      savedCueSnapshot,
       capAcceptsReply,
       resolveCueIndex,
       onNavigate,

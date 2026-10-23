@@ -71,6 +71,7 @@ function createContext() {
     document: {
       readyState: "complete",
       hidden: false,
+      title: "Fixture 動画タイトル - YouTube",
       documentElement: { style: { setProperty: noop } },
       body: { appendChild: noop, removeChild: noop, classList: { add: noop, remove: noop, toggle: noop, contains: () => false } },
       querySelector: () => null,
@@ -165,5 +166,21 @@ assert.strictEqual(capAcceptsReply("secret", "secret"), true,
 // minted before injectPageScript() early-returns.
 assert.strictEqual(capAcceptsReply("", "anything"), true,
   "the pre-inject window still accepts a token-bearing reply");
+
+// C-7: a starred cue carries the page title so the Saved Items "Video" column
+// (and the Anki export built from it) is not blank.
+assert.strictEqual(typeof content.pageTitle, "function", "pageTitle must be exposed");
+assert.strictEqual(content.pageTitle(), "Fixture 動画タイトル",
+  "pageTitle must strip the YouTube suffix");
+assert.strictEqual(typeof content.savedCueSnapshot, "function", "savedCueSnapshot must be exposed");
+const snap = content.savedCueSnapshot(
+  { id: "c1", source: "日本語", vi: "tiếng Nhật", en: "Japanese",
+    start_media_time: 1.25, end_media_time: 3.5 }, "c1");
+assert.strictEqual(snap.id, "c1");
+assert.strictEqual(snap.source, "日本語");
+assert.strictEqual(snap.vi, "tiếng Nhật");
+assert.strictEqual(snap.start_media_time, 1.25);
+assert.strictEqual(snap.videoTitle, "Fixture 動画タイトル",
+  "the snapshot must carry the page title for the Saved Items Video column");
 
 console.log("content_test: all assertions passed");
