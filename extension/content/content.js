@@ -185,14 +185,6 @@
     const existing = document.getElementById("hardsub-ocr-page-script");
     if (existing && !force) return;
     if (existing) existing.remove();
-    if (force) {
-      // Clear MAIN-world guard so re-fetched page_capture.js can rebind.
-      const boot = document.createElement("script");
-      boot.textContent =
-        "try{if(window.__hardsubPageMsgHandler){window.removeEventListener('message',window.__hardsubPageMsgHandler);delete window.__hardsubPageMsgHandler;}delete window.__HARDSubOCRCapture;}catch(e){}";
-      (document.documentElement || document.head).appendChild(boot);
-      boot.remove();
-    }
     // Fresh token on every inject — stale MAIN-world copies hold an invalid cap.
     try { crypto.getRandomValues(new Uint8Array(16)); } catch (_) {}
     pageCapToken =
@@ -200,21 +192,51 @@
       Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
         b.toString(16).padStart(2, "0")
       ).join("");
-    const s = document.createElement("script");
-    s.id = "hardsub-ocr-page-script";
-    s.src =
-      chrome.runtime.getURL("injected/page_capture.js") +
-      "?v=" +
-      encodeURIComponent(chrome.runtime.getManifest().version) +
-      "&cap=" +
-      encodeURIComponent(pageCapToken);
-    const parser = document.createElement("script");
-    parser.src = chrome.runtime.getURL("shared/timedtext_parse.js") + "?api=" + PAGE_API_VER;
-    parser.async = false;
-    s.async = false;
-    const parent = document.head || document.documentElement;
-    parent.appendChild(parser);
-    parent.appendChild(s);
+    // Marker element (plain div: no URL load involved) carrying version + cap for
+    // the MAIN-world helpers, which find it by id (same lookup as before).
+    const marker = document.createElement("div");
+    marker.id = "hardsub-ocr-page-script";
+    marker.hidden = true;
+    marker.dataset.v = chrome.runtime.getManifest().version;
+    marker.dataset.cap = pageCapToken;
+    marker.dataset.api = String(PAGE_API_VER);
+    (document.head || document.documentElement).appendChild(marker);
+    // Execute the helpers directly in the MAIN world via the scripting API.
+    // DOM <script src="chrome-extension://..."> tags are subject to the page's
+    // CSP script-src (YouTube does not allow the extension scheme), so they fail
+    // with "Unsafe attempt to load URL" even when web_accessible_resources lists
+    // the files (verified live 2026-10-23). executeScript reads the files from
+    // disk and is exempt. Order in `files` is execution order (parser first).
+    // Fire-and-forget safe: failures surface as bridge-not-ready to the PING loop.
+    return (async () => {
+      const tabId = await ensureContentTabId();
+      if (tabId == null || !chrome?.scripting?.executeScript) {
+        throw new Error("page inject unavailable (no tab id or scripting API)");
+      }
+      if (force) {
+        // Clear the MAIN-world guard so page_capture.js can rebind. This used to
+        // be an inline <script>, which the page CSP also blocks.
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          world: "MAIN",
+          func: () => {
+            try {
+              if (window.__hardsubPageMsgHandler) {
+                window.removeEventListener("message", window.__hardsubPageMsgHandler);
+                delete window.__hardsubPageMsgHandler;
+              }
+              delete window.__HARDSubOCRCapture;
+            } catch (_) {}
+          },
+        });
+      }
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        files: ["shared/timedtext_parse.js", "injected/page_capture.js"],
+      });
+      return true;
+    })().catch(() => false);
   }
 
   function sleep(ms) {

@@ -7,17 +7,20 @@
   // without a full YouTube document reload (SPA keeps old MAIN-world listeners).
   const API_VER = 7;
   if (window.__HARDSubOCRCapture?.apiVer === API_VER) return;
-  // Capability token from the content script's inject URL (?cap=...). Echoed in
-  // every reply so the content script can reject forged page-world messages.
+  // Capability token from the content script's inject element (data-cap; older
+  // builds used ?cap= in the URL — still parsed as fallback). Echoed in every
+  // reply so the content script can reject forged page-world messages.
   let CAP_TOKEN = "";
   try {
-    CAP_TOKEN =
-      String(
-        (document.currentScript || document.getElementById("hardsub-ocr-page-script"))?.src || ""
-      )
-        .split("?")[1]
-        ?.match(/(?:^|&)cap=([^&]+)/)?.[1] || "";
-    if (CAP_TOKEN) CAP_TOKEN = decodeURIComponent(CAP_TOKEN);
+    const el = document.currentScript || document.getElementById("hardsub-ocr-page-script");
+    CAP_TOKEN = String(el?.dataset?.cap || "");
+    if (!CAP_TOKEN) {
+      CAP_TOKEN =
+        String(el?.src || "")
+          .split("?")[1]
+          ?.match(/(?:^|&)cap=([^&]+)/)?.[1] || "";
+      if (CAP_TOKEN) CAP_TOKEN = decodeURIComponent(CAP_TOKEN);
+    }
   } catch (_) {
     CAP_TOKEN = "";
   }
