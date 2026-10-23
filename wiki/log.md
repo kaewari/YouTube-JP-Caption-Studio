@@ -1078,3 +1078,14 @@ Kết luận trung thực: **không dựng được browser harness trong môi t
 
 Trạng thái sau khi dọn: `git status` sạch · `bash scripts/verify_all.sh` → **10 passed, 0 skipped,
 0 failed**.
+
+## [2026-10-23] ingest | C-29 đủ 3/3 test — bootstrap test sandbox
+
+Trước đó C-29 có 1 chỗ **không test** (bootstrap) vì `_bootstrap_worker()` ghi vào `data/dict` thật.
+Lần này làm đúng cách: fixture trỏ `DICT` → `tmp_path` (kèm `MIN_JMDICT_KEYS`, `_jmdict_key_count`,
+`_download`) **trước khi** chạy worker → data thật không bị chạm. Download offline rơi vào nhánh
+"JMdict incomplete" (nhánh duy nhất chạm được khi không có mạng); test assert dòng `errors.log`,
+cờ `progress.done`, và thư mục sandbox có được ghi.
+
+Proof: bridge **162 passed, 5 skipped, exit 0** (161 + test mới). Red proof: bỏ dòng
+`append_errors_log` của nhánh đó → test fail. C-29 giờ **đủ 3/3 chỗ đều có test**.

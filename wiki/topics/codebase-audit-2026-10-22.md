@@ -37,7 +37,7 @@ Raw review đã file và **không sửa** (§4).
 | C-21 test suite ghi bẩn `local-bridge/errors.log` | **đã sửa** (fixture autouse → tmp) | `5e185d16f` |
 | C-26 bootstrap build `en_vi.json` không ai đọc + `_en_vi_cache` thừa | **đã sửa** (xoá) | `7b77ee337` |
 | C-24 Gemini cost table thiếu giá model fallback | **để mở có chủ ý** — không có giá thật thì trả `null` + `PARTIAL ESTIMATE`, không bịa số | `21577b8a7` (chỉ ghi chú) |
-| C-29 lỗi ASR/saved-items/bootstrap không vào `errors.log` | **đã sửa** (3/3 chỗ; bootstrap không có test tự động vì ghi vào data thật) | `d43d41820`, `9b3580a09`, `7a3eafc26` |
+| C-29 lỗi ASR/saved-items/bootstrap không vào `errors.log` | **đã sửa 3/3, có test cả 3** (bootstrap test sandbox `DICT`→tmp) | `d43d41820`, `9b3580a09`, `7a3eafc26`, `9aa8fbac0` |
 | C-30 nhánh `watch_html` chết khi Android trả non-JSON | **đã sửa** (fall through + `_parse_srv_xml` chịu json3) | `497c04c74` |
 | C-10 `freq_ja.json` 3 bản độc lập | **đã sửa** (parity check + CI; chưa gộp file) | `373cb38f6` |
 | C-9 env var `BRIDGE_URL` vs `CAPTION_BRIDGE_URL` | **đã sửa** (đọc cả hai tên, default giữ nguyên) | `e75ec298e` |
