@@ -1027,3 +1027,19 @@ stale. Kiểm lại trên disk:
   rồi `verify_extension_popup.js` (19 asset + 8 chunk) — nên nếu committed popup lệch source thì CI đỏ.
 
 Verify hôm nay: `verify_extension_popup.js` OK · `verify_freq_ja_parity.js` OK (3 bản, 15000 entry).
+
+## [2026-10-23] ingest | C-16 — paused frame không quét lại cue list
+
+`sample()` gọi `prepared(units, now)` **trước** khi kiểm `paused || seeking || hidden`, nên mỗi frame
+lúc pause vẫn duyệt tới 20 000 unit × 3 ngôn ngữ (JSON.stringify mỗi unit) để cập nhật readiness map
+mà frame pause không thể dùng (`previous` bị reset → không thể emit onset). Giờ nhánh pause chỉ rescan
+khi **instance** của cue list đổi — hợp lệ vì call site dùng `getSortedCues()` trả array cache.
+
+**Không có red proof — nói thẳng:** thay đổi này **tương đương về quan sát** (bỏ công việc mà kết quả
+bị vứt), nên không có test hành vi nào fail khi thiếu nó. Test thêm chỉ pin **vị từ**
+(`cùng instance → không rescan`, `instance mới → rescan 1 lần`), **không** phải bằng chứng tiết kiệm
+thời gian. Frame time thật **chưa đo** (cần browser). Đánh đổi: translation ready trong lúc pause được
+timestamp ở frame resume → onset ngay sau resume có thể là `within_sample` thay vì `ready` (đã ghi
+trong comment code).
+
+Gates: 15/15 extension suite exit 0 · anti-fake 0 · sanity suite 21 passed / 6 skipped / 0 failed.
