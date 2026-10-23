@@ -172,8 +172,8 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 | C-2..C-5, C-10 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize / `freq_ja.json` | chạm cả 4 tầng (extension, bridge, web, iOS) |
 | C-7..C-9 | Lệch shape saved-cue, `meta` Drive, env var `BRIDGE_URL`/`CAPTION_BRIDGE_URL` | cần đổi contract + migration |
 | C-12..C-17 | Web bundle mock-data, virtualization, a11y label; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
-| C-23 | 63 commit chưa push `origin/master..master` | cần user quyết định push |
-| C-24..C-26, C-29, C-30 | Gemini cost table, saved_items SQLite không client, `en_vi.json` thừa, bridge chưa log lỗi ASR/bootstrap, nhánh `watch_html` chết | P3 nhỏ, làm lẻ |
+| C-23 | 68 commit chưa push `origin/master..master` | cần user quyết định push |
+| C-25, C-29, C-30 | `saved_items` SQLite không client nào dùng, bridge chưa log lỗi ASR/bootstrap vào `errors.log`, nhánh `watch_html` trong `fetch_captions()` chết | P3 nhỏ, làm lẻ |
 
 ## Chưa verify (nói thẳng)
 
