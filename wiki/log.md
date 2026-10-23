@@ -1245,3 +1245,30 @@ Ba lỗi bridge còn lại, mỗi cái một nguyên nhân môi trường khác 
    `git ls-files` rỗng, `check-ignore` xác nhận) → checkout CI sạch không bao giờ có. Các assert đó
    giờ skip khi thiếu bảng; assert JMdict phía trên vẫn chạy mọi nơi; local vẫn chạy đủ (1 passed,
    không skip).
+
+## [2026-10-23] P0 | `ScriptCue.isDeleted` không round-trip trên macOS 26 — đổi tên `tombstoned`
+
+**Phát hiện từ CI đỏ, không phải từ đọc code.** `swift_store_smoke.sh` pass mọi lần local nhưng fail
+trên máy CI (`Assertion failed: a tombstone from the snapshot still applies on merge`).
+
+Chuỗi chứng minh trên branch scratch (đã xoá sau khi xong):
+
+1. Lần 1: in `store fetch` vs `relationship` sau merge — CI cho `c1:del=false` ở **cả hai**, trong khi
+   input là `cd=c1:del=true`. Vậy không phải relationship stale (giả thuyết cũ sai).
+2. Lần 2: thêm property probe `tombstoneProbe` set cùng lúc, cùng row, cùng save — CI đọc
+   `probe=true` **nhưng** `isDeleted=false`. Cùng object, cùng transaction, chỉ khác tên property.
+3. Kết luận: `isDeleted` đụng `NSManagedObject.isDeleted` (trạng thái deletion của live object);
+   trên SwiftData đi kèm macOS 26, read trả về trạng thái đó (= false) thay vì attribute đã lưu.
+   Local macOS 27 không sao — nên mọi gate local đều xanh.
+
+**Hệ quả thật cho user (không chỉ test):** trên OS bị ảnh hưởng, mọi soft-delete, wipe và tombstone
+pull đều bị lặng lẽ đánh rơi → cue đã xoá hồi sinh. Đúng lớp bug B-5/B-6 từng đuổi.
+
+**Fix** `3e7a9dbc9`: stored property thành `tombstoned` + `@Attribute(originalName: "isDeleted")`
+→ store cũ migrate nhẹ, không mất data. Wire giữ nguyên (`CueDTO.isDeleted`, key JSON,
+bridge/extension không đụng). Struct `Cue` thường trong `SubtitleParser.swift` giữ nguyên (không
+phải model, không bị ảnh hưởng).
+
+Proof migration (2 binary harness chung 1 file store): binary cũ ghi `isDeleted=true` → binary mới
+đọc `tombstoned=true`, `MIGRATION_OK`. Cả 2 app build Debug xanh, smoke macOS 2 app xanh, CI trên
+branch **7/7 job xanh** (kể cả `ios-build` lẫn `bridge-test-suite` sau fix ffmpeg/Mazii/spy).
