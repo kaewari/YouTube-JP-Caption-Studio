@@ -22,7 +22,10 @@ const os = require("node:os");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
-const POPUP_DIR = path.join(ROOT, "extension", "popup");
+// --dir=... serves another build (e.g. an older popup exported to /tmp) so two
+// builds can be compared with the same probe and zero working-tree changes.
+const DIR_ARG = process.argv.find((a) => a.startsWith("--dir="));
+const POPUP_DIR = DIR_ARG ? path.resolve(DIR_ARG.slice("--dir=".length)) : path.join(ROOT, "extension", "popup");
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
