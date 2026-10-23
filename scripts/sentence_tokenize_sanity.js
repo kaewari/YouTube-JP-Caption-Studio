@@ -8,7 +8,7 @@ let holdNext = null;
 async function bridgeFetch(path, options) {
   const hold = holdNext; holdNext = null;
   assert.equal(path, '/tokenize_batch');
-  const response = await fetch(`${process.env.CAPTION_BRIDGE_URL || 'http://127.0.0.1:8765'}${path}`, { method: options.method,
+  const response = await fetch(`${(process.env.CAPTION_BRIDGE_URL || process.env.BRIDGE_URL || 'http://127.0.0.1:8765')}${path}`, { method: options.method,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.body) });
   assert.equal(response.status, 200);
   const data = await response.json(); requests++; actualRows = data.results;
@@ -35,7 +35,7 @@ const run = expression => vm.runInContext(expression, ctx);
 (async () => {
   // This script talks to the REAL local bridge, so it is an integration check:
   // skip (instead of failing) when the bridge is not running.
-  const bridgeUrl = process.env.CAPTION_BRIDGE_URL || 'http://127.0.0.1:8765';
+  const bridgeUrl = (process.env.CAPTION_BRIDGE_URL || process.env.BRIDGE_URL || 'http://127.0.0.1:8765');
   try {
     const probe = await fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(2000) });
     if (!probe.ok) throw new Error(`HTTP ${probe.status}`);

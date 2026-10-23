@@ -13,8 +13,14 @@ import sys
 import urllib.error
 import urllib.request
 
-# CI starts the bridge on a random port and exports BRIDGE_URL.
-BRIDGE = os.environ.get("BRIDGE_URL", "http://127.0.0.1:8765")
+# CI starts the bridge on a random port and exports BRIDGE_URL; the extension
+# sanity scripts use CAPTION_BRIDGE_URL for the same purpose. Accept either so one
+# env var points every surface at an isolated bridge.
+BRIDGE = (
+    os.environ.get("BRIDGE_URL")
+    or os.environ.get("CAPTION_BRIDGE_URL")
+    or "http://127.0.0.1:8765"
+)
 KANJI_RE = __import__("re").compile(r"[\u3400-\u9fff]")
 
 
