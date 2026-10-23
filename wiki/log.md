@@ -1357,3 +1357,21 @@ move Hardsub rồi revert — bằng chứng nằm ở quyết định, không p
 tường minh (memberwise init luôn internal).
 
 Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.
+
+## [2026-10-23] ingest | C-1 HOÀN TẤT — package 19 file, mỗi app còn App.swift + 5 file riêng
+
+`4286cec10` khép lại C-1: `ios-shared/` (library `CaptionShared`, iOS 17) giữ 19 file —
+8 logic (A) + 3 services (B) + Models/BackupService/VocabSync/DictionaryService (C) + 3 views (D).
+Mỗi app còn: `App.swift` (giống nhau, giữ vì `@main`), 5 file khác nhau (giữ theo thiết kế),
+`DriveScriptsService.swift`, `Models/` đã xoá hẳn. `grep MIRRORED FILE` = 0.
+
+Những gì compiler bắt thêm dọc đường (đều có lý do, không phải trang trí):
+- Swift 6 mode phát hiện race thật ở cache `NLPTagger` → NSLock; `FreqService.map` var→let.
+- sqlite3 bridging chạy ngay bằng linkerSettings (`SDK có SQLite3.modulemap`) — không cần
+  systemLibrary riêng như lo ban đầu.
+- `DictPopupView`/`HardsubOverlayView` chỉ move được sau khi blockers (DictionaryService,
+  modifier `.dictPopup`) vào package — đã thử move sớm và revert, ghi lại để không ai lặp lại.
+
+Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh
+· migration module-move đã chứng minh trước (`MIGRATION_OK`). Chưa test trên máy thật có store cũ
+(nói thẳng như plan yêu cầu).
