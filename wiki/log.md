@@ -1467,3 +1467,22 @@ trên runner nghẽn), không phải lỗi code. Local cold start chỉ 2s nên 
 
 Sửa ở `68fd1fe` (harness-only, không đụng production): poll 30 → 150 vòng, in tiến trình mỗi
 15s. Vừa khít budget 15 phút của job; lần sau (nếu còn chậm) log cho biết thời gian đi đâu.
+
+## [2026-10-23] test | Test thật trên máy: 1 crash Debug, backend số liệu, Chrome brand chặn probe
+
+**Crash launch (Debug) trên Simulator — tìm ra bằng mắt, không phải đọc code:** cả 2 app mở
+là chết ngay (`EXC_BREAKPOINT`, `BackupSmoke.run()` dòng 586). Gốc: SwiftData không throw khi
+trùng unique (binary riêng chứng minh `SAVE_DID_NOT_THROW`, lặng lẽ còn 1 row). CI không bắt
+được vì chỉ build, không launch. Sửa ở `0e081cc`: `apply()` tự từ chối dup videoId trước khi
+đụng store + bỏ carve-out harness. Sau sửa: iPad 3/3, iPhone 3/3 launch xanh, 0 crash mới,
+video 30s + ảnh foreground.
+
+**Backend:** 5 vòng suite xanh (171 passed) · `/health` p50 0.4ms · `/tokenize_batch` p50
+0.6ms (validate token thật, từng đo nhầm batch rỗng 1 lần) · `/scripts/save` p50 1.2ms.
+
+**Chrome:** `--load-extension` bị brand Chrome ngó lơ (log verbose xác nhận) — probe CDP
+`scripts/extension_ux_probe.js` giữ lại cho Chromium/profile preload, chờ chạy trên browser
+user qua browser-skill. Mọi quan sát "SW lạ" trước đó đều là component của Chrome.
+
+**Mở:** migration seed biến mất sau launch (đang điều tra, chưa kết luận) · XCUITest ·
+fixture vendor · flows trên browser user.
