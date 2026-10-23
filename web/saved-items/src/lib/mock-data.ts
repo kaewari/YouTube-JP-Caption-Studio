@@ -2,8 +2,16 @@ import type { SavedWord } from "@/types/vocab";
 
 export const IS_DEV = process.env.NODE_ENV === "development";
 
-/** Demo seeds — replace later via extension messaging / bridge. */
-export const MOCK_SAVED_WORDS: SavedWord[] = [
+/**
+ * Demo seeds — replace later via extension messaging / bridge.
+ *
+ * Written as a folded conditional (not just `IS_DEV ?` at the call site) so a
+ * production build inlines `process.env.NODE_ENV` and drops the literal: the
+ * demo words must not ship inside the extension popup chunk.
+ */
+export const MOCK_SAVED_WORDS: SavedWord[] =
+  process.env.NODE_ENV === "development"
+    ? [
   {
     lemma: "遭難",
     reading: "そうなん",
@@ -86,4 +94,5 @@ export const MOCK_SAVED_WORDS: SavedWord[] = [
     contextJa: "海の真ん中のいかだ",
     updatedAt: Date.now() - 90000000,
   },
-];
+      ]
+    : [];
