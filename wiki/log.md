@@ -881,3 +881,12 @@ ngày** (`priceEvidence`). Hai model fallback đang chạy (`gemini-3.6-flash`, 
 không có rate đó → `estimateAttemptCost` trả `null` → caller báo PARTIAL ESTIMATE. Viết một con số
 cho chúng mà không fetch + date trang giá thật là **bịa dữ liệu chi phí**, tệ hơn `null` trung thực.
 Comment trong code ghi rõ đây là gap có chủ ý. C-24 **vẫn mở** tới khi có trang pricing thật.
+
+## [2026-10-23] ingest | C-29 (một phần) — ASR 500 vào errors.log
+
+`d43d41820`: hai nhánh 500 của `/asr/transcribe` trước chỉ `logger.exception()` → `errors.log`
+(AGENTS §6) trống với lỗi ASR. Giờ ghi thêm 1 dòng kèm **loại exception** (message gốc ở
+traceback, log chỉ là pointer, không copy output tool). Test: transcribe giả raise RuntimeError →
+HTTP 500 + dòng `asr transcribe runtime failure` / `RuntimeError` trong log cách ly. Proof: bridge
+**159 passed, 5 skipped, exit 0**; red proof khi bỏ 2 dòng `append_errors_log`. Hai chỗ còn lại
+(saved-items, bootstrap) **chưa làm** → C-29 vẫn mở một phần.
