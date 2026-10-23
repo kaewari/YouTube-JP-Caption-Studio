@@ -978,3 +978,14 @@ Handshake test của bridge đọc `BRIDGE_URL`, còn script sanity của extens
 Proof (chạy process thật): `BRIDGE_URL=…:9991` → 9991 · `CAPTION_BRIDGE_URL=…:9992` → 9992 · không set
 → 8765. JS với `CAPTION_BRIDGE_URL=…:9992` giờ probe **9992** rồi exit 77 (skip) thay vì lặng lẽ dùng
 8765. Bridge **161 passed, 5 skipped** · sanity suite exit 0.
+
+## [2026-10-23] ingest | C-12 — bỏ dữ liệu demo khỏi bundle popup
+
+`mock-data.ts` export mảng demo **vô điều kiện** và chỉ chặn ở chỗ *dùng*, nên build production vẫn
+nhúng literal: chunk của `extension/popup` chứa từ demo (đo được: "いかだ" ×5). Giờ mảng là
+conditional gập được trên `process.env.NODE_ENV` → build production coi là dead code, `next dev` vẫn
+có seed. Đã rebuild `extension/popup`.
+
+Proof: `grep -ro 'いかだ' extension/popup/_next/static | wc -l` → **5 trước, 0 sau** ·
+`npm run build:extension` exit 0 · `verify_extension_popup.js` OK (19 asset, 8 chunk) ·
+`tsc --noEmit` exit 0 · `npm test` 7 passed.
