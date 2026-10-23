@@ -890,3 +890,12 @@ traceback, log chỉ là pointer, không copy output tool). Test: transcribe gi�
 HTTP 500 + dòng `asr transcribe runtime failure` / `RuntimeError` trong log cách ly. Proof: bridge
 **159 passed, 5 skipped, exit 0**; red proof khi bỏ 2 dòng `append_errors_log`. Hai chỗ còn lại
 (saved-items, bootstrap) **chưa làm** → C-29 vẫn mở một phần.
+
+## [2026-10-23] ingest | C-29 (thêm) — saved-items 500 vào errors.log
+
+`9b3580a09`: 5 route saved-items lặp cùng một triple "logger.exception + 500 chung" và **không**
+ghi `errors.log`. Gom thành `_failed(where, exc)`: 1 dòng nêu route + **loại exception**, trả
+detail chung cho client; text gốc (có thể chứa SQL/path) giữ ở traceback. Test: `list_items` hỏng
+→ GET `/saved/items` thật → assert HTTP 500, log có `api_list_saved error`/`OperationalError`,
+và **không** chứa `database is locked`. Proof: bridge **160 passed, 5 skipped, exit 0**. Còn chỗ
+**bootstrap** → C-29 vẫn mở một phần.
