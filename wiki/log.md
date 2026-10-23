@@ -1496,3 +1496,10 @@ thiếu label (iPhone có, iPad không) → thêm 1 dòng `.accessibilityLabel` 
 thời lấp một phần gap C-14. CI `ios-build` giờ chạy cả 2 scheme trên Simulator.
 
 Proof local: iPhone 4.6s, iPad 5.2s, 0 failures. CI xác nhận sau push.
+
+## [2026-10-23] ci | UI test đỏ vì `generic` destination — tái hiện local, sửa ngay
+
+Job `ios-build` đỏ ở step UI test mới: `xcodebuild test` từ chối
+`generic/platform=iOS Simulator` ("must be run on a concrete device", exit 70).
+Tái hiện y hệt local nên không cần đoán. Sửa: chọn UDID thật lúc chạy (ưu tiên máy
+đang Booted, không thì iPhone/iPad đầu tiên) để sống qua mọi runner image.
