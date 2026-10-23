@@ -1272,3 +1272,10 @@ phải model, không bị ảnh hưởng).
 Proof migration (2 binary harness chung 1 file store): binary cũ ghi `isDeleted=true` → binary mới
 đọc `tombstoned=true`, `MIGRATION_OK`. Cả 2 app build Debug xanh, smoke macOS 2 app xanh, CI trên
 branch **7/7 job xanh** (kể cả `ios-build` lẫn `bridge-test-suite` sau fix ffmpeg/Mazii/spy).
+
+## [2026-10-23] ci | apt treo 15 phút → chốt non-interactive + --no-install-recommends
+
+Job bridge ở run trước **timeout đúng 15:00** trong step `sudo apt-get update && sudo apt-get
+install -y -qq ffmpeg`, **không một dòng output** — dạng treo của prompt tương tác (needrestart /
+service) khi cài unattended. `cd70c6b2b` chốt `DEBIAN_FRONTEND=noninteractive` +
+`--no-install-recommends` (chuẩn cho CI). Sẽ xác nhận bằng run CI kế tiếp, không claim trước.
