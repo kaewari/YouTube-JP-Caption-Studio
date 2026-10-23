@@ -470,6 +470,11 @@ def _save_script_locked(
         "rev": max(current_rev, int(rev or 0)) + 1,
         "deviceId": device_id(),
     }
+    # Union, not replace: the other writer's keys (and any future ones) survive a
+    # save. Every key this writer manages is already set above, so setdefault can
+    # only carry over foreign keys — it can never resurrect a stale rev.
+    for key, value in prev.items():
+        meta.setdefault(key, value)
 
     cues_content = _dump({"video_id": vid, "cues": cleaned, "meta": meta})
     tokens_content = _dump(new_tokens)
