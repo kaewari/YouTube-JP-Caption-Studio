@@ -1014,3 +1014,16 @@ thì panel không cập nhật tới lần điều hướng sau → không đán
 Test: sandbox SW ghi lại `sidePanel.setOptions` + giữ listener `onUpdated`; 3 event cùng trang → 1
 call, URL mới → call thứ 2 với `enabled:false`. Red proof: bỏ memo → *"three events for one page must
 set the panel once, got 3"*. **Chưa đo** timing trên browser thật.
+
+## [2026-10-23] ingest | C-15 — đóng: `out/` không track, popup rebuild + CI verify
+
+Audit nói `web/saved-items/out/` build `2026-09-20` và `extension/popup/` dated `2026-10-09` — cả hai
+stale. Kiểm lại trên disk:
+
+- `web/saved-items/out/` **không được track** (`git ls-files` = 0; bị ignore ở cả
+  `web/saved-items/.gitignore:8` và `.gitignore:85`) → không ship, staleness không ảnh hưởng user.
+- `extension/popup/` được rebuild trong `b1a2a3f74` (C-12): `BUILD_INFO.txt` =
+  `Built from web/saved-items at 2026-10-23T00:15:47.067Z`, và CI job `extension-popup` rebuild lại
+  rồi `verify_extension_popup.js` (19 asset + 8 chunk) — nên nếu committed popup lệch source thì CI đỏ.
+
+Verify hôm nay: `verify_extension_popup.js` OK · `verify_freq_ja_parity.js` OK (3 bản, 15000 entry).
