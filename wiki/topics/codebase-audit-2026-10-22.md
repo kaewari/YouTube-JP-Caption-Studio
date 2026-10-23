@@ -190,6 +190,7 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 
 | C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
+| P0 mới: `ScriptCue.isDeleted` đụng `NSManagedObject.isDeleted`, mất tombstone trên macOS 26 | **đã sửa**: stored property thành `tombstoned` + `@Attribute(originalName:)`, wire giữ nguyên; migration chứng minh bằng 2 binary chung 1 store | `3e7a9dbc9` |
 
 ## Chưa verify (nói thẳng)
 
