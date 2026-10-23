@@ -13,6 +13,8 @@ targets:
     sources:
       - path: App.swift
       - path: Views
+        excludes:
+          - TokenizedJAView.swift
       - path: Services
         excludes:
           - YouTubeURL.swift

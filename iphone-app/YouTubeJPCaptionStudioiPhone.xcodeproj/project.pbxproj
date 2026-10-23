@@ -19,13 +19,11 @@
 		B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */; };
 		C2397A6F49C6CE72BAFC80F3 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2DA866E4B335689C940E34 /* App.swift */; };
 		CC49DB20A76147E5F140953D /* SidePanelToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */; };
-		EC6FC5FCFB1A116A7CF1B489 /* TokenizedJAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */; };
 		F04D5BC248D504B4264F62CF /* freq_ja.json in Resources */ = {isa = PBXBuildFile; fileRef = 57BA7E9650B4341DD812BA3E /* freq_ja.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueEditorRow.swift; sourceTree = "<group>"; };
-		0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenizedJAView.swift; sourceTree = "<group>"; };
 		20A1F50D69CF63601A75839F /* ios-shared */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "ios-shared"; path = "../ios-shared"; sourceTree = SOURCE_ROOT; };
 		2E4172276AF5DA5F68946F3B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3627E90D42E2DDF187019E44 /* YouTubeJPCaptionStudioiPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudioiPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,7 +76,6 @@
 				4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */,
 				641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */,
 				C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */,
-				0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */,
 				D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */,
 			);
 			path = Views;
@@ -200,7 +197,6 @@
 				B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */,
 				01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */,
 				CC49DB20A76147E5F140953D /* SidePanelToolbar.swift in Sources */,
-				EC6FC5FCFB1A116A7CF1B489 /* TokenizedJAView.swift in Sources */,
 				078EE95A5297B8C801411979 /* YouTubePlayerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

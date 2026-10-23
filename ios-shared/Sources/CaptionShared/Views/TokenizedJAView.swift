@@ -1,8 +1,7 @@
 import SwiftUI
-import CaptionShared
 
 /// Wrapping row of tappable JA tokens (furigana + JLPT colors).
-struct TokenizedJAView: View {
+public struct TokenizedJAView: View {
     let text: String
     var fontSize: CGFloat = 22
     var weight: Font.Weight = .bold
@@ -11,13 +10,23 @@ struct TokenizedJAView: View {
     /// Soft outline for video / dark bars (skip on light side-panel).
     var shadowed: Bool = false
     var onTapToken: (Token) -> Void
+
+    public init(text: String, fontSize: CGFloat = 22, weight: Font.Weight = .bold, showFurigana: Bool = true, centered: Bool = false, shadowed: Bool = false, onTapToken: @escaping (Token) -> Void) {
+        self.text = text
+        self.fontSize = fontSize
+        self.weight = weight
+        self.showFurigana = showFurigana
+        self.centered = centered
+        self.shadowed = shadowed
+        self.onTapToken = onTapToken
+    }
     /// Observe so JLPT colors refresh when Settings change.
     @AppStorage("levelHighlightEnabled") private var levelHighlightEnabled = true
     @AppStorage("levelColorsJSON") private var levelColorsJSON = VocabStyle.defaultLevelColorsJSON
 
     private var tokens: [Token] { NLPTagger.tokenize(text) }
 
-    var body: some View {
+    public var body: some View {
         let _ = (levelHighlightEnabled, levelColorsJSON) // refresh on settings change
         FlowLayout(alignment: centered ? .center : .leading, spacing: 0) {
             ForEach(tokens) { tok in
@@ -54,17 +63,17 @@ struct TokenizedJAView: View {
 }
 
 /// Minimal wrap layout (no Dependency).
-struct FlowLayout: Layout {
+public struct FlowLayout: Layout {
     var alignment: HorizontalAlignment = .leading
     var spacing: CGFloat = 0
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = arrange(proposal: proposal, subviews: subviews)
         let w = proposal.width ?? rows.map(\.width).max() ?? 0
         return CGSize(width: w, height: rows.last.map { $0.y + $0.height } ?? 0)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let rows = arrange(proposal: ProposedViewSize(width: bounds.width, height: proposal.height), subviews: subviews)
         for row in rows {
             let x0: CGFloat = {
