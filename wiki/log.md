@@ -1192,3 +1192,22 @@ longtasks 0 · exceptions 0 · rows 200 · scrollHeight 25 391 px
 Đọc đúng: cadence vsync (16.7ms), không longtask — các bước tăng window (100 row/lần) không gây jank
 trên máy này. Giới hạn: 1 lần chạy, headless, không so trước/sau frame (bản cũ chỉ còn số DOM:
 5000 row / 622 918 px). Mode này chỉ báo số, **không gate** (gate perf cần máy baseline ổn định).
+
+## [2026-10-23] measure | C-13 trước/sau frame: bản cũ cũng không jank
+
+Dùng `--dir` mới của probe để chạy **bản pre-windowing** (`97a5c85df^`, export qua
+`git archive` ra /tmp, working tree không đụng):
+
+```
+bản cũ  (5000 row): frames 21 · avg 16.7 · p95 17.6 · max 17.6 · longtasks 0
+bản mới (100→300):  frames 21 · avg 16.7 · p95 17.6 · max 17.6 · longtasks 0
+```
+
+Đọc đúng và sửa lại claim hôm qua: **không chứng minh được windowing hết jank**, vì bản cũ trên
+máy này cũng không jank (headless + phần cứng mạnh → vsync khoá 16.7ms). Những gì đo được thật:
+
+- DOM khi load: **5000 → 100 row**; scrollHeight **622 918 → 12 941 px** (−98%).
+- List vẫn tăng dần khi scroll (300 sau 2 bước) + nút "Hiện tất cả" hoạt động.
+- 0 longtask, 0 exception ở **cả hai** bản.
+
+Kết luận giữ lại: windowing giảm DOM + chi phí first-paint, **không** claim giảm jank khi scroll.
