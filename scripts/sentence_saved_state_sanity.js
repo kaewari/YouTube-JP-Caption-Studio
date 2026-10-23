@@ -1,5 +1,6 @@
 /** Actual worker/content/web functions with isolated storage; no installed Chrome claim. */
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const path = require('node:path');
 const workerSource = fs.readFileSync(require.resolve('../extension/background/service_worker.js'), 'utf8');
 const workerFunctions = workerSource.slice(workerSource.indexOf('let savedStateWritePending'), workerSource.indexOf('async function ensureBridgePollAlarm'));
 const contentSource = fs.readFileSync(require.resolve('../extension/content/content.js'), 'utf8');
@@ -124,12 +125,18 @@ ${hydrate}${projection}${saveMeta}${save}${command}
   worker.msg={op:'delete',id:'other'};
   await assert.rejects(()=>vm.runInContext("handleSavedCueMutation(msg,{id:'foreign',url:'https://www.youtube.com/'})",worker));
   assert.equal(shared.savedCues.other.videoId,'other');
-  const ts=require('../web/saved-items/node_modules/typescript');
-  const webSource=fs.readFileSync(require.resolve('../web/saved-items/src/lib/vocab-store.ts'),'utf8');
-  const webDelete=webSource.slice(webSource.indexOf('export async function deleteSavedCueAsync'),webSource.indexOf('export function subscribeSavedCues'));
-  const js=ts.transpileModule(webDelete.replace('export async','async'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
-  const web=vm.createContext({window:{localStorage:{getItem:()=>null}},hasChromeStorage:()=>true,getChromeRuntime:()=>chrome.runtime});
-  vm.runInContext(js,web);await vm.runInContext("deleteSavedCueAsync('other')",web);
+  // The real production module: Node type-strips .ts natively, so this needs no
+  // typescript package - the previous revision crashed with MODULE_NOT_FOUND in
+  // any checkout without web node_modules installed.
+  const { register } = require('node:module');
+  const { pathToFileURL } = require('node:url');
+  register(pathToFileURL(path.join(__dirname, '..', 'web', 'saved-items', 'tests', 'alias-hooks.mjs')).href);
+  globalThis.window = { localStorage: { getItem: () => null, setItem: () => {} } };
+  globalThis.chrome = chrome;
+  const { deleteSavedCueAsync } = await import(pathToFileURL(path.join(__dirname, '..', 'web', 'saved-items', 'src', 'lib', 'vocab-store.ts')).href);
+  await deleteSavedCueAsync('other');
   assert.equal(shared.savedCues.other,undefined);
+  delete globalThis.window;
+  delete globalThis.chrome;
   console.log('PASS: foreign sender rejected; actual TypeScript Saved Items deletion uses worker mutation and removes only its selected ID');
 })().catch(error=>{console.error(error);process.exitCode=1});
