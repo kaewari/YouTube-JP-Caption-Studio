@@ -1089,3 +1089,42 @@ cờ `progress.done`, và thư mục sandbox có được ghi.
 
 Proof: bridge **162 passed, 5 skipped, exit 0** (161 + test mới). Red proof: bỏ dòng
 `append_errors_log` của nhánh đó → test fail. C-29 giờ **đủ 3/3 chỗ đều có test**.
+
+## [2026-10-23] ingest | Browser harness zero-dep + C-13 + C-2/C-7/C-8 contract tests
+
+**Trả lời câu "thay playwright bằng gì":** không cần thư viện nào. `scripts/browser_probe.js` nói CDP
+qua `--remote-debugging-pipe` (JSON phân cách `\0` trên fd 3/4 — đúng transport puppeteer dùng bên
+trong), nên **0 dependency**, **không tải browser**, dùng lại Chrome for Testing có sẵn
+(`CHROME_PATH` → cache ms-playwright → system Chrome). Cách cũ fail: Node `WebSocket` (undici) bị
+Chrome đóng **1006** dù đã `--remote-allow-origins=*`.
+
+**C-13 (đo bằng Chrome thật, 5000 từ):**
+| | trước | sau |
+|---|---|---|
+| rows khi load | 5000 | **100** |
+| scrollHeight | 622 918 px | **12 941 px** (−98%) |
+| rows sau 2 lần scroll | 5000 | **300** |
+| "Hiện tất cả" | không có | có → 5000 |
+| page exceptions | 0 | 0 |
+
+Cơ chế: `SavedWordsList` render cửa sổ 100, sentinel + `IntersectionObserver` (rootMargin 600px)
+tăng 100 mỗi lần, nút "Hiện tất cả (N còn lại)" làm escape hatch; phép tính tách ra
+`src/lib/incremental-list.ts` + unit test. Popup trong `extension/popup/` được rebuild — lần này
+**ship luôn C-14**: bản commit trước đó build từ source cũ nên **không có `aria-label`**, chính
+browser self-test bắt được điều đó.
+
+**C-2/C-7/C-8 guard (không string-matching):**
+- `web/saved-items/tests/extension-contracts.test.mts` load UMD extension trong Node
+  (`globalThis.HardsubVocab`, `import_parse`) và so **giá trị thật**: level keys/labels/default
+  colours, `normalizeLevelColors` với input lạ, và cue do extension export đọc lại qua web
+  normalizer **cùng số giây** + vẫn nhận legacy `startTime`.
+- Drift thật đã tìm thấy và sửa: màu `unknown` là `#c5c5d0` (web) vs `#94a3b8` (extension) — extension
+  là bên tô màu nên **web theo extension**.
+- `local-bridge/tests/test_web_contract.py`: `GET /scripts/{id}` trả `start_media_time` (giây) đúng
+  tên field, **không** camelCase, `meta.rev` được stamp, `/meta` lộ rev, timing sai → 422.
+
+Red proof (sửa tạm rồi revert): màu `unknown` về `#c5c5d0` → fail *"default JLPT colours"*; bỏ
+fallback `start_media_time` → fail cue contract; đổi tên field wire ở bridge → fail cả 3 test bridge.
+
+Gates: `bash scripts/verify_all.sh` → **12 passed, 0 skipped, 0 failed** (thêm `browser self-test`
++ `web tests`); bridge **165 passed, 5 skipped**; web **16 passed**; popup verify OK.
