@@ -26,6 +26,7 @@ LLM-maintained layer over immutable `plan/` and `review/` (Karpathy LLM-wiki pat
 | [topics/audio-listening-model.md](topics/audio-listening-model.md) | Audio Listening Model — gated M0-M3 implemented; waiting human auditory ground truth review |
 | [topics/p0-remediation-2026-10-20.md](topics/p0-remediation-2026-10-20.md) | P0 + P1 + P2 remediation of the 2026-10-18 full-codebase audit — **merged into `master`** (2fff75c48, all rows fixed + verified) |
 | [topics/codebase-audit-2026-10-22.md](topics/codebase-audit-2026-10-22.md) | New full-repo audit — **8 P0 / 24 P1 open, not remediated** (2026-10-22) |
+| [topics/swift-shared-package.md](topics/swift-shared-package.md) | Gộp 4 141 LOC Swift trùng (C-1) — **plan filed, chưa refactor** |
 | [upstream/karpathy-llm-wiki.md](upstream/karpathy-llm-wiki.md) | Karpathy LLM-wiki gist (concept) |
 
 ## Active / recent work
@@ -54,6 +55,7 @@ Do not rewrite these from the wiki. Link only.
 - [fix-overlay-resize-and-subtitles-2026-09-19.md](../plan/fix-overlay-resize-and-subtitles-2026-09-19.md)
 - [ja-vi-studio-dictionary-2026-08-26.md](../plan/ja-vi-studio-dictionary-2026-08-26.md)
 - [whisper-turbo-audio-evaluation-2026-10-17.md](../plan/whisper-turbo-audio-evaluation-2026-10-17.md)
+- [swift-shared-package-2026-10-23.md](../plan/swift-shared-package-2026-10-23.md) — plan C-1: gộp 4 141 LOC Swift trùng, chưa refactor
 
 - [agent-code-taste-migration-research-2026-09-20.md](../plan/agent-code-taste-migration-research-2026-09-20.md)
 - [migrate-codebase-to-house-style-2026-09-20.md](../plan/migrate-codebase-to-house-style-2026-09-20.md)

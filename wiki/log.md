@@ -923,3 +923,18 @@ Test mới **lộ thêm 1 bug cùng đường**: `_parse_srv_xml()` đưa bytes 
 parser json3 chạy như thiết kế.
 
 Proof: bridge **161 passed, 5 skipped, exit 0**; red proof (code cũ) test fallback fail.
+
+## [2026-10-23] ingest | Plan C-1 — gộp Swift trùng bằng local SwiftPM package
+
+User quyết: **chỉ lập plan, không refactor trong phiên này**. Filed
+[plan/swift-shared-package-2026-10-23.md](../../plan/swift-shared-package-2026-10-23.md) + topic
+[wiki/topics/swift-shared-package.md](topics/swift-shared-package.md).
+
+Số đo trên disk: **20/25 file .swift giống hệt byte-for-byte = 4 141 LOC**; 5 file khác là
+DriveScriptsService, ContentView, CueEditorRow, SidePanelToolbar, YouTubePlayerView. Phương án:
+local SwiftPM package `ios-shared/` (library `CaptionShared`), 2 `project.yml` khai báo, vẫn build
+bằng `xcodegen`. Rủi ro số 1: 3 `@Model` SwiftData đổi module → test migration trên máy thật trước,
+fallback giữ Models ở lại 2 app. Thứ tự A→E, mỗi bước 1 commit + build + smoke.
+
+Kèm quyết định khác cùng lúc: **C-23 push xong** (78 commit → `origin/master` = `54eca76fc`, cả 2
+remote) và **C-25 giữ nguyên** `saved_items` SQLite, chỉ ghi chú.

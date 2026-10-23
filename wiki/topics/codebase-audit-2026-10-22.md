@@ -170,12 +170,12 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 
 | Nhóm | Việc | Vì sao chưa làm |
 |---|---|---|
-| C-1 | Gộp ~4 028 LOC Swift trùng giữa 2 app thành shared package | refactor lớn, cần local SwiftPM + build lại 2 app + `xcodegen`; rủi ro cao, nên làm thành PR riêng |
+| C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
 | C-2..C-5, C-10 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize / `freq_ja.json` | chạm cả 4 tầng (extension, bridge, web, iOS) |
 | C-7..C-9 | Lệch shape saved-cue, `meta` Drive, env var `BRIDGE_URL`/`CAPTION_BRIDGE_URL` | cần đổi contract + migration |
 | C-12..C-17 | Web bundle mock-data, virtualization, a11y label; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
-| C-23 | 78 commit chưa push `origin/master..master` | cần user quyết định push |
-| C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng — code chết vẫn phải bảo trì | cần bạn quyết: xoá hay giữ làm API tương lai |
+| C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
+| C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
 
 ## Chưa verify (nói thẳng)
 
