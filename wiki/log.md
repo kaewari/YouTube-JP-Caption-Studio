@@ -1226,3 +1226,22 @@ và `window.localStorage` dùng một lần được set thành global rồi d�
 Hay hơn cả skip: assertion cuối giờ chạy **hàm thật** `deleteSavedCueAsync` thay vì bản copy cắt
 bằng regex. Proof: 7/7 PASS local; dời cả `web/saved-items/node_modules` đi nơi khác, script vẫn
 exit 0 — đúng điều kiện CI đã fail.
+
+## [2026-10-23] fix | Ba lỗi CI chỉ đỏ trên ubuntu (macOS xanh)
+
+Cùng một CI run đỏ 3 job; `sanity-scripts` đã sửa vòng trước (bỏ `require typescript`).
+Ba lỗi bridge còn lại, mỗi cái một nguyên nhân môi trường khác nhau:
+
+1. **fsync spy mù trên Python 3.10** — test patch `os.replace`, nhưng production rename bằng
+   `pathlib.Path.replace`, mà trên 3.10 (CI) đường đó đi qua C accessor, **không chạm**
+   attribute `os.replace` → rename vô hình → assert thứ tự fail. Spy giờ bọc thêm
+   `pathlib.Path.replace` (chạy được cả 3.10 lẫn 3.12). **Không sửa production.**
+   Proof: chạy suite durability dưới Python **3.10 thật** (uv): spy cũ fail đúng 2 test CI đã
+   fail, spy mới pass 5/5.
+2. **thiếu ffmpeg trên runner** — DSP `preprocess=True` cần binary ffmpeg thật, không có thì lặng
+   lẽ decode thường → assert DSP fail. Job bridge giờ `apt-get install ffmpeg` (đã cài Node cho
+   parity test theo cùng lý do).
+3. **Mazii assert thiếu data** — bảng Mazii chỉ tồn tại khi build có `mazii_raw.db` (runtime data,
+   `git ls-files` rỗng, `check-ignore` xác nhận) → checkout CI sạch không bao giờ có. Các assert đó
+   giờ skip khi thiếu bảng; assert JMdict phía trên vẫn chạy mọi nơi; local vẫn chạy đủ (1 passed,
+   không skip).
