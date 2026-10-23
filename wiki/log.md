@@ -911,3 +911,15 @@ và tải JMdict — tôi đã thử viết test, thấy nó sẽ sửa data th�
 một test phá dữ liệu. Hai chỗ kia (ASR, saved-items) có test ở mức route.
 
 Proof: bridge **160 passed, 5 skipped, exit 0** · `import app.scripts.bootstrap` OK · diff check sạch.
+
+## [2026-10-23] ingest | C-30 — fallback `watch_html` sống lại, kèm 1 bug phụ
+
+`497c04c74`: `fetch_captions()` **re-raise** JSON decode error từ Android → nhánh `watch_html`
+không bao giờ chạy đúng lúc cần (body non-JSON: trang lỗi HTML, response cụt). Giờ mọi lỗi Android
+đều rơi xuống watch page; watch page lỗi → `NoCaptionsError` thay vì parse error thô.
+
+Test mới **lộ thêm 1 bug cùng đường**: `_parse_srv_xml()` đưa bytes `fmt=json3` vào ElementTree →
+`ParseError`, nên nhánh json3 **không bao giờ** chạy được với track json3. Giờ non-XML trả `[]` để
+parser json3 chạy như thiết kế.
+
+Proof: bridge **161 passed, 5 skipped, exit 0**; red proof (code cũ) test fallback fail.
