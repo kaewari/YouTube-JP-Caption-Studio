@@ -57,6 +57,8 @@ run "popup assets" node scripts/verify_extension_popup.js
 run "freq_ja parity" node scripts/verify_freq_ja_parity.js
 run "sanity suite" bash scripts/run_sanity_suite.sh
 run "wiki lint" bash scripts/wiki_sync_and_lint.sh
+# Real Chrome over CDP: the popup must hydrate and keep its accessible names.
+run "browser self-test" node scripts/browser_probe.js --self-test
 
 # The bridge suite needs its venv; the Swift store smoke needs macOS + swiftc.
 if [ -x "$ROOT/local-bridge/.venv/bin/python" ]; then
@@ -77,9 +79,10 @@ fi
 # The Saved Items web app has its own typecheck; only when deps are installed.
 if [ -d "$ROOT/web/saved-items/node_modules" ]; then
   run "web typecheck" bash -c 'cd web/saved-items && npx tsc --noEmit'
+  run "web tests" bash -c 'cd web/saved-items && npm test --silent'
 else
-  skip=$((skip + 1))
-  printf 'SKIP  web typecheck (no web/saved-items/node_modules)\n'
+  skip=$((skip + 2))
+  printf 'SKIP  web typecheck + tests (no web/saved-items/node_modules)\n'
 fi
 
 echo

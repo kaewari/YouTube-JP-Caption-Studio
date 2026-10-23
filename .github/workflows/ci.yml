@@ -193,6 +193,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
+      # Real Chrome over CDP against the committed popup. GitHub's ubuntu images
+      # ship google-chrome; when the binary is missing the probe exits 77 and the
+      # gate is reported as skipped instead of passing silently.
+      - name: Browser self-test (real Chrome, skipped when unavailable)
+        working-directory: .
+        run: |
+          set +e
+          node scripts/browser_probe.js --self-test
+          code=$?
+          set -e
+          if [ "$code" -eq 77 ]; then
+            echo "::warning::no Chrome binary on this runner - browser self-test skipped"
+            exit 0
+          fi
+          exit "$code"
 
   ios-build:
     name: ios-build
