@@ -1486,3 +1486,13 @@ user qua browser-skill. Mọi quan sát "SW lạ" trước đó đều là compo
 
 **Mở:** migration seed biến mất sau launch (đang điều tra, chưa kết luận) · XCUITest ·
 fixture vendor · flows trên browser user.
+
+## [2026-10-23] test | XCUITest launch smoke — cái CI build-only không bao giờ bắt được
+
+Từ crash Debug tìm ra bằng máy thật: thêm UITest target cho cả 2 app
+(`uitests-shared/SmokeTests.swift` chung 1 file — không lặp lại bài học C-1):
+launch → foreground → URL field render → giữ screenshot. iPhone xanh ngay; iPad đỏ vì
+thiếu label (iPhone có, iPad không) → thêm 1 dòng `.accessibilityLabel` cho iPad, đồng
+thời lấp một phần gap C-14. CI `ios-build` giờ chạy cả 2 scheme trên Simulator.
+
+Proof local: iPhone 4.6s, iPad 5.2s, 0 failures. CI xác nhận sau push.
