@@ -1331,3 +1331,17 @@ Hoãn sang C (ghi vào plan, không lặng lẽ bỏ):
   chưa move Models.
 
 Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.
+
+## [2026-10-23] ingest | C-1 bước C — models + BackupService + VocabSync vào package
+
+`e80278883`: package giờ 16 file. Compiler dẫn `public` như bước A/B, thêm 2 phát hiện của Swift 6
+mode mà app target (Swift 5) không bao giờ báo: cache `NLPTagger` thêm NSLock (`nonisolated(unsafe)`
+ghi rõ kỷ luật tay), và `FreqService.map` (`var` → `let`, vốn chỉ init một lần). Hoãn có lý do:
+`DictionaryService` (raw C sqlite3, cần systemLibrary bridging riêng) + 3 Views.
+
+Migration chứng minh **trước khi merge**: binary cũ (models ở app module) ghi store file
+(script + cue tombstoned + vocab) → binary mới (models ở `CaptionShared`) đọc lại đủ
+(`MIGRATION_OK`).
+
+Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh
+(trên source trong package).

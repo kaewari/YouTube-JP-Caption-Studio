@@ -3,7 +3,7 @@
 
 # Kế hoạch: gộp 20 file Swift trùng giữa `ipad-app` và `iphone-app` (C-1)
 
-Trạng thái: **bước A + B đã merge** (`939637b04`, `6a1762ec1`) — package có 11 file, 2 app build Debug+Release xanh. — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
+Trạng thái: **bước A + B + C đã merge** (`939637b04`, `6a1762ec1`, `e80278883`) — package có 16 file (8 + 3 + 5); Models + BackupService + VocabSync đã vào; DictionaryService + 3 Views còn lại. (`939637b04`, `6a1762ec1`) — package có 11 file, 2 app build Debug+Release xanh. — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
 
 ## 1. Vấn đề (đo trên disk 2026-10-23)
 
@@ -90,8 +90,10 @@ B-11 cùng loại): sửa một bên, quên bên kia.
   (modulemap + linker settings trên ma trận Xcode) — rủi ro đó thuộc về bước C. `BackupService`
   + `VocabSync` **hoãn sang C**: dùng `BackupService.Snapshot` và model SwiftData, không tách được
   khi chưa move Models.
-- **C. Models** — `ScriptStore`, `VocabStore`. **Chỉ merge sau khi test migration trên máy thật**
-  (bước 3 rủi ro 1). Nếu vỡ → dừng ở B, giữ Models 2 bản (ghi lại lý do trong wiki).
+- **C. Models** — `ScriptStore`, `VocabStore` (**xong**, kèm `BackupService` + `VocabSync` vì
+  cùng phụ thuộc models). Migration đã chứng minh headless: binary module-cũ ghi store file, binary
+  module-package đọc lại đủ rows + tombstone (`MIGRATION_OK`). Test trên máy thật với store cũ vẫn
+  nên làm khi có máy (plan gốc bước 3), nhưng cơ chế đã được chứng minh, không còn là giả thuyết.
 - **D. Views dùng chung** — `DictPopupView`, `HardsubOverlayView`, `TokenizedJAView`.
 - **E. Dọn** — xoá 19 bản copy + header `MIRRORED FILE`, grep phải = 0; cập nhật `wiki` + plan.
 
