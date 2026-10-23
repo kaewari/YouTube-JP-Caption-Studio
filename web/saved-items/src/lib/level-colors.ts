@@ -27,7 +27,9 @@ export const DEFAULT_LEVEL_COLORS: LevelColors = {
   n3: { on: true, color: "#f5d76e" },
   n2: { on: true, color: "#e08a4a" },
   n1: { on: true, color: "#e74c5c" },
-  unknown: { on: true, color: "#c5c5d0" },
+  // Must match extension/shared/vocab_style.js DEFAULT_LEVEL_COLORS.unknown:
+  // the extension is what paints the overlay, so its value is the source of truth.
+  unknown: { on: true, color: "#94a3b8" },
 };
 
 export function normalizeLevelColors(raw: unknown): LevelColors {
