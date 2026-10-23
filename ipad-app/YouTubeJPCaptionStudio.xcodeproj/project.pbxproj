@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		25BEB2092FEF749023B6D46A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35E5D4B798F5943B879E185 /* ContentView.swift */; };
 		35970FA8BC8DC8F856C48544 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 379212178088FA4529647D1B /* dict.sqlite */; };
+		51E959E937D2A2C570878F30 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29ADF86F93CF21FA52864BB3 /* SmokeTests.swift */; };
 		5998796F7B90F735CF857B56 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD682D6A102403BBFC5FDA7E /* CueEditorRow.swift */; };
 		5DA170D328D6C7C289931CEE /* freq_ja.json in Resources */ = {isa = PBXBuildFile; fileRef = 139AC6F51301ACA394E77963 /* freq_ja.json */; };
 		7591A5CC949393153148BC50 /* SidePanelToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6580BF9872D9EF8A938FE98B /* SidePanelToolbar.swift */; };
@@ -20,9 +21,21 @@
 		F68896382521572472E9190D /* CaptionShared in Frameworks */ = {isa = PBXBuildFile; productRef = 714AA26B8EA380D12F0E3B7E /* CaptionShared */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		D9A565FB1267AE35221C0244 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CA78438C092F8D25B03282C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 10681A0CEEF696B999215B3E;
+			remoteInfo = YouTubeJPCaptionStudio;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		139AC6F51301ACA394E77963 /* freq_ja.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = freq_ja.json; sourceTree = "<group>"; };
+		29ADF86F93CF21FA52864BB3 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		379212178088FA4529647D1B /* dict.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dict.sqlite; sourceTree = "<group>"; };
+		3E31400FF2CE3297E2AE8F60 /* YouTubeJPCaptionStudioUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YouTubeJPCaptionStudioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3FDA951EDD369ADDD71B7F19 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		52749AE07D2A32FD0449805B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6580BF9872D9EF8A938FE98B /* SidePanelToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidePanelToolbar.swift; sourceTree = "<group>"; };
@@ -72,6 +85,15 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		8A36C6ACCB06F045847BD019 /* uitests-shared */ = {
+			isa = PBXGroup;
+			children = (
+				29ADF86F93CF21FA52864BB3 /* SmokeTests.swift */,
+			);
+			name = "uitests-shared";
+			path = "../uitests-shared";
+			sourceTree = "<group>";
+		};
 		8FA4C00AB81A70B633084A9F = {
 			isa = PBXGroup;
 			children = (
@@ -81,6 +103,7 @@
 				3F72D51BD3E7D05971ECC06A /* Resources */,
 				DD1F9C52AF702150706FCB56 /* Scripts */,
 				0A41201D2437C0C6AA8F4261 /* Services */,
+				8A36C6ACCB06F045847BD019 /* uitests-shared */,
 				FEA465D8CB3344120B3388E8 /* Views */,
 				DB710DE3B613BB7EBE3BFE73 /* Products */,
 			);
@@ -90,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				E5179757783FD2C728EB630E /* YouTubeJPCaptionStudio.app */,
+				3E31400FF2CE3297E2AE8F60 /* YouTubeJPCaptionStudioUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -136,6 +160,24 @@
 			productReference = E5179757783FD2C728EB630E /* YouTubeJPCaptionStudio.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7C8BD6F7F88162817D22A1AB /* YouTubeJPCaptionStudioUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2FE8713E1B4E2D3DB78542A8 /* Build configuration list for PBXNativeTarget "YouTubeJPCaptionStudioUITests" */;
+			buildPhases = (
+				3186EE4215ABAF1B68AD633F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				63981D8C627B65FB45E98156 /* PBXTargetDependency */,
+			);
+			name = YouTubeJPCaptionStudioUITests;
+			packageProductDependencies = (
+			);
+			productName = YouTubeJPCaptionStudioUITests;
+			productReference = 3E31400FF2CE3297E2AE8F60 /* YouTubeJPCaptionStudioUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -148,6 +190,9 @@
 					10681A0CEEF696B999215B3E = {
 						DevelopmentTeam = 44T7Y77WAJ;
 						ProvisioningStyle = Automatic;
+					};
+					7C8BD6F7F88162817D22A1AB = {
+						TestTargetID = 10681A0CEEF696B999215B3E;
 					};
 				};
 			};
@@ -168,6 +213,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				7C8BD6F7F88162817D22A1AB /* YouTubeJPCaptionStudioUITests */,
 				10681A0CEEF696B999215B3E /* YouTubeJPCaptionStudio */,
 			);
 		};
@@ -201,7 +247,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3186EE4215ABAF1B68AD633F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				51E959E937D2A2C570878F30 /* SmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		63981D8C627B65FB45E98156 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 10681A0CEEF696B999215B3E /* YouTubeJPCaptionStudio */;
+			targetProxy = D9A565FB1267AE35221C0244 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		048E15DEB1865EEAF7EB656E /* Debug */ = {
@@ -285,6 +347,23 @@
 			};
 			name = Debug;
 		};
+		473ADAA2E0D08F461E0511E8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.YouTubeJPCaptionStudioUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = YouTubeJPCaptionStudio;
+			};
+			name = Release;
+		};
 		7BD4AC214BECB04D786E80F9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -340,6 +419,23 @@
 			};
 			name = Release;
 		};
+		B7EF7CC3CCFE6F359C0DCCE4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.YouTubeJPCaptionStudioUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = YouTubeJPCaptionStudio;
+			};
+			name = Debug;
+		};
 		C8E54790D6D72403BFB72B68 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -362,6 +458,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2FE8713E1B4E2D3DB78542A8 /* Build configuration list for PBXNativeTarget "YouTubeJPCaptionStudioUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7EF7CC3CCFE6F359C0DCCE4 /* Debug */,
+				473ADAA2E0D08F461E0511E8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		7373387D77F84AE81D7352BC /* Build configuration list for PBXNativeTarget "YouTubeJPCaptionStudio" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -5,7 +5,24 @@ options:
 packages:
   CaptionShared:
     path: ../ios-shared
+schemes:
+  YouTubeJPCaptionStudioiPhoneUITests:
+    build:
+      targets:
+        YouTubeJPCaptionStudioiPhone: [run]
+        YouTubeJPCaptionStudioiPhoneUITests: [test]
+    test:
+      targets:
+        - name: YouTubeJPCaptionStudioiPhoneUITests
 targets:
+  YouTubeJPCaptionStudioiPhoneUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ../uitests-shared
+    dependencies:
+      - target: YouTubeJPCaptionStudioiPhone
   YouTubeJPCaptionStudioiPhone:
     type: application
     platform: iOS

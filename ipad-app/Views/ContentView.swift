@@ -406,6 +406,7 @@ struct ContentView: View {
                     .keyboardType(.URL)
                     .focused($urlFocused)
                     .onSubmit(loadAndRefresh)
+                    .accessibilityLabel("JP Caption Studio URL")
                 if !urlField.isEmpty {
                     Button {
                         urlField = ""
