@@ -14,7 +14,6 @@
 		3EA303D952E882591535A41E /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */; };
 		4311DC1436E7370D8F64AC22 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = B883C2D182FCCB052DB62AB7 /* dict.sqlite */; };
 		6F7640688EB87BEF5EDDB59D /* DictionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF29E3058D31465754DE87B /* DictionaryService.swift */; };
-		7E841698ED640414701EAA06 /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AA9B610EF8E586B15B8272 /* SettingsSync.swift */; };
 		91E1A20C9C7A7256E09478F3 /* VocabSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E415F2EAEE9A3993EFFAECF3 /* VocabSync.swift */; };
 		9CADA75C7242198B47797F51 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2E4172276AF5DA5F68946F3B /* Assets.xcassets */; };
 		B444D3D843E052F4A2DFCB0A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AEF9CCD23B6B64200B0F3EA /* ContentView.swift */; };
@@ -22,20 +21,16 @@
 		C2397A6F49C6CE72BAFC80F3 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2DA866E4B335689C940E34 /* App.swift */; };
 		C9E419AFDA3519ECF77D4811 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6737FBBFF21D98189D60163B /* BackupService.swift */; };
 		CC49DB20A76147E5F140953D /* SidePanelToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */; };
-		E5C441EF39285154DD54FD51 /* SubtitleParserSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCC1DBCA2D2F8F701DFA6F41 /* SubtitleParserSmoke.swift */; };
 		E6A65BC7CFC4EC7EB5DE96F5 /* VocabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD0F18A8DD82CBFAFACA7FA /* VocabStore.swift */; };
 		EB1594CDE5EA8B43FDE7D8EA /* ScriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419C1850A8CE59166330A4AC /* ScriptStore.swift */; };
 		EC6FC5FCFB1A116A7CF1B489 /* TokenizedJAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */; };
 		F04D5BC248D504B4264F62CF /* freq_ja.json in Resources */ = {isa = PBXBuildFile; fileRef = 57BA7E9650B4341DD812BA3E /* freq_ja.json */; };
-		F0C62835469B8DC5154B84FF /* CaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 271D4212455C2220D45CE8A8 /* CaptionService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueEditorRow.swift; sourceTree = "<group>"; };
 		0A55E2D5EF937A3E6B27A7AD /* TokenizedJAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenizedJAView.swift; sourceTree = "<group>"; };
 		20A1F50D69CF63601A75839F /* ios-shared */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "ios-shared"; path = "../ios-shared"; sourceTree = SOURCE_ROOT; };
-		271D4212455C2220D45CE8A8 /* CaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptionService.swift; sourceTree = "<group>"; };
-		27AA9B610EF8E586B15B8272 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSync.swift; sourceTree = "<group>"; };
 		2E4172276AF5DA5F68946F3B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3627E90D42E2DDF187019E44 /* YouTubeJPCaptionStudioiPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudioiPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		419C1850A8CE59166330A4AC /* ScriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptStore.swift; sourceTree = "<group>"; };
@@ -51,7 +46,6 @@
 		CAD0F18A8DD82CBFAFACA7FA /* VocabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStore.swift; sourceTree = "<group>"; };
 		D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerView.swift; sourceTree = "<group>"; };
 		DAF29E3058D31465754DE87B /* DictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryService.swift; sourceTree = "<group>"; };
-		DCC1DBCA2D2F8F701DFA6F41 /* SubtitleParserSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleParserSmoke.swift; sourceTree = "<group>"; };
 		E415F2EAEE9A3993EFFAECF3 /* VocabSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabSync.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -119,11 +113,8 @@
 			isa = PBXGroup;
 			children = (
 				6737FBBFF21D98189D60163B /* BackupService.swift */,
-				271D4212455C2220D45CE8A8 /* CaptionService.swift */,
 				DAF29E3058D31465754DE87B /* DictionaryService.swift */,
 				4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */,
-				27AA9B610EF8E586B15B8272 /* SettingsSync.swift */,
-				DCC1DBCA2D2F8F701DFA6F41 /* SubtitleParserSmoke.swift */,
 				E415F2EAEE9A3993EFFAECF3 /* VocabSync.swift */,
 			);
 			path = Services;
@@ -223,7 +214,6 @@
 			files = (
 				C2397A6F49C6CE72BAFC80F3 /* App.swift in Sources */,
 				C9E419AFDA3519ECF77D4811 /* BackupService.swift in Sources */,
-				F0C62835469B8DC5154B84FF /* CaptionService.swift in Sources */,
 				B444D3D843E052F4A2DFCB0A /* ContentView.swift in Sources */,
 				1345ED45A537400D06B9D298 /* CueEditorRow.swift in Sources */,
 				3EA303D952E882591535A41E /* DictPopupView.swift in Sources */,
@@ -231,9 +221,7 @@
 				B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */,
 				01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */,
 				EB1594CDE5EA8B43FDE7D8EA /* ScriptStore.swift in Sources */,
-				7E841698ED640414701EAA06 /* SettingsSync.swift in Sources */,
 				CC49DB20A76147E5F140953D /* SidePanelToolbar.swift in Sources */,
-				E5C441EF39285154DD54FD51 /* SubtitleParserSmoke.swift in Sources */,
 				EC6FC5FCFB1A116A7CF1B489 /* TokenizedJAView.swift in Sources */,
 				E6A65BC7CFC4EC7EB5DE96F5 /* VocabStore.swift in Sources */,
 				91E1A20C9C7A7256E09478F3 /* VocabSync.swift in Sources */,

@@ -1,9 +1,9 @@
 import Foundation
 import CaptionShared
 
-enum CaptionService {
+public enum CaptionService {
     /// Load cues via ANDROID Innertube captionTracks → timedtext baseUrl (plain ?lang= is empty now).
-    static func fetchCues(videoId: String) async -> [Cue] {
+    public static func fetchCues(videoId: String) async -> [Cue] {
         let tracks = await androidCaptionTracks(videoId: videoId)
         let ordered = tracks.sorted { score($0) > score($1) }
         for track in ordered {

@@ -2,7 +2,7 @@ import Foundation
 import CaptionShared
 
 /// Minimal assert-based smoke for normalize + playhead (ponytail: one runnable check).
-enum SubtitleParserSmoke {
+public enum SubtitleParserSmoke {
     static func run() {
         let raw = [
             Cue(id: "0", startTime: 0, duration: 2000, text: "【音楽】"),

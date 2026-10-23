@@ -24,6 +24,9 @@ targets:
           - DriveAPIClient.swift
           - DriveOAuthConfig.swift
           - DriveAuthService.swift
+          - CaptionService.swift
+          - SettingsSync.swift
+          - SubtitleParserSmoke.swift
       - path: Assets.xcassets
       # Only the injected player script ships in the app — dev tooling (sh/md/plist) must not.
       - path: Scripts/user_script.js

@@ -3,8 +3,8 @@ import CaptionShared
 
 /// Drive `caption-studio-settings.json` — LWW by `updatedAt`. Skips geometry (barPos, panel width).
 @MainActor
-final class SettingsSync {
-    static let shared = SettingsSync()
+public final class SettingsSync {
+    public static let shared = SettingsSync()
     static let fileName = "caption-studio-settings.json"
     private static let fileIdKey = "settingsDriveFileId"
     private static let lastAppliedKey = "settingsLastAppliedUpdatedAt"
@@ -60,7 +60,7 @@ final class SettingsSync {
     // MARK: - Public
 
     /// Start observing settings edits → debounce push when Drive connected.
-    func startObserving() {
+    public func startObserving() {
         guard !observing else { return }
         observing = true
         NotificationCenter.default.addObserver(
@@ -73,7 +73,7 @@ final class SettingsSync {
     }
 
     /// Connect: pull if remote newer, else push local (creates file if missing).
-    func syncOnConnect() async {
+    public func syncOnConnect() async {
         startObserving()
         do {
             let remote = try await downloadRemote()
@@ -94,7 +94,7 @@ final class SettingsSync {
         }
     }
 
-    func pullIfNewer() async {
+    public func pullIfNewer() async {
         guard DriveAuthService.shared.hasToken else { return }
         startObserving()
         do {
@@ -227,9 +227,9 @@ final class SettingsSync {
 }
 
 #if DEBUG
-enum SettingsSyncSmoke {
+public enum SettingsSyncSmoke {
     @MainActor
-    static func run() {
+    public static func run() {
         let at = Date(timeIntervalSince1970: 1_754_112_000)
         var snap = SettingsSync.Snapshot(
             updatedAt: at,

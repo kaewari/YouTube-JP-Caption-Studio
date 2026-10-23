@@ -7,15 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		06669CD148D61ED5624E6A54 /* SubtitleParserSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8498416AED5ABE0573A2FF08 /* SubtitleParserSmoke.swift */; };
 		18CED866D35AA1D50248FF65 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA44EB643E9B19B9120686B /* BackupService.swift */; };
 		1996D0D18771C283A322FD87 /* HardsubOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B02A38A9CB5FBA65C6B519 /* HardsubOverlayView.swift */; };
 		25BEB2092FEF749023B6D46A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35E5D4B798F5943B879E185 /* ContentView.swift */; };
 		35970FA8BC8DC8F856C48544 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 379212178088FA4529647D1B /* dict.sqlite */; };
 		4D9481325360B151247A1C28 /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D432B8937CDA3A464899F06 /* DictPopupView.swift */; };
-		5757E0EDD4928D9CF5017D57 /* CaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F574C181FD17FD9F058C61F7 /* CaptionService.swift */; };
 		5998796F7B90F735CF857B56 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD682D6A102403BBFC5FDA7E /* CueEditorRow.swift */; };
-		5A27D756C565E7E9B39CACEA /* SettingsSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2E452F69E33C8F30F31DB0 /* SettingsSync.swift */; };
 		5DA170D328D6C7C289931CEE /* freq_ja.json in Resources */ = {isa = PBXBuildFile; fileRef = 139AC6F51301ACA394E77963 /* freq_ja.json */; };
 		6383D53F03248DC7BE013C3B /* TokenizedJAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043B1215C6A1844977D9CE36 /* TokenizedJAView.swift */; };
 		68743F41213AA17A9DC830A2 /* VocabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE0915869B2BF5ADA8B4DD7 /* VocabStore.swift */; };
@@ -38,11 +35,9 @@
 		3FDA951EDD369ADDD71B7F19 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		46986FC76458D09925AD7415 /* VocabSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabSync.swift; sourceTree = "<group>"; };
 		52749AE07D2A32FD0449805B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		5B2E452F69E33C8F30F31DB0 /* SettingsSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSync.swift; sourceTree = "<group>"; };
 		5CB0C5EC7EE3FBD9314E4A33 /* DictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryService.swift; sourceTree = "<group>"; };
 		6580BF9872D9EF8A938FE98B /* SidePanelToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidePanelToolbar.swift; sourceTree = "<group>"; };
 		73A6828E0794D5F1361F7912 /* YouTubePlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerView.swift; sourceTree = "<group>"; };
-		8498416AED5ABE0573A2FF08 /* SubtitleParserSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubtitleParserSmoke.swift; sourceTree = "<group>"; };
 		8D432B8937CDA3A464899F06 /* DictPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictPopupView.swift; sourceTree = "<group>"; };
 		94B02A38A9CB5FBA65C6B519 /* HardsubOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardsubOverlayView.swift; sourceTree = "<group>"; };
 		9B9EEF4265A4800756A4066B /* ios-shared */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "ios-shared"; path = "../ios-shared"; sourceTree = SOURCE_ROOT; };
@@ -53,7 +48,6 @@
 		DFA44EB643E9B19B9120686B /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		E5179757783FD2C728EB630E /* YouTubeJPCaptionStudio.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F35E5D4B798F5943B879E185 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		F574C181FD17FD9F058C61F7 /* CaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptionService.swift; sourceTree = "<group>"; };
 		FD682D6A102403BBFC5FDA7E /* CueEditorRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueEditorRow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -73,11 +67,8 @@
 			isa = PBXGroup;
 			children = (
 				DFA44EB643E9B19B9120686B /* BackupService.swift */,
-				F574C181FD17FD9F058C61F7 /* CaptionService.swift */,
 				5CB0C5EC7EE3FBD9314E4A33 /* DictionaryService.swift */,
 				BCBC81DF3F0E84A96EC49F8A /* DriveScriptsService.swift */,
-				5B2E452F69E33C8F30F31DB0 /* SettingsSync.swift */,
-				8498416AED5ABE0573A2FF08 /* SubtitleParserSmoke.swift */,
 				46986FC76458D09925AD7415 /* VocabSync.swift */,
 			);
 			path = Services;
@@ -235,7 +226,6 @@
 			files = (
 				F31706009AC137511E9FEC3F /* App.swift in Sources */,
 				18CED866D35AA1D50248FF65 /* BackupService.swift in Sources */,
-				5757E0EDD4928D9CF5017D57 /* CaptionService.swift in Sources */,
 				25BEB2092FEF749023B6D46A /* ContentView.swift in Sources */,
 				5998796F7B90F735CF857B56 /* CueEditorRow.swift in Sources */,
 				4D9481325360B151247A1C28 /* DictPopupView.swift in Sources */,
@@ -243,9 +233,7 @@
 				9C6414DBCF894434894CBE4A /* DriveScriptsService.swift in Sources */,
 				1996D0D18771C283A322FD87 /* HardsubOverlayView.swift in Sources */,
 				B69DC12DB15E175BC49A789B /* ScriptStore.swift in Sources */,
-				5A27D756C565E7E9B39CACEA /* SettingsSync.swift in Sources */,
 				7591A5CC949393153148BC50 /* SidePanelToolbar.swift in Sources */,
-				06669CD148D61ED5624E6A54 /* SubtitleParserSmoke.swift in Sources */,
 				6383D53F03248DC7BE013C3B /* TokenizedJAView.swift in Sources */,
 				68743F41213AA17A9DC830A2 /* VocabStore.swift in Sources */,
 				F4A94800F51E93F33C106698 /* VocabSync.swift in Sources */,

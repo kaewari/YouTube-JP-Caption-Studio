@@ -24,6 +24,9 @@ targets:
           - DriveAPIClient.swift
           - DriveOAuthConfig.swift
           - DriveAuthService.swift
+          - CaptionService.swift
+          - SettingsSync.swift
+          - SubtitleParserSmoke.swift
       - path: Assets.xcassets
       # Scripts/ is dev tooling only (deploy/renew/signing) — nothing ships in the app.
       - path: Resources/dict.sqlite
