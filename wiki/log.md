@@ -1056,3 +1056,25 @@ hiện SKIP chứ **không** tính pass), khác = fail. Summary: `gates: N passe
 Proof: `bash scripts/verify_all.sh` → **10 passed, 0 skipped, 0 failed**, exit 0. Red proof: dời
 `extension/popup/index.html` đi → exit 1 với *"9 passed, 0 skipped, 1 failed / failed: popup assets"*;
 trả file về → exit 0. README có thêm mục "Verify everything before you commit".
+
+## [2026-10-23] query | Thử dựng harness browser thật — THẤT BẠI, đã xoá, không ship
+
+Mục tiêu: đóng lỗ hổng "chưa chạy browser thật" (C-13/C-16 cần số đo). Máy có sẵn
+`~/Library/Caches/ms-playwright/chromium-1234` (Google Chrome for Testing 151.0.7922.34 chạy được),
+nhưng **không có package `playwright`/`ws`** trong repo.
+
+Đã thử viết `scripts/browser_smoke.js` thuần Node (dựa vào `WebSocket` global) để lái CDP:
+
+1. Chrome khởi động OK, ghi `DevToolsActivePort` (đọc được port).
+2. `WebSocket` tới `/devtools/browser` **bị Chrome đóng với code 1006** dù đã thêm
+   `--remote-allow-origins=*` — undici WebSocket gửi header Chrome không chấp nhận.
+3. Chuyển sang `--dump-dom` + `--screenshot`: với `--virtual-time-budget` thì Chrome **không thoát**
+   (bị kill ở 60s, exit null); bỏ virtual-time thì `--dump-dom` **in rỗng** cho cả file:// (exit 0,
+   không có DOM).
+
+Kết luận trung thực: **không dựng được browser harness trong môi trường này** bằng những gì có sẵn.
+Đã **xoá** script (không ship thứ chưa chạy được). Muốn có số đo pixel/timing thật thì cần cài
+`playwright` (npm) hoặc `ws` — tức thêm dependency, cần user đồng ý.
+
+Trạng thái sau khi dọn: `git status` sạch · `bash scripts/verify_all.sh` → **10 passed, 0 skipped,
+0 failed**.
