@@ -1295,3 +1295,12 @@ Run 39894233054 **success toàn bộ 7/7 job trong 2m12s** (hai run trước tim
 apt). Log cho thấy `Setting up libgme0/libchromaprint1…` — apt chạy bình thường khi giữ proxy env.
 Bridge suite trên CI: **156 passed, 16 skipped** (MLX-gated + Mazii-skip + live tests deselect).
 Giả thuyết proxy đúng.
+
+## [2026-10-23] verify | Wire `isDeleted` còn nguyên sau rename `tombstoned`
+
+Kiểm tra chéo 3 tầng sau rename: bridge (`saved_items_db.is_deleted` là cột SQLite riêng, không
+liên quan), iOS (`CueDTO.isDeleted` + key JSON giữ nguyên — chỉ SwiftData attribute đổi),
+extension (không đọc `isDeleted` ở đâu). Quan trọng nhất: `write_files()` lưu `validated[name] =
+content` **nguyên bytes**, không strip key — nên validation shape ở B-21 không làm mất tombstone
+khi round-trip qua bridge. Kết luận: rename nằm gọn trong SwiftData, wire iOS↔bridge↔Drive không
+đổi hành vi.
