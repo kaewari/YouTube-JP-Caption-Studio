@@ -145,16 +145,6 @@ def _bootstrap_worker() -> None:
         except Exception as exc:
             logger.warning("JMdict VI download/index skipped: %s", exc)
 
-        # VNEDICT (VI→EN inverted) — fill gloss_vi from gloss_en when JA→VI misses.
-        _set("dict", 66, "Indexing EN→VI (VNEDICT)")
-        try:
-            from app.scripts.import_en_vi import ensure_en_vi
-
-            n_en = ensure_en_vi(download_fn=_download)
-            _set("dict", 68, f"Indexed {n_en} EN→VI keys")
-        except Exception as exc:
-            logger.warning("EN→VI (VNEDICT) download/index skipped: %s", exc)
-
         keys = _jmdict_key_count(jmdict_json)
         if keys < MIN_JMDICT_KEYS:
             msg = (

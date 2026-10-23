@@ -356,7 +356,7 @@ def is_loaded() -> bool:
 
 def close_dictionary() -> None:
     """Close the shared read-only handle so a rebuilt DB can be reopened."""
-    global _loaded, _en_vi_cache, _db_conn, _db_tables
+    global _loaded, _db_conn, _db_tables
     with _db_lock:
         conn = _db_conn
         _db_conn = None
@@ -369,7 +369,6 @@ def close_dictionary() -> None:
         # otherwise a concurrent reopen could wipe it mid-lookup.
         _loaded = False
         _db_tables = frozenset()
-    _en_vi_cache = None
     dict_cache.clear()
 
 
