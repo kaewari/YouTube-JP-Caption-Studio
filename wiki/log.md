@@ -1043,3 +1043,16 @@ timestamp ở frame resume → onset ngay sau resume có thể là `within_sampl
 trong comment code).
 
 Gates: 15/15 extension suite exit 0 · anti-fake 0 · sanity suite 21 passed / 6 skipped / 0 failed.
+
+## [2026-10-23] cleanup | `scripts/verify_all.sh` — mọi gate trong 1 lệnh
+
+Các gate vẫn tồn tại nhưng nằm trong trí nhớ agent + 3-4 lệnh shell rời → câu "all gates green" là
+ghép tay. Thêm runner: extension suites · anti-fake gate · popup assets · `freq_ja` parity · sanity
+suite · wiki lint · bridge pytest · Swift store self-test (2 app, chỉ macOS) · Saved Items typecheck.
+
+Contract exit code: 0 pass, **77 skip** (thiếu tool — venv không có, hoặc host không phải macOS →
+hiện SKIP chứ **không** tính pass), khác = fail. Summary: `gates: N passed, M skipped, K failed`.
+
+Proof: `bash scripts/verify_all.sh` → **10 passed, 0 skipped, 0 failed**, exit 0. Red proof: dời
+`extension/popup/index.html` đi → exit 1 với *"9 passed, 0 skipped, 1 failed / failed: popup assets"*;
+trả file về → exit 0. README có thêm mục "Verify everything before you commit".
