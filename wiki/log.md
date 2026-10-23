@@ -1211,3 +1211,18 @@ máy này cũng không jank (headless + phần cứng mạnh → vsync khoá 16.
 - 0 longtask, 0 exception ở **cả hai** bản.
 
 Kết luận giữ lại: windowing giảm DOM + chi phí first-paint, **không** claim giảm jank khi scroll.
+
+## [2026-10-23] fix | CI sanity đỏ vì `require("typescript")` — bỏ luôn dependency đó
+
+GitHub Actions báo `MODULE_NOT_FOUND` ở `scripts/sentence_saved_state_sanity.js:127`: script
+`require('../web/saved-items/node_modules/typescript')` để transpile một lát cắt
+`deleteSavedCueAsync`, nhưng job `sanity-scripts` trên CI không hề `npm ci` — local thì luôn
+pass vì máy dev có sẵn `node_modules`.
+
+Sửa đúng chỗ thay vì vá CI: dùng **real production module** qua type-stripping có sẵn của Node
+(22.18+, CI chạy 24) + `alias-hooks.mjs` sẵn có của web để resolve `@/`. Stub `chrome` của harness
+và `window.localStorage` dùng một lần được set thành global rồi dọn sau test.
+
+Hay hơn cả skip: assertion cuối giờ chạy **hàm thật** `deleteSavedCueAsync` thay vì bản copy cắt
+bằng regex. Proof: 7/7 PASS local; dời cả `web/saved-items/node_modules` đi nơi khác, script vẫn
+exit 0 — đúng điều kiện CI đã fail.
