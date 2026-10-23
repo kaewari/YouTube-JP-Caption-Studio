@@ -1165,3 +1165,16 @@ Proof: bridge **167 passed, 5 skipped**; red proof: trả `_TIME_TOKEN` về d�
 
 **C-4** ghi rõ: tokenize bridge (Sudachi) vs extension (`Intl.Segmenter` fallback) là **2 engine khác
 nhau có chủ ý**, không phải port trùng; bản Swift ngoài phạm vi phiên này.
+
+## [2026-10-23] ingest | C-2 — parity guard cho 2 map curated JLPT
+
+Bridge (`_COMMON_JLPT_WORDS`, 60 keys) và extension (`COMMON_JLPT_WORDS`, 403 keys) là 2 list riêng
+không ai so. `local-bridge/tests/test_jlpt_curated_parity.py` load map thật của extension trong Node
+và assert mọi key của bridge có mặt ở đó mang cùng band.
+
+Đo hôm nay: 60 bridge keys, **53 shared, 0 mismatch**. 7 key bridge-only (日本, にほん, 何, なに,
+なん, チョコ, チョコレート) resolve qua lớp bilingual/de-inflection của extension nên chỉ ghi nhận,
+không assert — thêm chúng vào là quyết định product, không phải việc của test.
+
+Proof: bridge **169 passed, 5 skipped** (167 + 2). Red proof (dựng tạm): 私 n5→n4 fail
+*"band drift on 1 words: [('私', 'n4', 'n5')]"*.
