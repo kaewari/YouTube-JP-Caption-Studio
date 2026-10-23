@@ -622,8 +622,9 @@
     // Stale page API (pre-FETCH_MULTI_LANG) → force reinject before multi-fetch.
     const ping = await pageCall("PING", {}, 400);
     if (!ping?.ok || Number(ping.apiVer) !== PAGE_API_VER) {
-      injectPageScript(true);
-      await sleep(200);
+      // Await: injection goes through the async scripting API, so a fixed sleep
+      // could race the MAIN-world script and drop the retry.
+      await injectPageScript(true);
     }
     const page = await pageCall(
       "FETCH_MULTI_LANG",
