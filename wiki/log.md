@@ -1518,3 +1518,10 @@ Sau fix destination, CI đỏ ở step test mới với `Cannot code sign becaus
 does not have an Info.plist file`. Thêm `GENERATE_INFOPLIST_FILE: YES` cho cả 2 UITest
 target. Rút kinh nghiệm vòng trước (push mù 2 lần): lần này chạy `xcodebuild test` xanh
 local (0 failures) rồi mới push.
+
+## [2026-10-23] ci | CI xanh 7/7 kèm UI test chạy thật trên simulator của runner
+
+Run 39935065686 **success**: cả 2 step UI test mới đều `Executed 1 test, 0 failures`
+(iPad 45s, iPhone 35s trên simulator của runner). Chuỗi 4 vòng đỏ-xanh của `ios-build`
+trong phiên này: generic destination → thiếu scheme app → thiếu Info.plist → xanh.
+Mỗi vòng đều tái hiện hoặc verify local trước khi push (trừ vòng scheme, đã ghi).
