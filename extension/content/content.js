@@ -19,45 +19,19 @@
     tokensNeedEnrich: () => false,
   };
 
+  if (!globalThis.HardsubDefaults) {
+    console.warn("[jpcap] shared/hardsub_defaults.js missing — stale content script? Reload the extension + refresh tab.");
+  }
+  /** Shared overlay/vocab defaults + the content-only keys below. */
   const DEFAULTS = {
-    /** Caption engine (tick / overlay / panel sync). */
-    enabled: true,
+    ...(globalThis.HardsubDefaults || {}),
     enhanced_subtitles_enabled: true,
     sentence_grouping_enabled: true,
     sentence_translation_prefetch_enabled: true,
-    showOnVideo: false,
-    /** Try open side panel once per tab session (default off — use DỊCH toggle). */
-    autoOpen: false,
-    showFurigana: true,
-    dimHardsub: false,
-    sourceLang: "ja",
-    copyFormat: "full",
-    exportFormat: "ja_en_vi",
-    roi: { top: 0.75, left: 0.05, width: 0.9, height: 0.2 },
-    maxSentences: 2000,
     panelWidth: 480,
-    barPos: null,
-    /** User multiplier on video-height-derived overlay fonts/padding (1 = default). */
-    barScale: 1,
     /** Independent box size multipliers (width / height). */
     barScaleW: 1,
     barScaleH: 1,
-    /** Overlay background alpha (0–1). */
-    barBgOpacity: 0.4,
-    /** Overlay text alpha (0–1). */
-    barTextOpacity: 1,
-    barShowJa: true,
-    barShowEn: true,
-    barShowVi: false,
-    /** Dict popup: show cue sentence (VI/EN) under the gloss. */
-    dictShowSentence: true,
-    enabledPlatforms: {
-      youtube: true,
-      netflix: true,
-      abema: true,
-      web: true,
-    },
-    ...Vocab.DEFAULT_VOCAB_SETTINGS,
   };
 
   const CACHE_MATCH_TOL = 0.6;

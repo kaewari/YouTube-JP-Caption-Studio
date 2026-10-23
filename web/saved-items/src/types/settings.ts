@@ -59,6 +59,11 @@ export interface HardsubSettings {
   vocabCats?: Record<string, boolean>;
 }
 
+/**
+ * Must equal `extension/shared/hardsub_defaults.js` (the extension paints the
+ * overlay, so it is the source of truth). Enforced by
+ * `tests/settings-defaults.test.mts`.
+ */
 export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
   enabled: true,
   autoTranslate: false,
@@ -69,15 +74,15 @@ export const DEFAULT_HARDSUB_SETTINGS: HardsubSettings = {
   sourceLang: "ja",
   copyFormat: "full",
   exportFormat: "ja_en_vi",
-  roi: { top: 0.75, left: 0.05, width: 0.9, height: 0.22 },
-  maxSentences: 500,
+  roi: { top: 0.75, left: 0.05, width: 0.9, height: 0.2 },
+  maxSentences: 2000,
   dictShowSentence: true,
   barScale: 1,
-  barBgOpacity: 0.82,
+  barBgOpacity: 0.4,
   barTextOpacity: 1,
   barShowJa: true,
   barShowEn: true,
-  barShowVi: true,
+  barShowVi: false,
   barPos: null,
   vocabLevel: 5000,
   vocabHighlight: true,

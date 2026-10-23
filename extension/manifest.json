@@ -80,6 +80,7 @@
       ],
       "js": [
         "shared/vocab_style.js",
+        "shared/hardsub_defaults.js",
         "shared/dfxp_parser.js",
         "shared/timedtext_parse.js",
         "shared/romaji_kana.js",

@@ -93,6 +93,12 @@ function createContext() {
 const { context, seam } = createContext();
 const source = fs.readFileSync(CONTENT_JS, "utf8");
 vm.createContext(context);
+// The content script reads its shared defaults from these two, exactly like the
+// manifest does; loading them keeps the sandbox a faithful page.
+for (const shared of ["shared/vocab_style.js", "shared/hardsub_defaults.js"]) {
+  const file = path.join(__dirname, "..", shared);
+  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: shared });
+}
 vm.runInContext(source, context, { filename: "content.js" });
 
 assert.ok(seam.content, "the content script must expose its helpers to the test seam");
