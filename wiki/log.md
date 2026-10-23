@@ -953,3 +953,17 @@ storage) + `chrome.sidePanel.setOptions()` (IPC). Hướng sửa đã nghĩ xong
 - Cần dọn `Map` khi tab đóng (`chrome.tabs.onRemoved?.addListener`) để không rò rỉ.
 - Test khả thi: mở rộng stub `chrome.tabs.onUpdated` trong `service_worker_test.js` để bắt listener,
   bắn cùng URL 2 lần → assert `setOptions` chỉ 1 lần; URL khác → 2 lần.
+
+## [2026-10-23] ingest | C-10 — parity check cho 3 bản `freq_ja.json`
+
+`373cb38f6`: bảng tần suất/JLPT tồn tại **3 bản** — `data/dict/freq_ja.json` (bridge) + mỗi app iOS
+bundle một bản `Resources/` — và không có gì so sánh chúng. Rebuild chỉ tới một mặt → surface khác
+chạy bảng cũ, biểu hiện là màu/rank khác nhau mà **không có lỗi nào**.
+
+`scripts/verify_freq_ja_parity.js` fail khi: thiếu bản, JSON hỏng, bảng rỗng, hoặc khác byte với các
+bản còn lại. Chạy trong job CI `extension-tests` cạnh anti-fake gate.
+
+Proof: exit 0 → *"3 copies, 15000 entries, sha256 c204d55a83cf30d1"*. Red proof: sửa 1 giá trị trong
+bản iPhone → exit 1, in cả 2 hash + nhóm file; restore → exit 0.
+Ghi chú: 2 file `Resources/` trong checkout này là **hardlink** cùng inode — sửa 1 là sửa cả 2; parity
+check vẫn đúng nhưng đừng dựa vào nó để phát hiện lệch ipad↔iphone (chúng chia sẻ inode).
