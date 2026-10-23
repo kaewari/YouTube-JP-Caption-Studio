@@ -1503,3 +1503,11 @@ Job `ios-build` đỏ ở step UI test mới: `xcodebuild test` từ chối
 `generic/platform=iOS Simulator` ("must be run on a concrete device", exit 70).
 Tái hiện y hệt local nên không cần đoán. Sửa: chọn UDID thật lúc chạy (ưu tiên máy
 đang Booted, không thì iPhone/iPad đầu tiên) để sống qua mọi runner image.
+
+## [2026-10-23] ci | Thêm `schemes:` làm mất scheme app — xcodegen ngừng auto-gen
+
+Job `ios-build` đỏ ở step "Build the iPad app" (chưa tới step UI test mới):
+`no scheme named YouTubeJPCaptionStudio`. Cơ chế: trước đây không có `schemes:` nên
+xcodegen tự sinh scheme app; thêm block `schemes:` (cho UITest) thì auto-gen tắt,
+scheme app biến mất. Sửa: khai báo tường minh cả 2 scheme mỗi app + verify build
+bằng đúng lệnh CI (`generic/platform=iOS Simulator`) xanh local trước khi push.
