@@ -77,7 +77,11 @@ jobs:
               [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
           )
           try:
-              for _ in range(30):
+              # Model load (Sudachi dict, JMdict, freq maps) takes ~10s on a fast
+              # runner and has exceeded 30s on contended ones while uvicorn stays
+              # alive but silent. Poll up to 150s with progress so a future hang
+              # shows where the time went instead of dying blind at 30s.
+              for attempt in range(150):
                   if server.poll() is not None:
                       raise RuntimeError(f"uvicorn exited with code {server.returncode}")
                   try:
@@ -96,9 +100,11 @@ jobs:
                       body = exc.read().decode("utf-8", errors="replace")
                       raise RuntimeError(f"HTTP {exc.code} {health_url}: {body}") from exc
                   except urllib.error.URLError:
+                      if attempt % 15 == 0:
+                          print(f"waiting for bridge ({attempt}s)...", flush=True)
                       time.sleep(1)
               else:
-                  raise TimeoutError(f"bridge did not answer {health_url} within 30 seconds")
+                  raise TimeoutError(f"bridge did not answer {health_url} within 150 seconds")
           finally:
               if server.poll() is None:
                   server.terminate()
