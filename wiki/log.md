@@ -1433,3 +1433,15 @@ process). C-23 đã xong từ trước (push hết, có log). B-3/C-6: drift ki�
 Không consumer nào vỡ → migration contract version 2 là việc không cần làm (YAGNI). Ghi nhận
 disposition vào bảng Status thay vì sửa wire có rủi ro tương thích ngược (decoder Swift strict
 sẽ vỡ nếu file có string).
+
+## [2026-10-23] ci | C-7 làm đỏ CI sanity — harness slice thiếu `pageTitle`
+
+`savedCueSnapshot()` gọi `pageTitle()` ở ngoài mọi source slice của
+`sentence_content_sanity.js` → `ReferenceError`, job `sanity-scripts` đỏ
+(run 39902882643). Sửa đúng chỗ: harness stub `pageTitle()` bằng title cố định (ghi chú rõ
+parse thật do `content_test.js` giữ) + assert title đó đi hết đường
+toggleStarCue → worker → storage. Harness này giờ verify wiring end-to-end thay vì chỉ chịu
+đựng refactor.
+
+Proof: suite **21 passed, 6 skipped, 0 failed** (trước: 20/6/1) · red proof (bỏ videoTitle) →
+fail đúng assertion mới.
