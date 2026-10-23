@@ -473,6 +473,7 @@ export function SettingsPanel() {
                   </label>
                   <input
                     type="color"
+                    aria-label={`Màu ${LEVEL_LABELS[key] || key.toUpperCase()}`}
                     value={entry.color}
                     onChange={(e) =>
                       patchLevel({

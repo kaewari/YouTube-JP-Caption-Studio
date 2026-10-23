@@ -90,6 +90,7 @@ export function SavedWordsToolbar({
         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/40" />
         <input
           type="search"
+          aria-label="Tìm từ vựng"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Tìm lemma / nghĩa / ngữ cảnh…"

@@ -64,6 +64,7 @@ export function SavedCuesList({ cues, onDelete }: SavedCuesListProps) {
         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/40" />
         <input
           type="search"
+          aria-label="Tìm câu đã lưu"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Tìm câu tiếng Nhật / bản dịch / video…"
