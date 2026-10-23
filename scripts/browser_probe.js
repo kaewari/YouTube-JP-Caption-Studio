@@ -10,6 +10,7 @@
  * Modes:
  *   --self-test              load the popup, prove hydration + a11y + paint
  *   --measure-words[=N]      seed N words and report render metrics (default 5000)
+ *   --measure-scroll[=N]      seed N words, scroll the whole list, report frame gaps
  *   --serve                  keep the static server up (debugging)
  *
  * Exit codes: 0 = passed, 77 = no Chrome binary found (skipped), 1 = failed.
@@ -359,6 +360,55 @@ async function measureWords(count) {
   });
 }
 
+/** Scrolls the full list height while sampling rAF gaps and longtasks in-page.
+ * Reports numbers only (a perf gate would need a stable baseline machine); it
+ * fails on page exceptions, which is the actual regression signal here. */
+async function measureScroll(count) {
+  return withPage({ words: makeWords(count) }, async (page, cdp) => {
+    await waitFor(page, `document.querySelectorAll("main article").length > 0`, 25000);
+    const probe = await evaluate(
+      page,
+      `(async () => {
+        const gaps = [];
+        const longtasks = [];
+        let observer = null;
+        try {
+          observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) longtasks.push(Math.round(entry.duration));
+          });
+          observer.observe({ entryTypes: ["longtask"] });
+        } catch (_) {}
+        const total = document.documentElement.scrollHeight - window.innerHeight;
+        const steps = 20;
+        let last = 0;
+        let frames = 0;
+        for (let i = 0; i <= steps; i += 1) {
+          window.scrollTo(0, (total * i) / steps);
+          const stamp = await new Promise((resolve) => requestAnimationFrame((t) => resolve(t)));
+          if (last) gaps.push(Math.round((stamp - last) * 10) / 10);
+          last = stamp;
+          frames += 1;
+        }
+        if (observer) observer.disconnect();
+        gaps.sort((a, b) => a - b);
+        const sum = gaps.reduce((a, b) => a + b, 0);
+        return {
+          frames,
+          avgGapMs: gaps.length ? Math.round((sum / gaps.length) * 10) / 10 : 0,
+          maxGapMs: gaps.length ? gaps[gaps.length - 1] : 0,
+          p95GapMs: gaps.length ? gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * 0.95))] : 0,
+          longtasks: longtasks.length,
+          maxLongtaskMs: longtasks.length ? Math.max(...longtasks) : 0,
+          rows: document.querySelectorAll("main article").length,
+          scrollHeight: Math.round(document.documentElement.scrollHeight),
+        };
+      })()`,
+    );
+    console.log(JSON.stringify({ seeded: count, ...probe, exceptions: cdp.exceptions }, null, 2));
+    return cdp.exceptions.length ? 1 : 0;
+  });
+}
+
 (async () => {
   const args = process.argv.slice(2);
   try {
@@ -368,12 +418,17 @@ async function measureWords(count) {
       const count = Number(measure.split("=")[1] || 5000);
       process.exit(await measureWords(count));
     }
+    const scroll = args.find((a) => a.startsWith("--measure-scroll"));
+    if (scroll) {
+      const count = Number(scroll.split("=")[1] || 5000);
+      process.exit(await measureScroll(count));
+    }
     if (args.includes("--serve")) {
       const served = await serveStatic(POPUP_DIR);
       console.log(`serving ${POPUP_DIR} on http://127.0.0.1:${served.port}/index.html (ctrl-c to stop)`);
       return;
     }
-    console.error("usage: browser_probe.js --self-test | --measure-words[=N] | --serve");
+    console.error("usage: browser_probe.js --self-test | --measure-words[=N] | --measure-scroll[=N] | --serve");
     process.exit(2);
   } catch (err) {
     console.error("FAIL browser probe:", err.message);
