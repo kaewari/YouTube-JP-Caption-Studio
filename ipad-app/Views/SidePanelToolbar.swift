@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 
 /// Dark pill toolbar matching extension side panel.
 struct SidePanelToolbar: View {

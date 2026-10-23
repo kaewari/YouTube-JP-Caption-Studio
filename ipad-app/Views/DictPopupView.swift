@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 import SwiftData
 
 /// Dict popup: headword + VI/EN gloss + cue sentence EN/VI (desktop hardsub-dict parity).

@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 
 /// Wrapping row of tappable JA tokens (furigana + JLPT colors).
 struct TokenizedJAView: View {

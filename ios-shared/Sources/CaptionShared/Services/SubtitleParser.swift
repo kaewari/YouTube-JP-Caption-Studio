@@ -1,14 +1,22 @@
 import Foundation
 
-struct Cue: Identifiable, Codable {
-    let id: String
-    let startTime: Double // milliseconds
-    var duration: Double  // milliseconds
-    let text: String
-    var isDeleted: Bool = false
+public struct Cue: Identifiable, Codable {
+    public let id: String
+    public let startTime: Double // milliseconds
+    public var duration: Double  // milliseconds
+    public let text: String
+    public var isDeleted: Bool = false
+
+    public init(id: String, startTime: Double, duration: Double, text: String, isDeleted: Bool = false) {
+        self.id = id
+        self.startTime = startTime
+        self.duration = duration
+        self.text = text
+        self.isDeleted = isDeleted
+    }
 }
 
-enum SubtitleParser {
+public enum SubtitleParser {
 
     /// YT JSON3/XML commonly emits several events with the same tStartMs — ids must
     /// stay unique or SwiftData/UI breaks. First occurrence keeps the bare id so
@@ -25,7 +33,7 @@ enum SubtitleParser {
     }
 
     /// Auto-detect JSON3 or timedtext XML.
-    static func parseTimedtext(body: String) -> [Cue] {
+    public static func parseTimedtext(body: String) -> [Cue] {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         if trimmed.first == "{" { return parseJSON3(payload: trimmed) }
@@ -33,7 +41,7 @@ enum SubtitleParser {
         return []
     }
 
-    static func parseJSON3(payload: String) -> [Cue] {
+    public static func parseJSON3(payload: String) -> [Cue] {
         guard let data = payload.data(using: .utf8) else { return [] }
         var cues: [Cue] = []
         var usedIds = Set<String>()
@@ -70,7 +78,7 @@ enum SubtitleParser {
     }
 
     /// timedtext format=3: `<p t="ms" d="ms">…</p>` (and legacy `<text start dur>`).
-    static func parseXML(_ xml: String) -> [Cue] {
+    public static func parseXML(_ xml: String) -> [Cue] {
         var cues: [Cue] = []
         var usedIds = Set<String>()
 
@@ -112,7 +120,7 @@ enum SubtitleParser {
     }
 
     /// Port of extension/content/normalize_cues.js (SFX drop/strip) + end-clamp.
-    static func normalizeCues(cues: [Cue]) -> [Cue] {
+    public static func normalizeCues(cues: [Cue]) -> [Cue] {
         var out: [Cue] = []
         for c in cues.sorted(by: { $0.startTime < $1.startTime }) {
             let raw = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -133,7 +141,7 @@ enum SubtitleParser {
     }
 
     /// Active cue at playhead (ms). Hold through gaps until next start; last cue gets +150ms grace (matches ScriptCue.active).
-    static func activeCue(in cues: [Cue], atMs: Double) -> Cue? {
+    public static func activeCue(in cues: [Cue], atMs: Double) -> Cue? {
         let graceMs = 150.0
         var live = cues.filter { !$0.isDeleted }
         if live.count > 1 {
@@ -151,7 +159,7 @@ enum SubtitleParser {
         return nil
     }
 
-    static func jsonNumber(_ any: Any?) -> Double? {
+    public static func jsonNumber(_ any: Any?) -> Double? {
         if let n = any as? Double { return n }
         if let n = any as? Int { return Double(n) }
         if let n = any as? NSNumber { return n.doubleValue }

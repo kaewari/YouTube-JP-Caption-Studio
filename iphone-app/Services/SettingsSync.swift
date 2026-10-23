@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 
 /// Drive `caption-studio-settings.json` — LWW by `updatedAt`. Skips geometry (barPos, panel width).
 @MainActor

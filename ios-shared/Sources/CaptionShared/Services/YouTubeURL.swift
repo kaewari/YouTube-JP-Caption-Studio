@@ -1,8 +1,8 @@
 import Foundation
 
-enum YouTubeURL {
+public enum YouTubeURL {
     /// Extract 11-char video id from watch / youtu.be / embed / shorts / raw id.
-    static func videoID(from input: String) -> String? {
+    public static func videoID(from input: String) -> String? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil {
             return trimmed

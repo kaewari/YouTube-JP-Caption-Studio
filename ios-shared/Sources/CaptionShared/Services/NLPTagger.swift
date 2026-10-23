@@ -1,16 +1,26 @@
 import Foundation
 import NaturalLanguage
 
-struct Token: Identifiable, Hashable {
-    let id: Int
-    let surface: String
-    let lemma: String
-    let pos: String
-    let reading: String
-    let freqRank: Int?
-    let jlpt: String?
+public struct Token: Identifiable, Hashable {
+    public let id: Int
+    public let surface: String
+    public let lemma: String
+    public let pos: String
+    public let reading: String
+    public let freqRank: Int?
+    public let jlpt: String?
 
-    var isContentWord: Bool {
+    public init(id: Int, surface: String, lemma: String, pos: String, reading: String, freqRank: Int?, jlpt: String?) {
+        self.id = id
+        self.surface = surface
+        self.lemma = lemma
+        self.pos = pos
+        self.reading = reading
+        self.freqRank = freqRank
+        self.jlpt = jlpt
+    }
+
+    public var isContentWord: Bool {
         let s = surface.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return false }
         if Self.skipPOS.contains(pos) { return false }
@@ -35,13 +45,13 @@ struct Token: Identifiable, Hashable {
     ]
 }
 
-enum NLPTagger {
+public enum NLPTagger {
     private static let kanji = try! NSRegularExpression(pattern: "[\\u3400-\\u9fff]")
     // ponytail: string→tokens map sized for a typical script; wipe when full — LRU if thrash grows
     private static var tokenizeCache: [String: [Token]] = [:]
     private static let tokenizeCacheLimit = 256
 
-    static func tokenize(_ text: String) -> [Token] {
+    public static func tokenize(_ text: String) -> [Token] {
         guard !text.isEmpty else { return [] }
         if let hit = tokenizeCache[text] { return hit }
         let out = tokenizeUncached(text)
@@ -106,7 +116,7 @@ enum NLPTagger {
 }
 
 /// Tiny assert-based check for tokenize + JLPT enrichment.
-enum NLPTaggerSmoke {
+public enum NLPTaggerSmoke {
     static func run() {
         let toks = NLPTagger.tokenize("人間の住まい")
         assert(toks.count >= 2, "tokenize should split")

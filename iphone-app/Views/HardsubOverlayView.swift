@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 
 /// Hardsub caption bar: tracks YouTube video rect, drag + corner resize (desktop parity).
 struct HardsubOverlayView: View {

@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 import WebKit
 
 enum PlayerHistoryAction {

@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 
 /// Overflow menu for side-panel tools (dense one-row chrome).
 struct SidePanelToolbar: View {

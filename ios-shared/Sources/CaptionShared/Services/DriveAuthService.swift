@@ -12,8 +12,8 @@ private let driveLog = Logger(subsystem: "com.example.YouTubeJPCaptionStudio", c
 
 /// Google OAuth via `ASWebAuthenticationSession` + PKCE + Keychain. No GoogleSignIn SPM.
 @MainActor
-final class DriveAuthService: NSObject {
-    static let shared = DriveAuthService()
+public final class DriveAuthService: NSObject {
+    public static let shared = DriveAuthService()
 
     /// Keychain service per app (real bundle id) — the old placeholder was
     /// shared by the iPad and the iPhone app.
@@ -28,11 +28,11 @@ final class DriveAuthService: NSObject {
     /// racing each other (last-write-wins on the Keychain pair).
     private var refreshTask: Task<Tokens, Error>?
 
-    var hasToken: Bool { loadTokens() != nil }
+    public var hasToken: Bool { loadTokens() != nil }
 
     /// Interactive OAuth if needed; returns a usable access token.
     @discardableResult
-    func connect() async throws -> String {
+    public func connect() async throws -> String {
         if let token = try await validAccessToken(interactive: false) { return token }
         return try await validAccessToken(interactive: true)
             ?? { throw DriveAuthError.noToken }()
@@ -300,14 +300,14 @@ private extension Data {
 }
 
 extension DriveAuthService: ASWebAuthenticationPresentationContextProviding {
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         if let key = scenes.flatMap(\.windows).first(where: \.isKeyWindow) { return key }
         return scenes.flatMap(\.windows).first ?? ASPresentationAnchor()
     }
 }
 
-enum DriveAuthError: LocalizedError {
+public enum DriveAuthError: LocalizedError {
     case missingClientId
     case invalidRequest
     case oauthError(String, String?)
@@ -320,7 +320,7 @@ enum DriveAuthError: LocalizedError {
     case badTokenJSON
     case tokenHTTP(Int, String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .missingClientId:
             return "Cần OAuth client kiểu iOS trên GCP, không dùng client Chrome extension (xem COMMANDS.md)"

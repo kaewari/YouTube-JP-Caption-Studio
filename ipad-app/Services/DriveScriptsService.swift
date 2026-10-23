@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 import SwiftData
 
 /// Mirror of the per-video Drive folder the bridge/extension writes:

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Lemma → frequency rank (Language Reactor style). Bundled `freq_ja.json`.
-enum FreqService {
+public enum FreqService {
     private static var map: [String: Int] = {
         guard let url = Bundle.main.url(forResource: "freq_ja", withExtension: "json"),
               let data = try? Data(contentsOf: url),

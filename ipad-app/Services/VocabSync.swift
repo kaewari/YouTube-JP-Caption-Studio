@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 import SwiftData
 
 /// Drive `caption-studio-vocab.json` — vocab-only LWW by `updatedAt`. Never touches VideoScript.

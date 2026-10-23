@@ -2,14 +2,14 @@ import Foundation
 
 /// Thin Drive v3 REST — mirrors extension `driveChildren` / `driveGetText` / `drivePutText` /
 /// `ensureVideoFolder`. Auth comes from `DriveAuthService`.
-enum DriveAPIClient {
+public enum DriveAPIClient {
     static let folderMime = "application/vnd.google-apps.folder"
     static let apiBase = "https://www.googleapis.com/drive/v3"
     static let uploadBase = "https://www.googleapis.com/upload/drive/v3"
 
     // MARK: - URL builders (offline-testable)
 
-    static func listURL(q: String, pageSize: Int = 200, pageToken: String? = nil) -> URL {
+    public static func listURL(q: String, pageSize: Int = 200, pageToken: String? = nil) -> URL {
         var comps = URLComponents(string: "\(apiBase)/files")!
         var items = [
             URLQueryItem(name: "q", value: q),
@@ -25,7 +25,7 @@ enum DriveAPIClient {
         return comps.url!
     }
 
-    static func mediaURL(fileId: String) -> URL {
+    public static func mediaURL(fileId: String) -> URL {
         var comps = URLComponents(string: "\(apiBase)/files/\(fileId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileId)")!
         comps.queryItems = [
             URLQueryItem(name: "alt", value: "media"),
@@ -34,13 +34,13 @@ enum DriveAPIClient {
         return comps.url!
     }
 
-    static func createMetaURL() -> URL {
+    public static func createMetaURL() -> URL {
         var comps = URLComponents(string: "\(apiBase)/files")!
         comps.queryItems = [URLQueryItem(name: "supportsAllDrives", value: "true")]
         return comps.url!
     }
 
-    static func mediaUploadURL(fileId: String) -> URL {
+    public static func mediaUploadURL(fileId: String) -> URL {
         var comps = URLComponents(string: "\(uploadBase)/files/\(fileId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileId)")!
         comps.queryItems = [
             URLQueryItem(name: "uploadType", value: "media"),
@@ -49,7 +49,7 @@ enum DriveAPIClient {
         return comps.url!
     }
 
-    static func multipartUploadURL() -> URL {
+    public static func multipartUploadURL() -> URL {
         var comps = URLComponents(string: "\(uploadBase)/files")!
         comps.queryItems = [
             URLQueryItem(name: "uploadType", value: "multipart"),
@@ -58,26 +58,26 @@ enum DriveAPIClient {
         return comps.url!
     }
 
-    static func childrenQuery(folderId: String) -> String {
+    public static func childrenQuery(folderId: String) -> String {
         "'\(folderId)' in parents and trashed=false"
     }
 
-    static func videoFolderQuery(videoId: String, parentId: String = DriveOAuthConfig.folderId) -> String {
+    public static func videoFolderQuery(videoId: String, parentId: String = DriveOAuthConfig.folderId) -> String {
         "'\(parentId)' in parents and name='\(videoId)' and mimeType='\(folderMime)' and trashed=false"
     }
 
-    static func videoFoldersQuery(parentId: String = DriveOAuthConfig.folderId) -> String {
+    public static func videoFoldersQuery(parentId: String = DriveOAuthConfig.folderId) -> String {
         "'\(parentId)' in parents and mimeType='\(folderMime)' and trashed=false"
     }
 
     /// Parse Lamport `rev` the same way sync does (`NSNumber` / Int).
-    static func parseRev(_ meta: [String: Any]) -> Int {
+    public static func parseRev(_ meta: [String: Any]) -> Int {
         (meta["rev"] as? NSNumber)?.intValue ?? 0
     }
 
     // MARK: - API
 
-    static func children(folderId: String) async throws -> [String: String] {
+    public static func children(folderId: String) async throws -> [String: String] {
         let files = try await list(q: childrenQuery(folderId: folderId))
         var map: [String: String] = [:]
         for f in files {
@@ -87,12 +87,12 @@ enum DriveAPIClient {
     }
 
     /// Look up `<videoId>/` under the fixed parent. Does not create.
-    static func findVideoFolder(videoId: String) async throws -> String? {
+    public static func findVideoFolder(videoId: String) async throws -> String? {
         let found = try await list(q: videoFolderQuery(videoId: videoId))
         return found.first?["id"] as? String
     }
 
-    static func ensureVideoFolder(videoId: String) async throws -> String {
+    public static func ensureVideoFolder(videoId: String) async throws -> String {
         if let id = try await findVideoFolder(videoId: videoId) { return id }
 
         var req = try await authorized(createMetaURL())
@@ -108,14 +108,14 @@ enum DriveAPIClient {
         return id
     }
 
-    static func listVideoFolders() async throws -> [(id: String, name: String)] {
+    public static func listVideoFolders() async throws -> [(id: String, name: String)] {
         try await list(q: videoFoldersQuery()).compactMap { f in
             guard let id = f["id"] as? String, let name = f["name"] as? String else { return nil }
             return (id, name)
         }
     }
 
-    static func getText(fileId: String) async throws -> String {
+    public static func getText(fileId: String) async throws -> String {
         let req = try await authorized(mediaURL(fileId: fileId))
         let (data, res) = try await URLSession.shared.data(for: req)
         try throwIfNeeded(res, data: data, label: "download")
@@ -123,7 +123,7 @@ enum DriveAPIClient {
     }
 
     @discardableResult
-    static func putText(folderId: String, name: String, text: String, fileId: String?) async throws -> String {
+    public static func putText(folderId: String, name: String, text: String, fileId: String?) async throws -> String {
         let mime = "\(name.hasSuffix(".json") ? "application/json" : "text/plain"); charset=UTF-8"
         if let fileId {
             var req = try await authorized(mediaUploadURL(fileId: fileId))
@@ -187,11 +187,11 @@ enum DriveAPIClient {
     }
 }
 
-enum DriveAPIError: LocalizedError {
+public enum DriveAPIError: LocalizedError {
     case noId(String)
     case http(String, Int, String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .noId(let what): return "Drive \(what): no id"
         case .http(let label, let code, let body): return "Drive \(label) \(code): \(body)"
@@ -200,8 +200,8 @@ enum DriveAPIError: LocalizedError {
 }
 
 /// Offline checks for URL/query building + meta.rev parse.
-enum DriveAPISmoke {
-    static func run() {
+public enum DriveAPISmoke {
+    public static func run() {
         let list = DriveAPIClient.listURL(q: DriveAPIClient.childrenQuery(folderId: "folderABC"))
         assert(list.absoluteString.contains("drive/v3/files"), "list path")
         assert(list.absoluteString.contains("supportsAllDrives=true"), "supportsAllDrives")

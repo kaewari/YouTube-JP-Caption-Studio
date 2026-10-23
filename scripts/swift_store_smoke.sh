@@ -29,6 +29,11 @@ awk '
   skip == 0 { print }
 ' "$APP_DIR/Services/BackupService.swift" > "$TMP/BackupService.swift"
 
+# The app files import the CaptionShared module, which does not exist when files
+# are compiled standalone: drop that one line (the package sources below provide
+# the same symbols in the same compilation unit).
+grep -v '^import CaptionShared$' "$APP_DIR/Models/ScriptStore.swift" > "$TMP/ScriptStore.swift"
+
 # VocabSync pulls in the iOS-only OAuth plumbing; stub the one call the
 # snapshot path makes.
 cat > "$TMP/stubs.swift" <<'SW'
@@ -58,10 +63,10 @@ swiftc -swift-version 5 -Onone -D DEBUG \
   "$TMP/main.swift" \
   "$TMP/stubs.swift" \
   "$TMP/BackupService.swift" \
-  "$APP_DIR/Models/ScriptStore.swift" \
+  "$TMP/ScriptStore.swift" \
   "$APP_DIR/Models/VocabStore.swift" \
-  "$APP_DIR/Services/SubtitleParser.swift" \
-  "$APP_DIR/Services/NLPTagger.swift" \
-  "$APP_DIR/Services/FreqService.swift"
+  "$ROOT/ios-shared/Sources/CaptionShared/Services/SubtitleParser.swift" \
+  "$ROOT/ios-shared/Sources/CaptionShared/Services/NLPTagger.swift" \
+  "$ROOT/ios-shared/Sources/CaptionShared/Services/FreqService.swift"
 
 "$TMP/smoke"

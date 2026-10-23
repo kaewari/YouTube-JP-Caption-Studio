@@ -1,4 +1,5 @@
 import SwiftUI
+import CaptionShared
 import SwiftData
 import UIKit
 

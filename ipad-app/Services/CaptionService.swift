@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 
 enum CaptionService {
     /// Load cues via ANDROID Innertube captionTracks → timedtext baseUrl (plain ?lang= is empty now).

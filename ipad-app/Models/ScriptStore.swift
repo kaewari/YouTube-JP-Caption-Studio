@@ -1,4 +1,5 @@
 import Foundation
+import CaptionShared
 import SwiftData
 
 // MIRRORED FILE — an identical copy lives in the sibling app (ipad-app/ ⇄ iphone-app/).
