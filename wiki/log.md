@@ -1401,3 +1401,20 @@ Chạy `git gc --prune=now` (an toàn: chỉ xoá object mồ côi, mọi ref �
 
 Phần còn lại không phải git data, không đụng: `.git/cursor` 388M (metadata của IDE) +
 `.git/modules` 50M (submodule `tools/open-code-review`, đã gc riêng — clone đầy đủ nên giữ).
+
+## [2026-10-23] ingest | C-2 — gộp map curated JLPT: đo trước 254/410, sau 407/410
+
+Đo trước trên fixture hợp của 2 map (410 từ): **đồng ý 254, lệch 156**, theo pattern lệch 1 band
+có hệ thống (ext=n4/bridge=n5 ở 彼, ext=n5/bridge=n3 ở 時…). Đối chiếu chuẩn JLPT: phía extension
+đúng, phía bridge (dataset 14k + freq fallback) sai. Vì extension tin `token.jlpt` của bridge trước,
+band tệ hơn đang thắng lúc render — đây mới là tác hại thật của C-2.
+
+Sửa: `_COMMON_JLPT_WORDS` của bridge giữ 60 key cũ, thêm 350 key từ extension (53 key chung đã
+đồng ý sẵn nên merge không xung đột theo cấu trúc). Bridge check curated trước nên các từ này thắng
+dataset/freq đúng như extension trả lời. Không đổi algorithm; từ ngoài curated giữ nguyên.
+
+Sau: **407/410**; 3 còn lại (何/なに/なん) là gap extension để trống, bridge điền n5 đúng — bổ sung
+cho nhau, không xung đột. Test chiều ngược (403 key extension → bridge) khoá unification.
+
+Proof: bridge **171 passed, 5 skipped**. Red proof là chính phép đo pre-fix (254/410) bằng cùng
+harness — hành vi thật trên code thật, không string-match.

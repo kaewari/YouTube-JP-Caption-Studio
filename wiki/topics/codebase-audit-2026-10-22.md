@@ -48,7 +48,7 @@ Raw review đã file và **không sửa** (§4).
 | C-16 `sentence_benchmark.js` quét O(cues) mỗi frame kể cả khi pause | **đã sửa** (chỉ rescan khi list instance đổi; **không có red proof**, chưa đo frame time) | `b3b412b87` |
 | C-13 web list không virtualize | **đã sửa** cửa sổ 100 row + đo Chrome thật: 5000 → 100 row, 622 918 → 12 941 px | `97a5c85df` |
 | C-2 level-colour/JLPT table lệch giữa extension và web | **đã sửa** (contract test; `unknown` #c5c5d0 → #94a3b8) | `37a64a20a` |
-| C-2 map curated JLPT (bridge 60 keys ↔ extension 403 keys) | **guard**: parity test, 53 shared keys đồng ý 100%, 7 key bridge-only ghi nhận | `55837faf6` |
+| C-2 map curated JLPT (bridge 60 keys ↔ extension 403 keys) | **đã gộp**: bridge giữ nguyên 60 key, thêm 350 key từ extension; đồng ý 254/410 → 407/410 (3 còn lại là gap extension để trống, bridge điền đúng) + test 2 chiều | `55837faf6`, `f2fe701` |
 | C-7 saved-cue wire (`start_media_time` giây) | **guard** cross-layer test extension ↔ web + bridge route | `37a64a20a` |
 | C-8 `meta.rev` trên wire Drive | **guard** bridge route test | `37a64a20a` |
 | C-5 settings defaults lệch (barShowVi, roi.height, maxSentences, barBgOpacity) | **đã sửa** (1 bảng chung `extension/shared/hardsub_defaults.js` + contract test) | `b2f38cf6c` |
