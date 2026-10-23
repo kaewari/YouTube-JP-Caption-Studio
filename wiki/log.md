@@ -967,3 +967,14 @@ Proof: exit 0 → *"3 copies, 15000 entries, sha256 c204d55a83cf30d1"*. Red proo
 bản iPhone → exit 1, in cả 2 hash + nhóm file; restore → exit 0.
 Ghi chú: 2 file `Resources/` trong checkout này là **hardlink** cùng inode — sửa 1 là sửa cả 2; parity
 check vẫn đúng nhưng đừng dựa vào nó để phát hiện lệch ipad↔iphone (chúng chia sẻ inode).
+
+## [2026-10-23] ingest | C-9 — một env var bridge URL cho mọi surface
+
+Handshake test của bridge đọc `BRIDGE_URL`, còn script sanity của extension đọc
+`CAPTION_BRIDGE_URL` → muốn trỏ cả repo vào một bridge riêng phải export **2 tên**, quên một cái là
+âm thầm rơi về `:8765`. Giờ hai phía đọc **cả hai** tên (Python ưu tiên `BRIDGE_URL`, JS ưu tiên
+`CAPTION_BRIDGE_URL`), default `:8765` giữ nguyên.
+
+Proof (chạy process thật): `BRIDGE_URL=…:9991` → 9991 · `CAPTION_BRIDGE_URL=…:9992` → 9992 · không set
+→ 8765. JS với `CAPTION_BRIDGE_URL=…:9992` giờ probe **9992** rồi exit 77 (skip) thay vì lặng lẽ dùng
+8765. Bridge **161 passed, 5 skipped** · sanity suite exit 0.

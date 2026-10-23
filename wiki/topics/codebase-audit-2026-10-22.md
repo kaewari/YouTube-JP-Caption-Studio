@@ -40,6 +40,7 @@ Raw review đã file và **không sửa** (§4).
 | C-29 lỗi ASR/saved-items/bootstrap không vào `errors.log` | **đã sửa** (3/3 chỗ; bootstrap không có test tự động vì ghi vào data thật) | `d43d41820`, `9b3580a09`, `7a3eafc26` |
 | C-30 nhánh `watch_html` chết khi Android trả non-JSON | **đã sửa** (fall through + `_parse_srv_xml` chịu json3) | `497c04c74` |
 | C-10 `freq_ja.json` 3 bản độc lập | **đã sửa** (parity check + CI; chưa gộp file) | `373cb38f6` |
+| C-9 env var `BRIDGE_URL` vs `CAPTION_BRIDGE_URL` | **đã sửa** (đọc cả hai tên, default giữ nguyên) | `e75ec298e` |
 
 ## Raw
 
@@ -173,7 +174,7 @@ là đọc code + CSS, không đo pixel · Drive round-trip thật · Gemini API
 |---|---|---|
 | C-1 | Gộp 4 141 LOC Swift trùng giữa 2 app thành shared package | **plan đã file**: [swift-shared-package.md](swift-shared-package.md) + [raw plan](../../plan/swift-shared-package-2026-10-23.md); chưa sửa code (user quyết) |
 | C-2..C-5 | 1 nguồn sự thật cho JLPT band / level-colour / TXT parse / tokenize | chạm cả 4 tầng (extension, bridge, web, iOS) |
-| C-7..C-9 | Lệch shape saved-cue, `meta` Drive, env var `BRIDGE_URL`/`CAPTION_BRIDGE_URL` | cần đổi contract + migration |
+| C-7, C-8 | Lệch shape saved-cue, `meta` Drive | cần đổi contract + migration |
 | C-12..C-17 | Web bundle mock-data, virtualization, a11y label; extension O(cues) scan mỗi frame, `onUpdated` đọc storage mỗi event | perf/UX, cần đo thật trong browser |
 | C-23 | 78 commit chưa push | **đã push** `origin/master` = `54eca76fc` (cả 2 remote) | `54eca76fc` |
 | C-25 | `saved_items` SQLite stack (547 dòng) không client nào dùng | **giữ nguyên** (user quyết 2026-10-23) — ghi chú thay vì xoá | — |
