@@ -1288,3 +1288,10 @@ mốc không có gì. Runner GitHub ra mạng qua proxy env var; `sudo` thườn
 apt treo chờ kết nối trực tiếp không bao giờ tới. Fix: `sudo -E` cho cả `update` lẫn `install`,
 kèm `timeout 180` / `timeout 600` để lần sau (nếu còn treo) fail nhanh, rõ, thay vì đốt thêm 15 phút.
 Ghi lại để không ai quay về bản `sudo` trơn.
+
+## [2026-10-23] ci | Xác nhận: `sudo -E` sửa được treo apt
+
+Run 39894233054 **success toàn bộ 7/7 job trong 2m12s** (hai run trước timeout 15:00 đúng ở step
+apt). Log cho thấy `Setting up libgme0/libchromaprint1…` — apt chạy bình thường khi giữ proxy env.
+Bridge suite trên CI: **156 passed, 16 skipped** (MLX-gated + Mazii-skip + live tests deselect).
+Giả thuyết proxy đúng.
