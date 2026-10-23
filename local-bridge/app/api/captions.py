@@ -109,7 +109,11 @@ def _cues_from_tracks(player_response: dict[str, Any], lang: str) -> list[dict[s
 
 def _parse_srv_xml(raw: bytes) -> list[dict[str, Any]]:
     """srv1 (<text start dur>) and srv3 (<p t d><s>)."""
-    root = ET.fromstring(raw)
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        # `fmt=json3` tracks are not XML: the caller falls back to the json3 parser.
+        return []
     cues: list[dict[str, Any]] = []
     for i, el in enumerate(root.iter()):
         if el.tag == "text":
@@ -198,13 +202,17 @@ def fetch_captions(video_id: str, lang: str) -> tuple[str, list[dict[str, Any]]]
         cues = _cues_from_tracks(player, lang)
         if cues:
             return "android", cues
-    except ValueError:
-        raise
     except Exception as exc:
-        # ponytail: any android-path failure falls through to watch_html
+        # Every Android failure - HTTP error, a non-JSON body, a response with no
+        # tracks - falls through to the watch page. Re-raising a JSON decode error
+        # here made the watch-page branch unreachable exactly when it was needed.
         logger.debug("Android caption path failed: %s", exc)
 
-    player = _player_response_from_watch_html(video_id)
+    try:
+        player = _player_response_from_watch_html(video_id)
+    except Exception as exc:
+        logger.debug("Watch page caption path failed: %s", exc)
+        raise NoCaptionsError(f"no captions for {video_id} lang={lang}") from exc
     cues = _cues_from_tracks(player, lang)
     if not cues:
         raise NoCaptionsError(f"no captions for {video_id} lang={lang}")

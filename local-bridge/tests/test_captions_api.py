@@ -133,3 +133,34 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def test_android_parse_failure_falls_through_to_watch_html(monkeypatch) -> None:
+    """A non-JSON Android answer must not kill the watch-page fallback (C-30)."""
+    from app.api import captions as captions_mod
+
+    track_url = "https://fixture/timedtext?v=fixture&lang=ja&fmt=json3"
+    player_json = (
+        '{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":'
+        '[{"languageCode":"ja","baseUrl":"' + track_url + '"}]}}}'
+    )
+    watch_html = ("<html><script>var ytInitialPlayerResponse = " + player_json + ";"
+                  "</script></html>").encode()
+    json3 = b'{"events":[{"tStartMs":0,"dDurationMs":1000,"segs":[{"utf8":"\xe3\x81\x82"}]}]}'
+    calls = []
+
+    def fake_http(url, **kwargs):
+        calls.append(url)
+        if "youtubei/v1/player" in url:
+            return b"<html>upstream returned HTML, not JSON</html>"
+        if url == track_url:
+            return json3
+        return watch_html
+
+    monkeypatch.setattr(captions_mod, "_http", fake_http)
+
+    via, cues = captions_mod.fetch_captions("fixture", "ja")
+
+    assert via == "watch_html", f"expected the watch-page fallback, got {via}"
+    assert cues and cues[0]["text"] == "あ", cues
+    assert any("youtubei/v1/player" in u for u in calls), calls
