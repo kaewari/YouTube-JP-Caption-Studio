@@ -1418,3 +1418,18 @@ cho nhau, không xung đột. Test chiều ngược (403 key extension → bridg
 
 Proof: bridge **171 passed, 5 skipped**. Red proof là chính phép đo pre-fix (254/410) bằng cùng
 harness — hành vi thật trên code thật, không string-match.
+
+## [2026-10-23] ingest | B-3/C-6 đóng bằng kiểm chứng: drift kiểu `jlptLevel` không có consumer vỡ
+
+Hai ID duy nhất audit có mà wiki chưa từng nhắc tới: C-6 (trỏ sang B-3) và C-23 (meta-item
+process). C-23 đã xong từ trước (push hết, có log). B-3/C-6: drift kiểu Int (iOS) vs string
+(web) vs null (bridge) — kiểm chứng trên disk cả 3 đầu đọc:
+
+- extension `mergeVocabSnapshot` passthrough opaque (`??` giữ nguyên Int/string/null, không crash
+  kiểu động), đã có test pin case Int (`service_worker_test.js`, dòng 342+);
+- web **không đọc** file vocab (`grep` rỗng);
+- iOS đọc đúng kiểu mình ghi (`VocabDTO.jlptLevel: Int?`).
+
+Không consumer nào vỡ → migration contract version 2 là việc không cần làm (YAGNI). Ghi nhận
+disposition vào bảng Status thay vì sửa wire có rủi ro tương thích ngược (decoder Swift strict
+sẽ vỡ nếu file có string).

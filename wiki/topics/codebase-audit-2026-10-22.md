@@ -58,6 +58,7 @@ Raw review đã file và **không sửa** (§4).
 | C-1 gộp 20 file Swift trùng (4 141 LOC) thành package `CaptionShared` 19 file | **HOÀN TẤT A–E**: mỗi app còn `App.swift` + 5 file riêng + `DriveScriptsService`; migration module-move chứng minh headless (`MIGRATION_OK`); Swift 6 mode bắt thêm race cache + `Sendable` | `939637b04`, `6a1762ec1`, `e80278883`, `a76c7ae94`, `4286cec10` |
 | C-22 `.git` 1.6 GB (heap snapshot + object mồ côi) | **đã sửa, không rewrite history**: `git gc --prune=now` → pack 1.14 GiB còn 155 MiB; còn lại là `.git/cursor` IDE (388M, không đụng) + submodule (50M) | — (local-only, không commit) |
 | P0 `ScriptCue.isDeleted` đụng `NSManagedObject.isDeleted`, mất tombstone trên macOS 26 | **đã sửa**: stored property thành `tombstoned` + `@Attribute(originalName:)`, wire giữ nguyên; migration chứng minh bằng 2 binary chung 1 store | `3e7a9dbc9` |
+| B-3/C-6 `jlptLevel` Int (iOS) vs string (web) vs null (bridge) | **không đổi wire** (YAGNI, đã kiểm chứng trên disk): không consumer nào vỡ — extension merge passthrough opaque (test sẵn case Int), web không đọc file vocab, iOS đọc đúng kiểu mình ghi | — (ghi nhận, không commit) |
 
 ## Raw
 
@@ -180,7 +181,7 @@ Gemini API thật.
 
 ## Trạng thái 2026-10-23
 
-Đã đóng **39 dòng trạng thái** (xem bảng Status ở trên; mỗi fix có commit + proof red→green,
+Đã đóng **50 dòng trạng thái** (bảng có 51 dòng, trừ C-24 mở có chủ ý; mỗi fix có commit + proof red→green,
 ngoại lệ ghi rõ):
 
 - **P0/P1 chính**: A-1, A-2, A-4, A-5, A-6, A-7, A-8 (hạ P2), B-1, B-2, B-4, B-5, B-6, B-14,
@@ -194,6 +195,7 @@ ngoại lệ ghi rõ):
   đo Chrome thật), C-14 (a11y names, chưa đo screen reader), C-15 (build stale),
   C-16 (skip rescan khi pause; **không red proof được**), C-17 (memo panel, **một phần**).
 - **Hai finding do tự verify mà hạ cấp**: A-3 (thiết kế, P0 → P2), A-8 (audit sai, P0 → P2).
+- **Một finding đóng bằng kiểm chứng không đổi code**: B-3/C-6 (YAGNI — không consumer nào vỡ).
 - **Mở có chủ ý, không phải quên**: C-24 (không bịa giá), C-25 (giữ theo quyết định user).
 
 ## Còn mở
