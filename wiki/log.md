@@ -989,3 +989,14 @@ có seed. Đã rebuild `extension/popup`.
 Proof: `grep -ro 'いかだ' extension/popup/_next/static | wc -l` → **5 trước, 0 sau** ·
 `npm run build:extension` exit 0 · `verify_extension_popup.js` OK (19 asset, 8 chunk) ·
 `tsc --noEmit` exit 0 · `npm test` 7 passed.
+
+## [2026-10-23] ingest | C-14 — thêm accessible name cho popup
+
+3 control trong popup Saved Items **không có tên** cho screen reader: 2 ô search chỉ dựa vào
+`placeholder` (mất khi gõ, nhiều AT bỏ qua); swatch màu JLPT có `<label>` gắn vào checkbox chứ không
+vào `input type=color` → ô màu đọc là "nút không tên"; SVG kính lúp thêm một graphic vô danh vào tree.
+Sửa: `aria-label` cho 2 search + ô màu, `aria-hidden="true"` cho SearchIcon.
+
+Proof: `tsc --noEmit` exit 0 · `eslint` exit 0 · `npm test` 7 passed · grep thấy đủ 4 attribute.
+**Chưa verify**: không chạy screen reader / dump accessibility tree ở môi trường này → đây là sửa ở
+mức code, **không phải** kết quả audit a11y đã đo.
