@@ -21,15 +21,13 @@ SHARED="$ROOT/ios-shared/Sources/CaptionShared"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Strip the UIDocumentPicker UIViewControllerRepresentable (iOS-only, absent on macOS)
-# and the failure-injection block: SwiftData's in-memory store does not enforce the
-# unique constraint on macOS, so "a duplicate videoId must fail the apply" cannot hold
-# there. That assert still runs on iOS inside the app.
+# Strip the UIDocumentPicker UIViewControllerRepresentable (iOS-only, absent on macOS).
+# (The old carve-out for the "duplicate videoId must fail" block is gone: apply()
+# now rejects dup videoIds itself instead of relying on the store to throw, so the
+# assert holds on every stack.)
 awk '
   /^\/\/ MARK: - Folder picker/ { skip = 1 }
   skip == 1 && /^#if DEBUG/ { skip = 0 }
-  /^        \/\/ A failing apply must not wipe the store:/ { print "#if !os(macOS)"; fail = 1 }
-  fail == 1 && /"failed apply rolls back/ { print; print "#endif"; fail = 0; next }
   skip == 0 { print }
 ' "$SHARED/Services/BackupService.swift" > "$TMP/BackupService.swift"
 

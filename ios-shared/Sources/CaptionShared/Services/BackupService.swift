@@ -299,7 +299,20 @@ public final class BackupService: ObservableObject {
     /// `merge` upserts instead of replacing: rows the snapshot does not carry survive, and
     /// cues match by id so a local-only cue is never dropped. The background Drive pull uses
     /// it — a pull the user never confirmed must not delete their work.
+    fileprivate enum SnapshotError: Error {
+        case duplicateVideoId(String)
+    }
+
     fileprivate func apply(_ snap: Snapshot, to context: ModelContext, merge: Bool = false) throws {
+        // Validate BEFORE touching the store: SwiftData does not reliably throw on
+        // duplicate unique attributes (verified: no throw on macOS file-backed nor on
+        // iOS Simulator stores — rows silently resolve instead). Depending on the
+        // store to reject a corrupt snapshot meant a dup videoId wiped good data on
+        // some stacks and crashed the DEBUG smoke on others. Reject it here instead.
+        var seenIds = Set<String>()
+        if let dup = snap.scripts.map(\.videoId).first(where: { !seenIds.insert($0).inserted }) {
+            throw SnapshotError.duplicateVideoId(dup)
+        }
         let localScripts = try context.fetch(FetchDescriptor<VideoScript>())
         let localIds = localScripts.map(\.videoId)
         let scriptByVideoId = Dictionary(localScripts.map { ($0.videoId, $0) }, uniquingKeysWith: { a, _ in a })
@@ -567,8 +580,9 @@ public enum BackupSmoke {
         assert(restored.count == 1, "restored cue count")
         assert(abs(restored[0].duration - 1234) < 0.001, "user-tuned duration survives restore")
 
-        // A failing apply must not wipe the store: duplicate videoId violates the
-        // unique constraint → save() throws → apply() rolls back, old rows survive.
+        // A failing apply must not wipe the store: a snapshot with a duplicate
+        // videoId is rejected by apply() itself (see above — the store cannot be
+        // relied on to throw), so old rows survive.
         let dup = BackupService.Snapshot(
             updatedAt: at,
             scripts: [
