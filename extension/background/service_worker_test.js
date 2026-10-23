@@ -35,6 +35,8 @@ function makeResponse({ status = 200, body = "", headers = {} } = {}) {
  */
 function loadServiceWorker({ route, cookies = [] } = {}) {
   const fetches = [];
+  const sidePanelCalls = [];
+  const tabUpdatedListeners = [];
   const tabMessages = [];
   const sessionStore = {};
   const localStore = {};
@@ -96,11 +98,11 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       get: async (tabId) => ({ id: tabId, windowId: 1, url: "https://www.youtube.com/watch?v=fixture" }),
       query: async () => [],
       create: async () => {},
-      onUpdated: { addListener: () => {} },
+      onUpdated: { addListener: (fn) => { tabUpdatedListeners.push(fn); } },
       onActivated: { addListener: () => {} },
     },
     sidePanel: {
-      setOptions: async () => {},
+      setOptions: async (opts) => { sidePanelCalls.push(opts); },
       setPanelBehavior: async () => {},
       open: async () => {},
       close: async () => {},
@@ -163,7 +165,7 @@ function loadServiceWorker({ route, cookies = [] } = {}) {
       listener(msg, sender, resolve);
     });
 
-  return { fetches, tabMessages, send, chromeStub, sessionStore, localStore, seam,
+  return { fetches, sidePanelCalls, tabUpdatedListeners, tabMessages, send, chromeStub, sessionStore, localStore, seam,
     fireAlarm: (name) => alarmListener?.({ name }) };
 }
 
@@ -458,6 +460,31 @@ const timedtextUrl = "https://www.youtube.com/api/timedtext?v=fixture&lang=ja&fm
     assert.equal(sw.sessionStore["ttMiss:old"], undefined, "expired keys must be dropped");
     assert.equal(sw.sessionStore["ttMiss:older"], undefined, "every expired key must be dropped");
     console.log("PASS: the negative cache drops expired keys instead of growing forever");
+  }
+
+  // C-17: repeated onUpdated events for the same page must not re-set the panel.
+  {
+    const sw = loadServiceWorker({ route: () => makeResponse({ status: 404, body: "" }) });
+    const listener = sw.tabUpdatedListeners[0];
+    assert.ok(listener, "the worker must register a tabs.onUpdated listener");
+    const tab = { id: 42, url: "https://www.youtube.com/watch?v=fixture" };
+    // Loading the worker may already have synced a tab; only count our events.
+    const before = sw.sidePanelCalls.length;
+
+    await listener(42, { status: "loading" }, tab);
+    await listener(42, { status: "complete" }, tab);
+    await listener(42, { title: "fixture" }, tab);
+    assert.equal(sw.sidePanelCalls.length - before, 1,
+      `three events for one page must set the panel once, got ${sw.sidePanelCalls.length - before}`);
+    const first = sw.sidePanelCalls[before];
+    assert.equal(first.tabId, 42);
+    assert.equal(first.enabled, true);
+
+    // A real navigation must still update the panel.
+    await listener(42, { status: "loading" }, { id: 42, url: "https://example.com/x" });
+    assert.equal(sw.sidePanelCalls.length - before, 2, "a new URL must be applied");
+    assert.equal(sw.sidePanelCalls[before + 1].enabled, false, "an unsupported site disables the panel");
+    console.log("PASS: repeated tab updates do not re-apply the same side-panel state");
   }
 
   console.log("ALL SERVICE WORKER TESTS PASSED!");

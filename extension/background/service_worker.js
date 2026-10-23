@@ -199,17 +199,26 @@ async function isPlatformEnabledForUrl(url) {
   }
 }
 
+/** Last side-panel state applied per tab — onUpdated fires many times per load. */
+const _sidePanelApplied = new Map();
+
 /** Ensure side panel is only enabled for supported video sites. */
 async function syncSidePanelForTab(tabId, url) {
   if (tabId == null) return;
   try {
     const supported = isSupportedUrl(url);
     const enabled = supported && (await isPlatformEnabledForUrl(url));
+    // Same tab+url+state: a loading/title/favicon event has nothing to change.
+    // The storage read above still runs, so a settings change is picked up on the
+    // next event; only the per-event setOptions IPC is skipped.
+    const applied = `${url}|${enabled}`;
+    if (_sidePanelApplied.get(tabId) === applied) return;
     await chrome.sidePanel.setOptions({
       tabId,
       path: "sidepanel/sidepanel.html",
       enabled: !!enabled,
     });
+    _sidePanelApplied.set(tabId, applied);
   } catch (_) {}
 }
 
@@ -217,6 +226,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
   if (!tab.url) return;
   await syncSidePanelForTab(tabId, tab.url);
 });
+
+chrome.tabs.onRemoved?.addListener?.((tabId) => _sidePanelApplied.delete(tabId));
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
