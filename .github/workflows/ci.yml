@@ -21,13 +21,15 @@ jobs:
       - uses: actions/checkout@v4
       # The ASR DSP tests drive a real ffmpeg filter chain; without the binary
       # decode falls back to plain audio and the DSP assertions fail.
-      # Non-interactive + no recommends: a bare apt-get install hung 15 minutes
-      # here (no output until the job timed out), so pin both flags.
+      # The ASR DSP tests drive a real ffmpeg filter chain; without the binary
+      # decode falls back to plain audio and the DSP assertions fail.
+      # -E matters: GitHub runners reach the network through proxy env vars and
+      # plain sudo drops them, which hung apt with zero output until the 15-minute
+      # job timeout (twice). The timeouts turn any repeat into a fast, loud error.
       - name: Install ffmpeg for the ASR DSP tests
-        run: >
-          sudo apt-get update -qq &&
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq
-          --no-install-recommends ffmpeg
+        run: |
+          timeout 180 sudo -E apt-get update -qq
+          timeout 600 sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg
       # The TXT-parse parity test runs the extension's real JS parser in Node.
       - uses: actions/setup-node@v4
         with:
