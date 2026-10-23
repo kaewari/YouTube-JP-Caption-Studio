@@ -23,6 +23,9 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     deploymentTarget: "17.0"
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     sources:
       - path: ../uitests-shared
     dependencies:
