@@ -1511,3 +1511,10 @@ Job `ios-build` đỏ ở step "Build the iPad app" (chưa tới step UI test m�
 xcodegen tự sinh scheme app; thêm block `schemes:` (cho UITest) thì auto-gen tắt,
 scheme app biến mất. Sửa: khai báo tường minh cả 2 scheme mỗi app + verify build
 bằng đúng lệnh CI (`generic/platform=iOS Simulator`) xanh local trước khi push.
+
+## [2026-10-23] ci | UI test đỏ tiếp: thiếu Info.plist — verify local trước khi push
+
+Sau fix destination, CI đỏ ở step test mới với `Cannot code sign because the target
+does not have an Info.plist file`. Thêm `GENERATE_INFOPLIST_FILE: YES` cho cả 2 UITest
+target. Rút kinh nghiệm vòng trước (push mù 2 lần): lần này chạy `xcodebuild test` xanh
+local (0 failures) rồi mới push.
