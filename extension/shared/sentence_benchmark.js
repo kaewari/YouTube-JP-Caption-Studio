@@ -8,6 +8,11 @@
   // https://ai.google.dev/gemini-api/docs/pricing (thinking is billed as output).
   const priceEvidence = { source: "https://ai.google.dev/gemini-api/docs/pricing", asOf: "2026-10-10 JST", validUntil: "2026-11-10" };
   function estimateAttemptCost(attempt) {
+    // Only models whose published rate we actually verified are priced.
+    // `gemini-3.6-flash` / `gemini-3.5-flash-lite` (the fallbacks) have no verified
+    // rate here, so they return null and the caller reports PARTIAL ESTIMATE —
+    // a guessed price would be worse than an honest gap. C-24 stays open until
+    // their pricing page is fetched and dated like `priceEvidence` above.
     const rates = { "gemini-3.8-flash": [.75, .075, 3.75], "gemini-2.5-flash": [.30, .03, 2.50] }[attempt.model];
     const usage = attempt.usage, date = attempt.startedAtMs;
     if (!rates || attempt.status !== 200 || attempt.usageInvalid || !Number.isFinite(date) ||
