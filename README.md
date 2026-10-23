@@ -111,6 +111,9 @@ changes to `web/saved-items/` and commit the regenerated `extension/popup/`.
 2. Select an iPhone simulator or device → Build and Run (Cmd + R).
 3. Rotate: portrait = stacked player/panel; landscape = side-by-side. Deploy scripts: `iphone-app/Scripts/COMMANDS.md`.
 
+### Verify everything before you commit
+`scripts/verify_all.sh` runs every gate this repo expects — extension suites, anti-fake test gate, popup asset check, `freq_ja.json` parity, the sanity suite, wiki lint, the bridge pytest suite, the Swift store self-test (macOS), and the Saved Items typecheck — and prints `gates: N passed, M skipped, K failed` with a non-zero exit if anything failed.
+
 ---
 
 <a id="日本語"></a>
