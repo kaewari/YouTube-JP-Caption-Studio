@@ -1317,3 +1317,17 @@ không dời. `swift_store_smoke.sh` compile source trong package.
 
 Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.
 Tiếp: bước B (services còn lại) theo plan.
+
+## [2026-10-23] ingest | C-1 bước B — 3 services vào package, 3 file hoãn có lý do
+
+`6a1762ec1`: `CaptionService`, `SettingsSync`, `SubtitleParserSmoke` vào `CaptionShared` (package
+giờ 11 file). Compiler dẫn `public`: memberwise init luôn internal nên `Cue`/`Token`/`Entry` có
+`public init` tường minh; privates giữ nguyên.
+
+Hoãn sang C (ghi vào plan, không lặng lẽ bỏ):
+- `DictionaryService` — gọi raw C sqlite3, cần systemLibrary bridging (modulemap + linker settings
+  trên ma trận Xcode). Rủi ro đó thuộc bước C.
+- `BackupService` + `VocabSync` — dùng `BackupService.Snapshot` và model SwiftData, không tách khi
+  chưa move Models.
+
+Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.

@@ -3,7 +3,7 @@
 
 # Kế hoạch: gộp 20 file Swift trùng giữa `ipad-app` và `iphone-app` (C-1)
 
-Trạng thái: **bước A đã merge** (`939637b04`) — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
+Trạng thái: **bước A + B đã merge** (`939637b04`, `6a1762ec1`) — package có 11 file, 2 app build Debug+Release xanh. — 8 file thuần logic đã vào `ios-shared/`, 2 app build Debug+Release xanh. Còn B (services), C (models, cần test migration trên máy thật), D (views).
 
 ## 1. Vấn đề (đo trên disk 2026-10-23)
 
@@ -85,9 +85,11 @@ B-11 cùng loại): sửa một bên, quên bên kia.
   không View*: `YouTubeURL`, `FreqService`, `NLPTagger`, `VocabStyle`, `SubtitleParser`,
   `DriveAPIClient`, `DriveOAuthConfig`, `DriveAuthService`. Sửa 2 `project.yml`, `xcodegen generate`,
   build Debug+Release cả 2 app. → chứng minh package + `Bundle.main` + `xcodegen` hoạt động.
-- **B. Services còn lại** — `BackupService`, `CaptionService`, `DictionaryService`, `SettingsSync`,
-  `VocabSync`, `SubtitleParserSmoke` (+ smokes `#if DEBUG` gọi từ `App.swift` phải `public`), sửa
-  harness macOS.
+- **B. Services còn lại** — `CaptionService`, `SettingsSync`, `SubtitleParserSmoke` (**xong**,
+  `6a1762ec1`). `DictionaryService` **hoãn sang C**: gọi raw C sqlite3, cần systemLibrary bridging
+  (modulemap + linker settings trên ma trận Xcode) — rủi ro đó thuộc về bước C. `BackupService`
+  + `VocabSync` **hoãn sang C**: dùng `BackupService.Snapshot` và model SwiftData, không tách được
+  khi chưa move Models.
 - **C. Models** — `ScriptStore`, `VocabStore`. **Chỉ merge sau khi test migration trên máy thật**
   (bước 3 rủi ro 1). Nếu vỡ → dừng ở B, giữ Models 2 bản (ghi lại lý do trong wiki).
 - **D. Views dùng chung** — `DictPopupView`, `HardsubOverlayView`, `TokenizedJAView`.
