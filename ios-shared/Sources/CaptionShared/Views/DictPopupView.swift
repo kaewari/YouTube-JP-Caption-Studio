@@ -1,9 +1,8 @@
 import SwiftUI
-import CaptionShared
 import SwiftData
 
 /// Dict popup: headword + VI/EN gloss + cue sentence EN/VI (desktop hardsub-dict parity).
-struct DictPopupView: View {
+public struct DictPopupView: View {
     let lookup: DictLookup
     var sentenceJA: String = ""
     var sentenceEN: String? = nil
@@ -11,9 +10,18 @@ struct DictPopupView: View {
     var onSave: ((DictLookup) -> Void)? = nil
     var onClose: () -> Void
 
+    public init(lookup: DictLookup, sentenceJA: String = "", sentenceEN: String? = nil, sentenceVI: String? = nil, onSave: ((DictLookup) -> Void)? = nil, onClose: @escaping () -> Void) {
+        self.lookup = lookup
+        self.sentenceJA = sentenceJA
+        self.sentenceEN = sentenceEN
+        self.sentenceVI = sentenceVI
+        self.onSave = onSave
+        self.onClose = onClose
+    }
+
     @AppStorage("dictShowSentence") private var showSentence = true
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text(lookup.matched.isEmpty ? lookup.surface : lookup.matched)
@@ -115,7 +123,7 @@ struct DictPopupView: View {
 }
 
 /// Shared presenter: lookup once on open + optional vocab save.
-struct DictPopupHost: ViewModifier {
+public struct DictPopupHost: ViewModifier {
     @Binding var token: Token?
     var sentenceJA: String
     var sentenceEN: String?
@@ -123,7 +131,7 @@ struct DictPopupHost: ViewModifier {
     @Environment(\.modelContext) private var modelContext
     @State private var cachedLookup: DictLookup?
 
-    func body(content: Content) -> some View {
+    public func body(content: Content) -> some View {
         content
             .overlay {
                 if let cachedLookup {

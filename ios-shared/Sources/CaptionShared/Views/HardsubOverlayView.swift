@@ -1,8 +1,7 @@
 import SwiftUI
-import CaptionShared
 
 /// Hardsub caption bar: tracks YouTube video rect, drag + corner resize (desktop parity).
-struct HardsubOverlayView: View {
+public struct HardsubOverlayView: View {
     /// Current line only — parent owns playhead; avoids rescanning cues on every clock tick.
     let activeCue: ScriptCue?
     /// Video bounds in the player pane (points), from WKWebView VIDEO_RECT.
@@ -11,6 +10,15 @@ struct HardsubOverlayView: View {
     var showEN: Bool = true
     var showVI: Bool = true
     var showFurigana: Bool = true
+
+    public init(activeCue: ScriptCue?, videoFrame: CGRect? = nil, showJA: Bool = true, showEN: Bool = true, showVI: Bool = true, showFurigana: Bool = true) {
+        self.activeCue = activeCue
+        self.videoFrame = videoFrame
+        self.showJA = showJA
+        self.showEN = showEN
+        self.showVI = showVI
+        self.showFurigana = showFurigana
+    }
 
     /// Normalized top-left inside video; -1 = default (center × 70%).
     @AppStorage("hardsubBarNx") private var barNx = -1.0
@@ -29,7 +37,7 @@ struct HardsubOverlayView: View {
 
     private var displayCue: ScriptCue? { frozenCue ?? activeCue }
 
-    var body: some View {
+    public var body: some View {
         GeometryReader { geo in
             let vr = resolvedVideo(in: geo.size)
             let box = boxSize(for: vr)

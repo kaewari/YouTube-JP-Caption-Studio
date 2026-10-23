@@ -15,6 +15,8 @@ targets:
       - path: Views
         excludes:
           - TokenizedJAView.swift
+          - DictPopupView.swift
+          - HardsubOverlayView.swift
       - path: Services
         excludes:
           - YouTubeURL.swift
@@ -30,6 +32,7 @@ targets:
           - SubtitleParserSmoke.swift
           - BackupService.swift
           - VocabSync.swift
+          - DictionaryService.swift
       - path: Assets.xcassets
       # Only the injected player script ships in the app — dev tooling (sh/md/plist) must not.
       - path: Scripts/user_script.js

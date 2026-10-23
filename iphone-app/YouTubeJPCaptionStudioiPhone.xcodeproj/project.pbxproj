@@ -8,12 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		00C96579BDBFAF48DC05ED38 /* CaptionShared in Frameworks */ = {isa = PBXBuildFile; productRef = 6F5F463FE9D743F4BFF26E12 /* CaptionShared */; };
-		01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */; };
 		078EE95A5297B8C801411979 /* YouTubePlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */; };
 		1345ED45A537400D06B9D298 /* CueEditorRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */; };
-		3EA303D952E882591535A41E /* DictPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */; };
 		4311DC1436E7370D8F64AC22 /* dict.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = B883C2D182FCCB052DB62AB7 /* dict.sqlite */; };
-		6F7640688EB87BEF5EDDB59D /* DictionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF29E3058D31465754DE87B /* DictionaryService.swift */; };
 		9CADA75C7242198B47797F51 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2E4172276AF5DA5F68946F3B /* Assets.xcassets */; };
 		B444D3D843E052F4A2DFCB0A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AEF9CCD23B6B64200B0F3EA /* ContentView.swift */; };
 		B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */; };
@@ -28,15 +25,12 @@
 		2E4172276AF5DA5F68946F3B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3627E90D42E2DDF187019E44 /* YouTubeJPCaptionStudioiPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = YouTubeJPCaptionStudioiPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveScriptsService.swift; sourceTree = "<group>"; };
-		4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictPopupView.swift; sourceTree = "<group>"; };
 		57BA7E9650B4341DD812BA3E /* freq_ja.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = freq_ja.json; sourceTree = "<group>"; };
-		641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardsubOverlayView.swift; sourceTree = "<group>"; };
 		6AEF9CCD23B6B64200B0F3EA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7F2DA866E4B335689C940E34 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		B883C2D182FCCB052DB62AB7 /* dict.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = dict.sqlite; sourceTree = "<group>"; };
 		C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidePanelToolbar.swift; sourceTree = "<group>"; };
 		D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerView.swift; sourceTree = "<group>"; };
-		DAF29E3058D31465754DE87B /* DictionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,8 +67,6 @@
 			children = (
 				6AEF9CCD23B6B64200B0F3EA /* ContentView.swift */,
 				008AF8B086A96EBBC7D78A39 /* CueEditorRow.swift */,
-				4E7A9D5AA7AB8DD101189896 /* DictPopupView.swift */,
-				641C0D6A1A177CEF04ABCE1B /* HardsubOverlayView.swift */,
 				C66AD16AEFDC8B15B969769E /* SidePanelToolbar.swift */,
 				D47933F6FA9CCFD2AA5A6D32 /* YouTubePlayerView.swift */,
 			);
@@ -92,7 +84,6 @@
 		91373771969A1CB966C0C440 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				DAF29E3058D31465754DE87B /* DictionaryService.swift */,
 				4798C8E5139D68C60CD06753 /* DriveScriptsService.swift */,
 			);
 			path = Services;
@@ -192,10 +183,7 @@
 				C2397A6F49C6CE72BAFC80F3 /* App.swift in Sources */,
 				B444D3D843E052F4A2DFCB0A /* ContentView.swift in Sources */,
 				1345ED45A537400D06B9D298 /* CueEditorRow.swift in Sources */,
-				3EA303D952E882591535A41E /* DictPopupView.swift in Sources */,
-				6F7640688EB87BEF5EDDB59D /* DictionaryService.swift in Sources */,
 				B69B6CD259248BD9DEEED3A2 /* DriveScriptsService.swift in Sources */,
-				01C86B691A8F11FBA2F4E03B /* HardsubOverlayView.swift in Sources */,
 				CC49DB20A76147E5F140953D /* SidePanelToolbar.swift in Sources */,
 				078EE95A5297B8C801411979 /* YouTubePlayerView.swift in Sources */,
 			);

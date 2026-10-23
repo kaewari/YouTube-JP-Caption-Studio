@@ -1,22 +1,29 @@
 import Foundation
-import CaptionShared
 import SQLite3
 
-struct DictSense: Hashable {
-    var glossEN: [String]
-    var glossVI: [String]
-    var reading: String
+public struct DictSense: Hashable {
+    public var glossEN: [String]
+    public var glossVI: [String]
+    public var reading: String
 }
 
-struct DictLookup: Hashable {
-    var surface: String
-    var matched: String
-    var reading: String
-    var found: Bool
-    var senses: [DictSense]
-    var message: String
+public struct DictLookup: Hashable {
+    public init(surface: String, matched: String, reading: String, found: Bool, senses: [DictSense], message: String) {
+        self.surface = surface
+        self.matched = matched
+        self.reading = reading
+        self.found = found
+        self.senses = senses
+        self.message = message
+    }
+    public var surface: String
+    public var matched: String
+    public var reading: String
+    public var found: Bool
+    public var senses: [DictSense]
+    public var message: String
 
-    var primaryVI: String {
+    public var primaryVI: String {
         var parts: [String] = []
         for s in senses.prefix(4) {
             for g in s.glossVI where !g.isEmpty && !parts.contains(g) { parts.append(g) }
@@ -24,7 +31,7 @@ struct DictLookup: Hashable {
         return parts.prefix(5).joined(separator: ", ")
     }
 
-    var primaryEN: String {
+    public var primaryEN: String {
         var parts: [String] = []
         for s in senses.prefix(4) {
             for g in s.glossEN where !g.isEmpty && !parts.contains(g) { parts.append(g) }
@@ -34,9 +41,13 @@ struct DictLookup: Hashable {
 }
 
 /// Read-only lookup against bundled `dict.sqlite` — mirrors local-bridge `/dict`.
-final class DictionaryService {
-    static let shared = DictionaryService()
+// All callers run on the main thread (SwiftUI dictionary sheets); the lock below
+// is belt-and-braces so a future background caller cannot corrupt the shared
+// sqlite handle or the cache.
+public final class DictionaryService: @unchecked Sendable {
+    public static let shared = DictionaryService()
 
+    private let cacheLock = NSLock()
     private var db: OpaquePointer?
     private let punct = CharacterSet(charactersIn: "　 \t\n\r。、．，！？!?,;:「」『』（）()[]【】…・〜～\"'")
     // ponytail: small surface|lemma cache; wipe when full — LRU if thrash grows
@@ -60,12 +71,17 @@ final class DictionaryService {
         if let db { sqlite3_close(db) }
     }
 
-    func lookup(surface: String, lemma: String = "") -> DictLookup {
+    public func lookup(surface: String, lemma: String = "") -> DictLookup {
         let cacheKey = "\(surface)|\(lemma)"
-        if let hit = lookupCache[cacheKey] { return hit }
+        cacheLock.lock()
+        let hit = lookupCache[cacheKey]
+        cacheLock.unlock()
+        if let hit { return hit }
         let result = lookupUncached(surface: surface, lemma: lemma)
+        cacheLock.lock()
         if lookupCache.count >= lookupCacheLimit { lookupCache.removeAll(keepingCapacity: true) }
         lookupCache[cacheKey] = result
+        cacheLock.unlock()
         return result
     }
 
@@ -107,7 +123,7 @@ final class DictionaryService {
     }
 
     /// Legacy one-liner list (CueEditorRow "Tra từ").
-    func searchWord(_ word: String) -> [String] {
+    public func searchWord(_ word: String) -> [String] {
         let d = lookup(surface: word)
         guard d.found else { return d.message.isEmpty ? [] : [d.message] }
         var lines: [String] = []

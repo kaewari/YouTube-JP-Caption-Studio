@@ -15,9 +15,11 @@ let package = Package(
         .target(
             name: "CaptionShared",
             path: "Sources/CaptionShared",
-            // NOTE: no linkerSettings on purpose. DictionaryService (raw C sqlite3,
-            // mutable singleton handle) stays app-local until a dedicated step proves
-            // systemLibrary bridging across the Xcode matrix — see plan step C.
+            linkerSettings: [
+                // DictionaryService reads dict.sqlite through the C API directly;
+                // the iOS SDK ships the module, this links the library.
+                .linkedLibrary("sqlite3"),
+            ]
         ),
     ]
 )
