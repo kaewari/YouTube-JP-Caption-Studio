@@ -1345,3 +1345,15 @@ Migration chứng minh **trước khi merge**: binary cũ (models ở app module
 
 Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh
 (trên source trong package).
+
+## [2026-10-23] ingest | C-1 bước D (một phần) — TokenizedJAView vào package
+
+Trong 3 views dùng chung, chỉ `TokenizedJAView` move được: `DictPopupView` gọi
+`DictionaryService` (ở lại app tới bước sqlite-bridging), `HardsubOverlayView` dùng modifier
+`.dictPopup` định nghĩa trong `DictPopupView` (move nó sẽ couple package ngược về app). Đã thử
+move Hardsub rồi revert — bằng chứng nằm ở quyết định, không phải đoán.
+
+`TokenizedJAView` cần `body`/`sizeThatFits`/`placeSubviews` public (protocol witness) + `public init`
+tường minh (memberwise init luôn internal).
+
+Proof: 4 build (Debug+Release × 2 app) `** BUILD SUCCEEDED **`, exit 0 · smoke macOS 2 app xanh.
