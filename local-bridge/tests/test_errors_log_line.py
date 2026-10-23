@@ -6,6 +6,8 @@ forge extra log lines (and fake ERROR:bridge: entries).
 
 from __future__ import annotations
 
+import sqlite3
+
 from app.utils import logging_utils
 
 
@@ -81,3 +83,27 @@ def test_asr_runtime_failure_is_written_to_errors_log(tmp_path, monkeypatch):
     text = log.read_text(encoding="utf-8")
     assert "asr transcribe runtime failure" in text, text
     assert "RuntimeError" in text, text
+
+
+def test_saved_items_500_is_written_to_errors_log(tmp_path, monkeypatch):
+    """A failed saved-items request must land in errors.log (AGENTS.md §6)."""
+    from fastapi.testclient import TestClient
+
+    from app.api import saved_items as saved_api
+    from app.main import app
+
+    log = tmp_path / "errors.log"
+    monkeypatch.setattr(logging_utils, "_ERRORS_LOG", log)
+
+    def broken(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(saved_api, "list_items", broken)
+    resp = TestClient(app).get("/saved/items")
+
+    assert resp.status_code == 500, resp.text
+    text = log.read_text(encoding="utf-8")
+    assert "api_list_saved error" in text, text
+    assert "OperationalError" in text, text
+    # The SQL/path detail must stay out of the log line.
+    assert "database is locked" not in text, text

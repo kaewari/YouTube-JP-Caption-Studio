@@ -10,6 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.utils.logging_utils import append_errors_log
 from app.db.saved_items_db import (
     connect_db,
     delete_item,
@@ -23,6 +24,18 @@ from app.db.saved_items_db import (
 
 logger = logging.getLogger("bridge")
 router = APIRouter()
+
+
+
+def _failed(where: str, exc: Exception) -> HTTPException:
+    """Log one line for errors.log (AGENTS.md §6) and answer generically.
+
+    The raw exception text can carry SQL and file paths, so it stays in the
+    traceback: the log line records where it failed and the exception type.
+    """
+    logger.exception(f"{where} error")
+    append_errors_log("ERROR", f"{where} error: {type(exc).__name__}")
+    return HTTPException(status_code=500, detail="saved items request failed")
 
 # The schema is created once per process: journal_mode=WAL needs an exclusive
 # lock, so concurrent first requests must not run it at the same time.
@@ -143,9 +156,7 @@ def api_sync_saved(body: SyncRequest) -> SyncResponse:
             )
         return SyncResponse(**res)
     except Exception as exc:
-        # The raw exception text can carry SQL and file paths: log it, answer generic.
-        logger.exception("api_sync_saved error")
-        raise HTTPException(status_code=500, detail="saved items request failed") from exc
+        raise _failed("api_sync_saved", exc) from exc
 
 
 @router.get("/saved/items")
@@ -159,9 +170,7 @@ def api_list_saved(
         with db_conn() as conn:
             return list_items(conn, item_type=type, video_id=video_id, include_deleted=include_deleted, limit=limit)
     except Exception as exc:
-        # The raw exception text can carry SQL and file paths: log it, answer generic.
-        logger.exception("api_list_saved error")
-        raise HTTPException(status_code=500, detail="saved items request failed") from exc
+        raise _failed("api_list_saved", exc) from exc
 
 
 @router.get("/saved/items/{item_id}")
@@ -179,9 +188,7 @@ def api_upsert_saved(body: SavedItemPayload) -> dict[str, Any]:
         with db_conn() as conn:
             return upsert_item(conn, body.model_dump())
     except Exception as exc:
-        # The raw exception text can carry SQL and file paths: log it, answer generic.
-        logger.exception("api_upsert_saved error")
-        raise HTTPException(status_code=500, detail="saved items request failed") from exc
+        raise _failed("api_upsert_saved", exc) from exc
 
 
 @router.delete("/saved/items/{item_id}")
@@ -195,9 +202,7 @@ def api_delete_saved(item_id: str, hard: bool = Query(False)) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        # The raw exception text can carry SQL and file paths: log it, answer generic.
-        logger.exception("api_delete_saved error")
-        raise HTTPException(status_code=500, detail="saved items request failed") from exc
+        raise _failed("api_delete_saved", exc) from exc
 
 
 @router.get("/saved/search")
@@ -210,6 +215,4 @@ def api_search_saved(
         with db_conn() as conn:
             return search_items(conn, query=q, item_type=type, limit=limit)
     except Exception as exc:
-        # The raw exception text can carry SQL and file paths: log it, answer generic.
-        logger.exception("api_search_saved error")
-        raise HTTPException(status_code=500, detail="saved items request failed") from exc
+        raise _failed("api_search_saved", exc) from exc
