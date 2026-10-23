@@ -21,8 +21,13 @@ jobs:
       - uses: actions/checkout@v4
       # The ASR DSP tests drive a real ffmpeg filter chain; without the binary
       # decode falls back to plain audio and the DSP assertions fail.
+      # Non-interactive + no recommends: a bare apt-get install hung 15 minutes
+      # here (no output until the job timed out), so pin both flags.
       - name: Install ffmpeg for the ASR DSP tests
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+        run: >
+          sudo apt-get update -qq &&
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq
+          --no-install-recommends ffmpeg
       # The TXT-parse parity test runs the extension's real JS parser in Node.
       - uses: actions/setup-node@v4
         with:
